@@ -198,20 +198,25 @@ impl<'a> Cursor<'a> {
                 break;
             }
 
-            if ch == self.delim {
-                let mut stop = true;
-
-                while chars.next().is_some_and(|ch| ch == self.delim) {
-                    self.pos += 1;
-                    stop = false;
-                }
-
-                if stop {
-                    break;
-                }
-
-                self.pos += 1;
+            if ch != self.delim {
+                continue;
             }
+
+            // If we find repeating delimiters, we should
+            // continue to the next single one to capture the end
+            // of the sentence
+            let mut stop = true;
+
+            while chars.next().is_some_and(|ch| ch == self.delim) {
+                self.pos += 1;
+                stop = false;
+            }
+
+            if stop {
+                break;
+            }
+
+            self.pos += 1;
         }
     }
 
@@ -301,43 +306,42 @@ impl<'a> CursorRev<'a> {
             return;
         }
 
+        self.pos -= 1;
+
         let mut chars = self.buf.chars().rev().skip(self.buf.len() - 1 - self.pos);
 
-        let mut first_iter = true;
         loop {
             let Some(ch) = chars.next() else {
                 debug_assert!(self.pos == 0);
                 break;
             };
 
-            self.pos -= 1;
-
             if self.pos == 0 {
                 break;
             }
 
-            if ch == self.delim {
-                let mut stop = true;
+            self.pos -= 1;
 
-                // Advance until end of delimiter sequence
-                while chars.next().is_some_and(|ch| ch == self.delim) {
-                    self.pos -= 1;
-                    stop = false;
-                }
-
-                // We've invoked next on the chars and have to adjust
-                // We don't have to increment pos when we're stopping
-                // since there's no delim and we're breaking anyway
-                if !stop {
-                    self.pos -= 1;
-                }
-
-                if stop && !first_iter {
-                    break;
-                }
-
-                first_iter = false;
+            if ch != self.delim {
+                continue;
             }
+
+            let mut stop = true;
+
+            // Advance until end of delimiter sequence
+            while chars.next().is_some_and(|ch| ch == self.delim) {
+                self.pos -= 1;
+                stop = false;
+            }
+
+            if stop {
+                // Since we are at a single fullstop, we want to increment the
+                // pos so as not to include it at the start of the slice.
+                self.pos += 1;
+                break;
+            }
+
+            self.pos -= 1;
         }
     }
 
@@ -479,7 +483,6 @@ mod tests {
         assert!(!cursor.peek_back("This"));
         for test in expected {
             cursor.advance();
-            dbg!(test);
             assert!(cursor.peek_back(test));
         }
         assert!(cursor.peek_back("etc"));
@@ -623,7 +626,7 @@ mod tests {
     #[test]
     fn ssw_skips_common_abbreviations() {
         let input =
-            "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide synopsises for high level overview, i.e. they speak nonsense.";
+            "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
         let chunker = SnappingWindow {
             config: ChunkConfig::new(1, 1),
@@ -633,10 +636,13 @@ mod tests {
         let expected = [
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see.",
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning.",
-            input
+            " There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews.",
+            " My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal.",
+            " Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.",
         ];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
+        assert_eq!(5, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
             assert_eq!(test, chunk.content);

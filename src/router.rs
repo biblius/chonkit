@@ -150,6 +150,7 @@ async fn chunk(
                 .into_iter()
                 .map(|chonk| String::from(chonk.content))
                 .collect::<Vec<_>>();
+
             Ok(Json(chunks))
         }
         ChunkPayload::Recursive {

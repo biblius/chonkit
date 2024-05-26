@@ -4,13 +4,13 @@
   import { onMount, getContext } from "svelte";
   const { chunk } = getContext("documentMain");
 
-  let size = 1000;
-  let overlap = 500;
-  let skipF = ['com', 'org', 'net', 'g.', 'e.', 'js', 'rs', 'json', 'sh']
-  let skipB = ['www', 'etc', 'e.g', 'i.e']
+  let size = 50;
+  let overlap = 10;
+  let skipF = ["com", "org", "net", "g.", "e.", "js", "rs", "json", "sh"];
+  let skipB = ["www", "etc", "e.g", "i.e"];
 
-  let forwardSkip = '';
-  let backwardSkip = '';
+  let forwardSkip = "";
+  let backwardSkip = "";
 
   const config = () => {
     return {
@@ -40,12 +40,12 @@
 
   function updateSkips() {
     if (forwardSkip) {
-      skipF = [forwardSkip, ...skipF]
-      forwardSkip = '';
+      skipF = [forwardSkip, ...skipF];
+      forwardSkip = "";
     }
     if (backwardSkip) {
-      skipB = [backwardSkip, ...skipB]
-      backwardSkip = '';
+      skipB = [backwardSkip, ...skipB];
+      backwardSkip = "";
     }
   }
 
@@ -75,24 +75,24 @@
   {/each}
 </div>
 
-<label for="chunk-size">Size: {size}</label>
+<label for="chunk-size">Size (character based): {size}</label>
 <input
   type="range"
   id="chunk-size-slider"
   name="chunk-size"
   min="1"
-  max="2000"
+  max="1000"
   bind:value={size}
   on:change={_chunk}
 />
 
-<label for="chunk-overlap">Overlap: {overlap}</label>
+<label for="chunk-overlap">Overlap (sentence based): {overlap}</label>
 <input
   type="range"
   id="chunk-overlap-slider"
   name="chunk-overlap"
   min="0"
-  max="1000"
+  max="20"
   bind:value={overlap}
   on:change={_chunk}
 />
@@ -104,9 +104,7 @@
   name="chunk-skip-f"
   bind:value={forwardSkip}
 />
-<button
-  on:click={updateSkips}>+</button
->
+<button on:click={updateSkips}>+</button>
 
 <label for="chunk-skip-b">Add backward:</label>
 <input
@@ -115,9 +113,7 @@
   name="chunk-skip-b"
   bind:value={backwardSkip}
 />
-<button
-  on:click={updateSkips}>+</button
->
+<button on:click={updateSkips}>+</button>
 
 <button on:click={() => _chunk()}>Chunk</button>
 

@@ -32,7 +32,9 @@
   const documentId = pageUrl.substring(baseUrl.length + 1);
 
   onMount(() => {
-    loadDocument(documentId);
+    if (documentId) {
+      loadDocument(documentId);
+    }
   });
 
   /**
