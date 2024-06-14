@@ -3,6 +3,7 @@
 
   import { onMount, getContext } from "svelte";
   const { chunk } = getContext("documentMain");
+  import { toast } from "@zerodevx/svelte-toast";
 
   let size = 1000;
   let overlap = 500;
@@ -41,31 +42,37 @@
   });
 </script>
 
-<h2>Sliding window</h2>
+<div>
+  <h2>Sliding window</h2>
+  <div class="chunk-config-controller">
+    <label for="chunk-size">Size: {size}</label>
+    <input
+      type="range"
+      id="chunk-size-slider"
+      name="chunk-size"
+      min="1"
+      max="2000"
+      bind:value={size}
+      on:change={_chunk}
+    />
 
-<label for="chunk-size">Size: {size}</label>
-<input
-  type="range"
-  id="chunk-size-slider"
-  name="chunk-size"
-  min="1"
-  max="2000"
-  bind:value={size}
-  on:change={_chunk}
-/>
-
-<label for="chunk-overlap">Overlap: {overlap}</label>
-<input
-  type="range"
-  id="chunk-overlap-slider"
-  name="chunk-overlap"
-  min="0"
-  max="1000"
-  bind:value={overlap}
-  on:change={_chunk}
-/>
-
-<button on:click={() => _chunk()}>Chunk</button>
+    <label for="chunk-overlap">Overlap: {overlap}</label>
+    <input
+      type="range"
+      id="chunk-overlap-slider"
+      name="chunk-overlap"
+      min="0"
+      max="1000"
+      bind:value={overlap}
+      on:change={_chunk}
+    />
+  </div>
+</div>
 
 <style>
+  .chunk-config-controller {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
 </style>

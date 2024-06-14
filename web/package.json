@@ -10,6 +10,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.0.2",
     "@types/showdown": "^2.0.6",
+    "@zerodevx/svelte-toast": "^0.9.5",
     "prettier": "3.2.5",
     "prettier-plugin-svelte": "^3.2.2",
     "showdown": "^2.1.0",
@@ -17,4 +18,3 @@
     "vite": "^5.2.0"
   }
 }
-

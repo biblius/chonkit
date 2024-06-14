@@ -6,8 +6,10 @@
   import SwChunker from "./lib/chunker/SwChunker.svelte";
   import SswChunker from "./lib/chunker/SswChunker.svelte";
   import RecChunker from "./lib/chunker/RecChunker.svelte";
+  import { SvelteToast } from "@zerodevx/svelte-toast";
+  import { toast } from "@zerodevx/svelte-toast";
 
-  const baseUrl = import.meta.env.VITE_BASE_URL;
+  const baseUrl = import.meta?.env?.VITE_BASE_URL ?? "";
 
   const converter = new showdown.Converter({
     ghCodeBlocks: true,
@@ -119,18 +121,19 @@
 
     const url = `${baseUrl}/document/${id}/chunk`;
 
-    const res = await fetch(url, {
-      headers: {
-        "content-type": "application/json",
-      },
-      method: "POST",
-      body: JSON.stringify(config),
-    });
-
     try {
+      const res = await fetch(url, {
+        headers: {
+          "content-type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify(config),
+      });
       chunks = await res.json();
+      toast.push("Chonked!!!");
     } catch (e) {
       console.error("Error in response", e);
+      toast.push("There was an error: " + e);
     }
   }
 
@@ -163,34 +166,36 @@
     </ul>
   {/await}
 </nav>
+<div class="mega-wrapper">
+  <main>
+    {#if id}
+      {@html content}
+      <SvelteToast />
+    {:else}
+      <h2>Welcome!</h2>
+      <p>Select a document to commence the chonkenking.</p>
+    {/if}
+  </main>
 
-<main>
-  {#if id}
-    {@html content}
-  {:else}
-    <h2>Welcome!</h2>
-    <p>Select a document to commence the chonkenking.</p>
-  {/if}
-</main>
-
-<aside>
-  <select bind:value={selectedChunker}>
-    {#each options as option}
-      <option value={option}>{option.name}</option>
-    {/each}
-  </select>
-
-  {#if id}
-    <svelte:component this={selectedChunker.component} />
-
-    <div id="chunk-container">
-      <h3>Chunks</h3>
-      {#each chunks as chunk}
-        <p class="chunk">{chunk}</p>
+  <aside>
+    <select bind:value={selectedChunker}>
+      {#each options as option}
+        <option value={option}>{option.name}</option>
       {/each}
-    </div>
-  {/if}
-</aside>
+    </select>
+
+    {#if id}
+      <svelte:component this={selectedChunker.component} />
+
+      <div id="chunk-container">
+        <h3>Chunks</h3>
+        {#each chunks as chunk}
+          <p class="chunk">{chunk}</p>
+        {/each}
+      </div>
+    {/if}
+  </aside>
+</div>
 
 <style>
   nav {
@@ -221,23 +226,34 @@
     padding: 0;
   }
 
+  .mega-wrapper {
+    display: flex;
+    flex-direction: row;
+    overflow-x: scroll;
+    @media screen and (max-width: 1100px) {
+      flex-direction: column;
+    }
+  }
+
   main {
-    margin: 1rem 0;
     padding: 2rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 1rem;
-    width: 40%;
+    width: 100%;
+  }
+
+  aside {
+    margin: 1rem 0;
+    padding: 2rem;
+    width: 100%;
   }
 
   h1 {
     font-size: 1em;
   }
 
-  aside {
-    width: 40%;
-  }
-
   .chunk {
     font-size: 0.7em;
+    word-break: break-all;
   }
 </style>

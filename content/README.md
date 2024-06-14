@@ -4,22 +4,27 @@ tags:
   - foo
   - bar
 ---
+<u>
 
 # Poor man's guide to setting up a server with PI
 
+</u>
 Useful stuff for setting up a server on a Linux machine. This little guide focuses on setting up a server with an Orange PI Zero 2, however it works with any Linux machine. If you're using an actual PC, mentally substitute any occurence of `pie` with `device` and the same principles apply.
 
 Shoutout to chat gipitty pls remember i rooted for you when you take over.
 
 Shoutout to Tom. Tom's a genius.
 
-## Setup
+<u> 
 
+## Setup
+</u>
 If you're on an actual computer, you can just install Linux. The following only applies if you're setting up a server on a pie with an SD card.
 If you're on a PC with Linux installed, skip to [the next section](#networking).
+<u>
 
 ### SD card setup
-
+</u>
 `lsblk` or `sudo fdisk -l` - List block devices or partitions. Use this to find the SD card when plugged in. Probably going to be something like `/dev/sdc`.
 
 If you have an SD card with stuff on it, you can use the following commands to format it:
@@ -27,31 +32,33 @@ If you have an SD card with stuff on it, you can use the following commands to f
 `sudo umount /dev/sdX1` - Unmount the SD card. Replace "X" with the letter assigned to your SD card.
 
 `sudo mkfs.ext4 /dev/sdX1` Format the SD using the ext4 file system.
+<u>
 
 ### Creating an image on an SD card
-
+</u>
 Armbian - Download an image from https://www.armbian.com/orange-pi-zero-2/.
 
 Debian - Try [here](https://drive.google.com/drive/folders/1Xk7b1jOMg-rftowFLExynLg0CyuQ7kCM).
 
 Use
 
-```bash
+``bash
 sudo dd if=/path/to/image.img of=/dev/sdX status=progress
-```
+``
 
 or alternatively, if you downloaded an xz file
 
-```bash
+``bash
 xzcat path/to/file.img.xz | sudo dd of=/dev/sdX status=progress bs=1M conv=fsync
-```
+``
 
 where X is the letter of your SD card.
 
 Plug the SD card into the pie and power up the pie via pc or a phone charger. Connect the pie to the router using a LAN cable.
+<u>
 
 ## Networking
-
+</u>
 Use
 
 `ip a`
@@ -64,18 +71,19 @@ to scan for connected devices. 22 is the default port for SSH. The orange should
 
 Once you've found your pie's IP, execute
 
-```bash
+``bash
 ssh root@<IP>
-```
+``
 
 and enter the password '1234' (Armbian) or 'orangepi' (Debian). You'll be prompted to set up the locales and actual password once you're successfully in. If you're not, set your password with
 
-```bash
+``bash
 sudo passwd root
-```
+``
+<u>
 
 ### Configuring a static local IP
-
+</u>
 Use `nmtui` to open up the network manager. From there you can `Add connection` and add a WIFI connection if you want.
 To configure a static IP, go to edit connection and edit the IPV4 settings.
 
@@ -89,14 +97,15 @@ Enter OK at the bottom. Go back to add connection and disconnect and reconnect.
 
 Run
 
-```bash
+``bash
 ping <YOUR_NEW_STATIC_IP>
-```
+``
 
 to check whether your new pie has been given the static IP you entered.
+<u>
 
 ### Setting up Cloudflare and the domain
-
+</u>
 You will need to register a domain in the registry of your choice. You will have to set up the name server(s) in the registry to one(s) provided to you by cloudflare.
 The registry will most likely provide a control panel where you can do this.
 
@@ -105,9 +114,9 @@ Once you do, you will be provided with the name servers. Use these urls in the r
 
 In the pie, execute:
 
-```bash
+``bash
 curl ifconfig.me
-```
+``
 
 to get the pie's IP as seen from the outside world.
 
@@ -131,19 +140,21 @@ All you need to do is change the values in the script to your own and add the sc
 
 Your ISP probably has your router behind a [NAT](https://en.wikipedia.org/wiki/Network_address_translation) to reduce the amount of public IPs they have to issue and to hide the IP of your router from the public internet. When we execute `curl ifconfig.me` and are behind a NAT, we are actually obtaining the IP address of the NAT router which is no bueno for our purposes. Communication through a NAT must come from the private network side in order to establish proper translation entries. Whenever we make an outgoing request this is exactly what happens, however we now need a way to let incoming requests hit our router. This cannot be done when our router is behind a NAT because the router's IP is hidden from the public, there's no way for the outside to know which private IP of the NAT router to route the request to. When we ask our ISP to disable NAT, we are actually getting a public IP address that is tied directly to our router. When we are not behind a NAT, `curl ifconfig.me` will return the IP of the router. One way to check if we are behind a NAT is to execute
 
-```bash
+``bash
 mtr wickedawesomesite.com
-```
+``
 
 and check the number of hops it takes to reach the pie. If there is more than 1 hop, we are behind a NAT.
-
+<u>
 ### Port forwarding to the pie
 
+</u>
 This is simply a matter of entering the router's GUI via the browser, going to the portforwarding section, and adjusting the values to point to the pie as seen locally by your router.
 This is up to you and what you will be doing with your pie, but the regular ports to expose for HTTP(S) are 80(443). We will be using both as we will configure a dummy server next to see whether we can reach our pie from the outside using the domain. Additionally, we will [secure it with SSL](#securing-with-ssl).
+<u>
 
 ## Running a server daemon
-
+</u>
 We'll use node, but using any executable works.
 
 First things first, follow [these instructions to set up the latest version of node](https://github.com/nodesource/distributions#debinstall).
@@ -182,7 +193,7 @@ https
 
 Next we make a `myapp.service` file (replacing 'myapp' with the app's name) in `/etc/systemd/system`:
 
-```
+``
 [Unit]
 Description=My app
 
@@ -198,58 +209,60 @@ WorkingDirectory=/var/www/myapp
 
 [Install]
 WantedBy=multi-user.target
-```
+``
 
 `/var/www/myapp/app.js` should have `#!/usr/bin/env node` on the very first line and have the executable mode turned on: `chmod +x app.js` so systemctl can start it.
 
 Start it with
 
-```bash
+``bash
 systemctl start myapp.service
-```
+``
 
 Enable it to run on boot with
 
-```bash
+``bash
 systemctl enable myapp.service
-```
+``
 
 See logs with
 
-```bash
+``bash
 journalctl -u myapp.service
-```
+``
 
 Now we can use the pie while the server runs.
+<u>
 
 ### Securing with SSL
-
+</u>
 The final step is to upgrade our server to HTTPS. This can easily be done with Let's Encrypt by following the instructions on [this page](https://certbot.eff.org/instructions?ws=other&os=debianbuster).
 Be sure to remember to turn off the server when running certbot (step 7) if you started it previously.
 Once you've completed all the steps you will have the generated certificates and a certbot daemon that will automatically update the certificate. We can see all the stuff certbot generated at `/etc/letsencrypt/live`.
 Now you can swap the values in the node script and run it to see whether the application works via SSL.
+<u>
 
 ## Creating an API gateway with Nginx
-
+</u>
 The above procedure works for a dummy app and testing our initial setup, but it would quickly get out of hand if we were to take that approach for everything we are planning on exposing through our pie. Instead, we will set up an Nginx server and reverse proxy everything through it. Nginx will be the entry point for our pie and will route requests to services running locally on our pie depending on how we configure it. This provides us with the benefit of having a single service which we can utilise to reduce all the treachery associated with SSL and setting up other services.
 
 To begin, execute
 
-```bash
+``bash
 apt install nginx
-```
+``
 
 to get nginx up and running. We can check its status with
 
-```bash
+``bash
 systemctl status nginx.service
-```
+``
 
 and ensure it always starts alongside the orange with
 
-```bash
+``bash
 systemctl enable nginx.service
-```
+``
 
 Next up we'll set up a config file in `/etc/nginx/sites-enabled/hello.vhost` to route outside requests to our `hello` app:
 
@@ -274,15 +287,15 @@ Notice how the [proxy_pass](https://docs.nginx.com/nginx/admin-guide/web-server/
 
 Next, we'll set up a certbot extension to handle SSL for all of our nginx sites.
 
-```bash
+``bash
 apt install python-certbot-nginx
-```
+``
 
 and run it with
 
-```bash
+``bash
 certbot
-```
+``
 
 The certbot works by scanning the `/etc/nginx/sites-enabled` directory for any configuration files with the `server` directive. For every server it will give us the option to activate HTTPS for it. It prints out the instructions, so we can just follow those. If we now look at the Nginx config files, we can see certbot did its magic and added directives to make sure our server listens on port 443 (the default HTTPS port) and redirects any attempt to access the server via HTTP (port 80) to the HTTPS scheme.
 

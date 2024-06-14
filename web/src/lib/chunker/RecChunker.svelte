@@ -6,9 +6,8 @@
 
   let size = 1000;
   let overlap = 500;
-
-  let delimiters = ["\n\n", "\n", " ", ""];
-
+  let basicDelimiter = ["\n\n", "\n", " ", ""];
+  let delimiters = basicDelimiter;
   let delimitersString = "";
   let delimiterBuffer = "";
 
@@ -47,8 +46,15 @@
 
   function updateDelimiters() {
     delimiters.push(delimiterBuffer);
-    delimiters = delimiters.map(el => el.replaceAll('\n', '\\n').replaceAll(' ', '<space>'));
+    delimiters = delimiters.map((el) =>
+      el.replaceAll("\n", "\\n").replaceAll(" ", "<space>"),
+    );
     delimiterBuffer = "";
+  }
+
+  function clearDelimiters() {
+    delimiters = [];
+    delimitersString = "";
   }
 
   onMount(() => {
@@ -58,47 +64,54 @@
 
 <h2>Recursive</h2>
 
-<label for="chunk-size">Size: {size}</label>
-<input
-  type="range"
-  id="chunk-size-slider"
-  name="chunk-size"
-  min="1"
-  max="2000"
-  bind:value={size}
-  on:change={_chunk}
-/>
+<div class="recursive-wrapper">
+  <label for="chunk-size">Size: {size}</label>
+  <input
+    type="range"
+    id="chunk-size-slider"
+    name="chunk-size"
+    min="1"
+    max="2000"
+    bind:value={size}
+    on:change={_chunk}
+  />
 
-<label for="chunk-overlap">Overlap: {overlap}</label>
-<input
-  type="range"
-  id="chunk-overlap-slider"
-  name="chunk-overlap"
-  min="0"
-  max="1000"
-  bind:value={overlap}
-  on:change={_chunk}
-/>
+  <label for="chunk-overlap">Overlap: {overlap}</label>
+  <input
+    type="range"
+    id="chunk-overlap-slider"
+    name="chunk-overlap"
+    min="0"
+    max="1000"
+    bind:value={overlap}
+    on:change={_chunk}
+  />
 
-<div>
-  Delimiters:
-  {#each delimiters as delim}
-    <p>{delim}</p>
-  {/each}
+  <div>
+    Delimiters:
+    {#each delimiters as delim}
+      <p>{delim}</p>
+    {/each}
+  </div>
+
+  <label for="chunk-delimiters">Add delimiter:</label>
+  <input
+    type="text"
+    id="chunk-delimiters-input"
+    name="chunk-delimiters"
+    bind:value={delimiterBuffer}
+  />
+  <button on:click={updateDelimiters}>+</button>
+  <button on:click={clearDelimiters}>Clear</button>
 </div>
 
-<label for="chunk-delimiters">Add delimiter:</label>
-<input
-  type="text"
-  id="chunk-delimiters-input"
-  name="chunk-delimiters"
-  bind:value={delimiterBuffer}
-/>
-<button
-  on:click={updateDelimiters}>+</button
->
-
-<button on:click={() => _chunk()}>Chunk</button>
-
 <style>
+  .recursive-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .recursive-wrapper input {
+    height: 2rem;
+  }
 </style>

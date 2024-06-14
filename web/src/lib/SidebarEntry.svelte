@@ -64,9 +64,9 @@
 >
   <p id={`side_${id}`} class="sidebar-entry">
     {#if name.endsWith(".md")}
-      <Icon icon={MdIcon} text = {title ? title : name}/>
+      <Icon icon={MdIcon} text={title ? title : name} />
     {:else}
-      <Icon icon={DirIcon} text = {title ? title : name}/>
+      <Icon icon={DirIcon} text={title ? title : name} />
     {/if}
   </p>
 </li>
@@ -94,15 +94,12 @@
     box-sizing: border-box;
     position: relative;
     text-wrap: wrap;
-    padding-left: 2rem;
+    padding-left: 0.5rem;
     font-size: 0.7em;
+    word-break: break-all;
   }
 
   p:hover {
     cursor: pointer;
-  }
-
-  .sidebar-entry {
-
   }
 </style>
