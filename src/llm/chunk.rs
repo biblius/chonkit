@@ -11,7 +11,7 @@ pub use ssw::SnappingWindow;
 pub use sw::SlidingWindow;
 
 pub trait Chunker {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<Chunk<'a>>, ChunkerError>;
+    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError>;
 }
 
 #[derive(Debug, Error)]
@@ -21,17 +21,6 @@ pub enum ChunkerError {
 
     #[error("utf-8: {0}")]
     Utf8(#[from] Utf8Error),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Chunk<'a> {
-    pub content: &'a str,
-}
-
-impl<'a> Chunk<'a> {
-    pub fn new(content: &'a str) -> Self {
-        Chunk { content }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

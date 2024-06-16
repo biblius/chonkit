@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use crate::{
-    document::{models::DirectoryEntry, DocumentData, DocumentMeta},
-    error::LedgeknawError,
+    document::{File, FileOrDir},
+    dto::file::FileResponse,
+    error::ChonkitError,
     llm::chunk::{ChunkConfig, Chunker, Recursive, SlidingWindow, SnappingWindow},
     state::DocumentService,
 };
@@ -20,8 +21,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::{info, Span};
-
-mod admin;
+use uuid::Uuid;
 
 pub fn router(state: DocumentService) -> Router {
     let router = public_router(state.clone());
@@ -45,53 +45,51 @@ fn public_router(state: DocumentService) -> Router {
             "/",
             ServeDir::new("dist").fallback(ServeFile::new("dist/index.html")),
         )
-        .route("/meta/:id", get(document_meta))
+        .route("/sync", get(sync))
         .route("/side", get(sidebar_init))
         .route("/side/:id", get(sidebar_entries))
-        .route("/sync", get(sync))
-        .route("/document/:id", get(document))
+        .route("/document/:id", get(get_file))
         .route("/document/:id/chunk", post(chunk))
         .with_state(state)
 }
 
-// DOCUMENT ROUTER
+// DOCUMENT SERVICE ROUTER
 
-pub async fn document(
-    state: axum::extract::State<DocumentService>,
-    path: axum::extract::Path<String>,
-) -> Result<Json<DocumentData>, LedgeknawError> {
-    Ok(Json(state.read_file(&path.0).await?))
+pub async fn get_file(
+    service: axum::extract::State<DocumentService>,
+    id: axum::extract::Path<uuid::Uuid>,
+) -> Result<Json<FileResponse>, ChonkitError> {
+    let file = service.get_file(*id).await?;
+
+    let FileOrDir::File(file) = file else {
+        return Err(ChonkitError::NotFound(id.to_string()));
+    };
+
+    let content = service.get_file_contents(&file.path).await?;
+
+    Ok(Json(FileResponse::from((file, content))))
 }
 
-pub async fn document_meta(
-    state: axum::extract::State<DocumentService>,
-    id: axum::extract::Path<uuid::Uuid>,
-) -> Result<Json<DocumentMeta>, LedgeknawError> {
-    Ok(Json(state.get_file_meta(*id).await?))
+async fn sync(
+    service: axum::extract::State<DocumentService>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    service.sync().await?;
+    Ok(())
 }
 
 pub async fn sidebar_init(
-    state: axum::extract::State<DocumentService>,
-) -> Result<Json<Vec<DirectoryEntry>>, LedgeknawError> {
-    let docs = state.db.list_roots().await?;
+    service: axum::extract::State<DocumentService>,
+) -> Result<Json<Vec<File>>, ChonkitError> {
+    let docs = service.db.list_root_files().await?;
     Ok(Json(docs))
 }
 
 pub async fn sidebar_entries(
-    state: axum::extract::State<DocumentService>,
-    path: axum::extract::Path<uuid::Uuid>,
-) -> Result<Json<Vec<DirectoryEntry>>, LedgeknawError> {
-    let files = state.db.list_entries(*path).await?;
+    service: axum::extract::State<DocumentService>,
+    id: axum::extract::Path<uuid::Uuid>,
+) -> Result<Json<Vec<File>>, ChonkitError> {
+    let files = service.db.list_children(*id).await?;
     Ok(Json(files))
-}
-
-// STATE ROUTER
-
-async fn sync(
-    state: axum::extract::State<DocumentService>,
-) -> Result<impl IntoResponse, LedgeknawError> {
-    state.sync().await?;
-    Ok(())
 }
 
 // CHUNK ROUTER
@@ -115,10 +113,17 @@ enum ChunkPayload {
 
 async fn chunk(
     service: axum::extract::State<DocumentService>,
-    id: axum::extract::Path<String>,
+    id: axum::extract::Path<Uuid>,
     config: axum::extract::Json<ChunkPayload>,
-) -> Result<impl IntoResponse, LedgeknawError> {
-    let document = service.read_file(&id.0).await?;
+) -> Result<impl IntoResponse, ChonkitError> {
+    let file = service.get_file(id.0).await?;
+
+    let FileOrDir::File(file) = file else {
+        return Err(ChonkitError::NotFound(id.to_string()));
+    };
+
+    let content = service.get_file_contents(&file.path).await?;
+
     match config.0 {
         ChunkPayload::SlidingWindow {
             config: ChunkConfig { size, overlap },
@@ -126,9 +131,9 @@ async fn chunk(
             info!("Chunking {} with SlidingWindow", id.0);
             let chunker = SlidingWindow::new(size, overlap);
             let chunks = chunker
-                .chunk(&document.content)?
+                .chunk(&content)?
                 .into_iter()
-                .map(|chonk| String::from(chonk.content))
+                .map(String::from)
                 .collect::<Vec<_>>();
             Ok(Json(chunks))
         }
@@ -146,9 +151,9 @@ async fn chunk(
                 .skip_back(&skip_b);
 
             let chunks = chunker
-                .chunk(&document.content)?
+                .chunk(&content)?
                 .into_iter()
-                .map(|chonk| String::from(chonk.content))
+                .map(String::from)
                 .collect::<Vec<_>>();
 
             Ok(Json(chunks))
@@ -161,9 +166,9 @@ async fn chunk(
             let chunker = Recursive::new(size, overlap, &delims);
 
             let chunks = chunker
-                .chunk(&document.content)?
+                .chunk(&content)?
                 .into_iter()
-                .map(|chonk| String::from(chonk.content))
+                .map(String::from)
                 .collect::<Vec<_>>();
             Ok(Json(chunks))
         }

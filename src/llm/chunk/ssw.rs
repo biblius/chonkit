@@ -1,4 +1,4 @@
-use super::{concat, Chunk, ChunkConfig, Chunker, ChunkerError};
+use super::{concat, ChunkConfig, Chunker, ChunkerError};
 
 /// Heuristic chunker for texts intended for humans, e.g. documentation, books, blogs, etc.
 ///
@@ -62,7 +62,7 @@ impl<'skip> SnappingWindow<'skip> {
 }
 
 impl<'skip> Chunker for SnappingWindow<'skip> {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<Chunk<'a>>, ChunkerError> {
+    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let Self {
             config: ChunkConfig { size, overlap },
             delimiter: delim,
@@ -79,7 +79,7 @@ impl<'skip> Chunker for SnappingWindow<'skip> {
         loop {
             if start >= input.len() {
                 if !chunk.is_empty() {
-                    chunks.push(Chunk::new(chunk))
+                    chunks.push(chunk)
                 }
                 break;
             }
@@ -127,7 +127,7 @@ impl<'skip> Chunker for SnappingWindow<'skip> {
 
             let chunk_full = concat(concat(prev, chunk)?, next)?;
 
-            chunks.push(Chunk::new(chunk_full));
+            chunks.push(chunk_full);
 
             start += 1;
 
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(3, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
-            assert_eq!(test, chunk.content);
+            assert_eq!(test, chunk);
         }
     }
 
@@ -597,7 +597,7 @@ mod tests {
         assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
-            assert_eq!(test, chunk.content);
+            assert_eq!(test, chunk);
         }
     }
 
@@ -619,7 +619,7 @@ mod tests {
         assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
-            assert_eq!(test, chunk.content);
+            assert_eq!(test, chunk);
         }
     }
 
@@ -645,7 +645,7 @@ mod tests {
         assert_eq!(5, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
-            assert_eq!(test, chunk.content);
+            assert_eq!(test, chunk);
         }
     }
 }

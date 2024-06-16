@@ -4,13 +4,13 @@
 </script>
 
 <svelte:head>
-    <title> {meta?.title || 'Ledgeknaw'} </title>
+  <title>{meta?.name || "Chonkit"}</title>
 </svelte:head>
 
 <section id="markdown-content" class="markdown-body">
-  {@html content} 
+  {@html content}
 </section>
 
 <style>
-  @import '../markdown.css';
+  @import "../markdown.css";
 </style>

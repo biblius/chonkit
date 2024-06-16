@@ -76,20 +76,22 @@
 <h4>Forward skip:</h4>
 <div class="skip-wrapper">
   {#each skipF as s}
-    <button class="tag" on:click={removeSkip(s, "forwardSkip")}>
+    <button class="tag" on:click={() => removeSkip(s, "forwardSkip")}>
       <p>{s}</p>
     </button>
   {/each}
 </div>
 
 <h4>Backwards skip:</h4>
+
 <div class="skip-wrapper">
   {#each skipB as s}
-    <button class="tag" on:click={removeSkip(s, "backwardSkip")}>
+    <button class="tag" on:click={() => removeSkip(s, "backwardSkip")}>
       <p>{s}</p>
     </button>
   {/each}
 </div>
+
 <div class="snap-form-wrapper">
   <label for="chunk-size">Size (character based): {size}</label>
   <input
