@@ -1,5 +1,5 @@
-use super::{Chunk, ChunkConfig, Chunker, ChunkerError};
-use tracing::{debug, trace};
+use super::{ChunkConfig, Chunker, ChunkerError};
+use tracing::debug;
 
 /// The most basic of chunkers.
 ///
@@ -24,7 +24,7 @@ impl SlidingWindow {
 }
 
 impl Chunker for SlidingWindow {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<Chunk<'a>>, ChunkerError> {
+    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let SlidingWindow {
             config: ChunkConfig { size, overlap },
         } = self;
@@ -36,7 +36,7 @@ impl Chunker for SlidingWindow {
         }
 
         if input.len() <= size + overlap {
-            return Ok(vec![Chunk::new(input)]);
+            return Ok(vec![input]);
         }
 
         let mut chunks = vec![];
@@ -50,13 +50,12 @@ impl Chunker for SlidingWindow {
             let chunk_end = end + overlap;
 
             if chunk_end > input_size {
-                let chunk = Chunk::new(&input[chunk_start..input_size]);
+                let chunk = &input[chunk_start..input_size];
                 chunks.push(chunk);
                 break;
             }
 
-            let chunk = Chunk::new(&input[chunk_start..chunk_end]);
-            trace!("Chunked: {:?}\n", chunk.content);
+            let chunk = &input[chunk_start..chunk_end];
             chunks.push(chunk);
 
             start = end;
@@ -66,7 +65,7 @@ impl Chunker for SlidingWindow {
         debug!(
             "Chunked {} chunks, avg chunk size: {}",
             chunks.len(),
-            chunks.iter().fold(0, |acc, el| acc + el.content.len()) / chunks.len()
+            chunks.iter().fold(0, |acc, el| acc + el.len()) / chunks.len()
         );
 
         Ok(chunks)
@@ -83,10 +82,10 @@ mod tests {
         let window = SlidingWindow::new(30, 20);
         let chunks = window.chunk(input).unwrap();
 
-        assert_eq!(&input[0..50], chunks[0].content);
-        assert_eq!(&input[10..80], chunks[1].content);
-        assert_eq!(&input[40..110], chunks[2].content);
-        assert_eq!(&input[70..], chunks[3].content);
+        assert_eq!(&input[0..50], chunks[0]);
+        assert_eq!(&input[10..80], chunks[1]);
+        assert_eq!(&input[40..110], chunks[2]);
+        assert_eq!(&input[70..], chunks[3]);
     }
 
     #[test]
@@ -104,6 +103,6 @@ mod tests {
         let window = SlidingWindow::new(30, 20);
         let chunks = window.chunk(input).unwrap();
 
-        assert_eq!(input, chunks[0].content);
+        assert_eq!(input, chunks[0]);
     }
 }

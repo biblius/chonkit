@@ -1,6 +1,4 @@
-use crate::llm::chunk::concat;
-
-use super::{Chunk, ChunkConfig, Chunker, ChunkerError};
+use super::{ChunkConfig, Chunker, ChunkerError};
 
 /// Default delimiters for the [recursive chunker][Recursive].
 const DEFAULT_DELIMS: &[&str] = &["\n\n", "\n", " ", ""];
@@ -153,7 +151,7 @@ impl<'delim> Recursive<'delim> {
 }
 
 impl<'delim> Chunker for Recursive<'delim> {
-    fn chunk<'input>(&self, input: &'input str) -> Result<Vec<Chunk<'input>>, ChunkerError> {
+    fn chunk<'input>(&self, input: &'input str) -> Result<Vec<&'input str>, ChunkerError> {
         let mut splits = vec![];
 
         if let Some(remainder) = self.chunk_recursive(input, 0, "", &mut splits)? {
@@ -172,7 +170,7 @@ impl<'delim> Chunker for Recursive<'delim> {
 
         Ok(splits
             .into_iter()
-            .filter_map(|chunk| (!chunk.trim().is_empty()).then_some(Chunk::new(chunk)))
+            .filter(|chunk| !chunk.trim().is_empty())
             .collect())
     }
 }

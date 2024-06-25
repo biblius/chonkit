@@ -1,7 +1,11 @@
-use crate::error::LedgeknawError;
+use crate::error::ChonkitError;
 use clap::Parser;
 use serde::Deserialize;
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Parser)]
 pub struct StartArgs {
@@ -20,19 +24,19 @@ pub struct StartArgs {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    pub directories: HashMap<String, String>,
-}
-
-impl Config {
-    pub fn read(path: impl AsRef<Path>) -> Result<Self, LedgeknawError> {
-        let config = fs::read_to_string(path)?;
-        Ok(serde_json::from_str(&config)?)
-    }
+    pub directory: PathBuf,
+    pub hf: HfConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct AdminConfig {
-    pub cookie_domain: String,
-    #[serde(alias = "password_hash")]
-    pub pw_hash: String,
+pub struct HfConfig {
+    pub token: String,
+    pub cache_dir: Option<PathBuf>,
+}
+
+impl Config {
+    pub fn read(path: impl AsRef<Path>) -> Result<Self, ChonkitError> {
+        let config = fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&config)?)
+    }
 }

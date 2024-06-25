@@ -1,13 +1,11 @@
-use std::{num::ParseIntError, string::FromUtf8Error};
-
+use crate::llm::chunk::ChunkerError;
 use axum::{http::StatusCode, response::IntoResponse};
+use std::{num::ParseIntError, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
 
-use crate::{auth::AuthError, llm::chunk::ChunkerError};
-
 #[derive(Debug, Error)]
-pub enum LedgeknawError {
+pub enum ChonkitError {
     #[error("IO: {0}")]
     IO(#[from] std::io::Error),
 
@@ -30,7 +28,7 @@ pub enum LedgeknawError {
     DoesNotExist(String),
 
     #[error("Invalid Directory: {0}")]
-    InvalidDirectory(String),
+    InvalidFileName(String),
 
     #[error("JSON error: {0}")]
     SerdeJson(#[from] serde_json::Error),
@@ -47,24 +45,21 @@ pub enum LedgeknawError {
     #[error("Http: {0}")]
     Http(#[from] axum::http::Error),
 
-    #[error("Authentication: {0}")]
-    Auth(#[from] AuthError),
-
     #[error("Chunking: {0}")]
     Chunk(#[from] ChunkerError),
 }
 
-impl From<argon2::Error> for LedgeknawError {
+impl From<argon2::Error> for ChonkitError {
     fn from(value: argon2::Error) -> Self {
         Self::A2Hash(value)
     }
 }
 
-impl IntoResponse for LedgeknawError {
+impl IntoResponse for ChonkitError {
     fn into_response(self) -> axum::response::Response {
         error!("Error: {self}");
 
-        use LedgeknawError as KE;
+        use ChonkitError as KE;
 
         match self {
             KE::NotFound(e) => (StatusCode::NOT_FOUND, e).into_response(),
@@ -80,12 +75,11 @@ impl IntoResponse for LedgeknawError {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()).into_response()
             }
             KE::DoesNotExist(e) => (StatusCode::NOT_FOUND, e).into_response(),
-            KE::InvalidDirectory(_) | KE::SerdeJson(_) => {
+            KE::InvalidFileName(_) | KE::SerdeJson(_) => {
                 (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()).into_response()
             }
             // Occurs on pw verification in handlers
             KE::A2Validation(e) => (StatusCode::UNAUTHORIZED, e.to_string()).into_response(),
-            KE::Auth(e) => e.into_response(),
         }
     }
 }

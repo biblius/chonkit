@@ -9,7 +9,7 @@
   import { SvelteToast } from "@zerodevx/svelte-toast";
   import { toast } from "@zerodevx/svelte-toast";
 
-  const baseUrl = import.meta?.env?.VITE_BASE_URL ?? "";
+  const baseUrl = import.meta.env.VITE_BASE_URL ?? "";
 
   const converter = new showdown.Converter({
     ghCodeBlocks: true,
@@ -60,13 +60,11 @@
 
     if (response.status === 404) {
       if (docId) {
-        // TODO: Popup
-        throw new Error(`Not found`);
+        toast.push(`Not found`);
       }
 
       // In case of no index, return the default page
-      meta = { title: "Ledgeknaw" };
-      content = "This is my knawledge.";
+      content = "Chonk knawledge.";
     }
 
     const data = await response.json();
@@ -88,7 +86,7 @@
    * @param {{id: string, meta: object, content: string}} documentData
    */
   function displayMain(documentData) {
-    id = documentData.id;
+    id = documentData.meta.id;
     meta = documentData.meta;
     content = converter.makeHtml(documentData.content);
   }
@@ -114,6 +112,10 @@
     return id;
   }
 
+  /**
+   * Chunk a document using a specific chunker configuration.
+   * Mainly called from Chunker components.
+   **/
   async function chunk(config) {
     if (!id) {
       return [];
@@ -130,7 +132,7 @@
         body: JSON.stringify(config),
       });
       chunks = await res.json();
-      toast.push("Chonked!!!");
+      toast.push("Chonked!");
     } catch (e) {
       console.error("Error in response", e);
       toast.push("There was an error: " + e);
@@ -149,19 +151,14 @@
 
 <nav>
   <h1>
-    <a href="/"> inCognition </a>
+    <a href="/"> Chonkit! </a>
   </h1>
   {#await loadSidebar()}
     Loading...
   {:then entries}
     <ul>
       {#each entries as entry}
-        <SidebarEntry
-          id={entry.id}
-          name={entry.name}
-          title={entry.title}
-          type={entry.type}
-        />
+        <SidebarEntry id={entry.id} name={entry.name} isDir={entry.is_dir} />
       {/each}
     </ul>
   {/await}

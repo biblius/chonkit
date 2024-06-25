@@ -18,36 +18,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TABLE directories (
+CREATE TABLE files (
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+
+    -- File name with extension, directories do not have names
     name TEXT NOT NULL,
+
+    -- Which directory the file belongs to, NULL if in root directory
+    parent UUID REFERENCES files(id) ON DELETE CASCADE ON UPDATE CASCADE, 
+
+    -- Absolute path in the fs
     path TEXT NOT NULL,
-    alias TEXT,
-    parent UUID REFERENCES directories(id) ON DELETE CASCADE ON UPDATE CASCADE,
+
+    -- Tags for directories apply to all documents in it
+    tags TEXT[],
+
+    is_dir BOOLEAN NOT NULL,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE documents (
-    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    file_name TEXT NOT NULL, -- With extension
-    directory UUID NOT NULL REFERENCES directories(id) ON DELETE CASCADE ON UPDATE CASCADE, 
-    path TEXT NOT NULL,
-    title TEXT, -- Temporary title obtained from h1, overriden by meta title
-    custom_id TEXT,
-    tags TEXT,
-    reading_time INT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE sessions (
-    id UUID PRIMARY KEY NOT NULL,
-    expires TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-SELECT manage_updated_at('directories');
-SELECT manage_updated_at('documents');
-SELECT manage_updated_at('sessions');
+SELECT manage_updated_at('files');
