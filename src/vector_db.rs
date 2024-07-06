@@ -53,7 +53,7 @@ impl VectorService {
 
             match self.vector_db.collection_info(&collection_name).await {
                 Ok(_) => info!("Collection {} exists, skipping", model.model_code),
-                Err(_) => {
+                Err(e) => {
                     self.vector_db
                         .create_collection(&CreateCollection {
                             collection_name,

@@ -5,7 +5,7 @@ use crate::{
     dto::file::FileResponse,
     error::ChonkitError,
     llm::chunk::{ChunkConfig, Chunker, Recursive, SlidingWindow, SnappingWindow},
-    state::DocumentService,
+    service::document::DocumentService,
 };
 use axum::{
     http::Method,
@@ -14,12 +14,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
-use tower_http::{
-    classify::ServerErrorsFailureClass,
-    cors::CorsLayer,
-    services::{ServeDir, ServeFile},
-    trace::TraceLayer,
-};
+use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{info, Span};
 use uuid::Uuid;
 
@@ -28,6 +23,7 @@ pub fn router(state: DocumentService) -> Router {
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any)
         .allow_methods([Method::GET, Method::POST]);
 
     router
@@ -41,10 +37,6 @@ pub fn router(state: DocumentService) -> Router {
 
 fn public_router(state: DocumentService) -> Router {
     Router::new()
-        .nest_service(
-            "/",
-            ServeDir::new("dist").fallback(ServeFile::new("dist/index.html")),
-        )
         .route("/sync", get(sync))
         .route("/side", get(sidebar_init))
         .route("/side/:id", get(sidebar_entries))
@@ -73,7 +65,7 @@ pub async fn get_file(
 async fn sync(
     service: axum::extract::State<DocumentService>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.sync().await?;
+    service.trim_non_existent().await?;
     Ok(())
 }
 

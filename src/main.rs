@@ -1,10 +1,9 @@
 use crate::{
     config::{Config, StartArgs},
     document::db::DocumentDb,
-    state::DocumentService,
+    service::document::DocumentService,
 };
 use clap::Parser;
-use config::HfConfig;
 use qdrant_client::client::QdrantClient;
 use std::num::NonZeroUsize;
 use tracing::info;
@@ -23,6 +22,7 @@ pub mod dto;
 pub mod error;
 pub mod llm;
 pub mod router;
+pub mod service;
 pub mod state;
 pub mod vector_db;
 
@@ -33,11 +33,29 @@ async fn main() {
         address: host,
         port,
         log_level: level,
+        qdrant_url,
+        db_url,
     } = StartArgs::parse();
 
     tracing_subscriber::fmt().with_max_level(level).init();
 
-    let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+    let db_url = match std::env::var("DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            info!("DATABASE_URL not set, falling back to {db_url}");
+            db_url
+        }
+    };
+
+    let qdrant_url = match std::env::var("QDRANT_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            info!("QDRANT_URL not set, falling back to {qdrant_url}");
+            qdrant_url
+        }
+    };
+
+    info!("Connecting to postgres at {db_url}");
     let db_pool = db::create_pool(&db_url).await;
 
     db::migrate(&db_pool).await;
@@ -49,21 +67,21 @@ async fn main() {
     let document_db = DocumentDb::new(db_pool.clone()).await;
 
     let documents = DocumentService::new(document_db.clone());
-    documents.sync().await.expect("unable to sync");
 
-    info!("Now listening on {addr}");
+    info!("Starting TCP listener on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("error while starting TCP listener");
 
-    let qdrant = QdrantClient::from_url("http://localhost:6334")
-        .build()
-        .unwrap();
+    info!("Connecting to qdrant at {qdrant_url}");
+
+    let qdrant = QdrantClient::from_url(&qdrant_url).build().unwrap();
 
     let vectorizer = VectorService::new(qdrant, db_pool);
 
-    documents.init(&[directory.as_path()]).await.unwrap();
+    documents.sync(&[directory.as_path()]).await.unwrap();
+
     vectorizer.init().await.unwrap();
 
     let router = router::router(documents);

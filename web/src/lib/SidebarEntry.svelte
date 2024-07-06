@@ -4,7 +4,7 @@
   import MdIcon from "./icon/MarkdownIcon.svelte";
   import DirIcon from "./icon/DirectoryIcon.svelte";
 
-  const { baseUrl } = getContext("baseUrl");
+  const { apiUrl } = getContext("apiUrl");
 
   const { loadDocument, getCurrentMainId, selectListItem } =
     getContext("documentMain");
@@ -40,7 +40,7 @@
    * @param {string} id
    */
   async function loadSideElement(id) {
-    const res = await fetch(`${baseUrl}/side/${id}`);
+    const res = await fetch(`${apiUrl}/side/${id}`);
     const data = await res.json();
     children = data;
   }

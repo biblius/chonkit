@@ -9,6 +9,14 @@
   import { SvelteToast } from "@zerodevx/svelte-toast";
   import { toast } from "@zerodevx/svelte-toast";
 
+  /**
+   * The chonkening API.
+   */
+  const apiUrl = import.meta.env.VITE_API_URL ?? "";
+
+  /**
+   * The application document url, i.e. browser url.
+   */
   const baseUrl = import.meta.env.VITE_BASE_URL ?? "";
 
   const converter = new showdown.Converter({
@@ -53,7 +61,7 @@
     selectListItem(docId);
 
     // Fetch the new document, display popup if not found
-    const base = `${baseUrl}/document`;
+    const base = `${apiUrl}/document`;
     const url = docId ? `${base}/${docId}` : base;
 
     const response = await fetch(url);
@@ -74,10 +82,10 @@
 
     // Push state to history
     if (docId) {
-      let historyUrl = url.replace("/document", "");
+      let historyUrl = url.replace("/document", "").replace(apiUrl, baseUrl);
       history.pushState(data, "", historyUrl);
     } else {
-      history.pushState(data, "", baseUrl);
+      history.pushState(data, "", apiUrl);
     }
   }
 
@@ -92,7 +100,7 @@
   }
 
   async function loadSidebar() {
-    const res = await fetch(`${baseUrl}/side`);
+    const res = await fetch(`${apiUrl}/side`);
     const data = await res.json();
     return data;
   }
@@ -121,7 +129,7 @@
       return [];
     }
 
-    const url = `${baseUrl}/document/${id}/chunk`;
+    const url = `${apiUrl}/document/${id}/chunk`;
 
     try {
       const res = await fetch(url, {
@@ -139,7 +147,7 @@
     }
   }
 
-  setContext("baseUrl", { baseUrl });
+  setContext("apiUrl", { apiUrl });
 
   setContext("documentMain", {
     loadDocument,

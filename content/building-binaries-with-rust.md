@@ -1,7 +1,3 @@
----
-id: building-binaries-for-aarch64-rust
----
-
 # Building binaries for the PI (ARM64) with R\*st
 
 [Click me](/foo-my-man)

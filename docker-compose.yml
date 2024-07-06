@@ -1,0 +1,44 @@
+name: chonkit
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chonkit
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/docker/chonkit/postgres/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    expose:
+      - 6333
+      - 6334
+      - 6335
+    volumes:
+      - qdrant_data:/var/lib/docker/chonkit/qdrant/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api
+    ports:
+      - "42069:42069"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/chonkit
+      QDRANT_URL: http://qdrant:6334
+    depends_on:
+      - postgres
+      - qdrant
+
+volumes:
+  postgres_data:
+  qdrant_data:

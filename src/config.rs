@@ -2,7 +2,6 @@ use crate::error::ChonkitError;
 use clap::Parser;
 use serde::Deserialize;
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -12,26 +11,29 @@ pub struct StartArgs {
     #[arg(short, long, default_value = "config.json")]
     pub config_path: String,
 
-    #[arg(short, long, default_value = "127.0.0.1")]
+    #[arg(short, long, default_value = "0.0.0.0")]
     pub address: String,
 
-    #[arg(short, long, default_value = "3031")]
+    #[arg(short, long, default_value = "42069")]
     pub port: u16,
 
     #[arg(short, long, default_value = "INFO")]
     pub log_level: tracing::Level,
+
+    #[arg(short, long, default_value = "http://localhost:6334")]
+    pub qdrant_url: String,
+
+    #[arg(
+        short,
+        long,
+        default_value = "postgresql://postgres:postgres@localhost:5433/chonkit"
+    )]
+    pub db_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub directory: PathBuf,
-    pub hf: HfConfig,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct HfConfig {
-    pub token: String,
-    pub cache_dir: Option<PathBuf>,
 }
 
 impl Config {
