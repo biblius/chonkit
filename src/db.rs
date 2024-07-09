@@ -1,3 +1,5 @@
+pub mod document;
+
 use sqlx::PgPool;
 
 pub(super) async fn create_pool(url: &str) -> PgPool {

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::document::File;
+use crate::model::document::File;
 
 #[derive(Debug, Serialize)]
 pub struct FileResponse {

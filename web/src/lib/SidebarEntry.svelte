@@ -40,7 +40,7 @@
    * @param {string} id
    */
   async function loadSideElement(id) {
-    const res = await fetch(`${apiUrl}/side/${id}`);
+    const res = await fetch(`${apiUrl}/files/${id}`);
     const data = await res.json();
     children = data;
   }

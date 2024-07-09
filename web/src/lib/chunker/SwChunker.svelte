@@ -2,18 +2,31 @@
   // @ts-nocheck
 
   import { onMount, getContext } from "svelte";
-  const { chunk } = getContext("documentMain");
+  const { chunk, embed } = getContext("documentMain");
   import { toast } from "@zerodevx/svelte-toast";
 
   let size = 1000;
   let overlap = 500;
 
-  const config = () => {
+  const chunkConfig = () => {
     return {
       slidingWindow: {
         config: {
           size,
           overlap,
+        },
+      },
+    };
+  };
+
+  const embeddingConfig = () => {
+    return {
+      input: {
+        slidingWindow: {
+          config: {
+            size,
+            overlap,
+          },
         },
       },
     };
@@ -32,9 +45,9 @@
     }
   }
 
-  export function _chunk() {
+  function _chunk() {
     setSliders();
-    chunk(config());
+    chunk(chunkConfig());
   }
 
   onMount(() => {

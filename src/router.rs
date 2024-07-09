@@ -1,11 +1,10 @@
 use std::time::Duration;
 
 use crate::{
-    document::{File, FileOrDir},
     dto::file::FileResponse,
     error::ChonkitError,
-    llm::chunk::{ChunkConfig, Chunker, Recursive, SlidingWindow, SnappingWindow},
-    service::document::DocumentService,
+    model::document::FileOrDir,
+    service::{chunk::ChunkInput, ServiceState},
 };
 use axum::{
     http::Method,
@@ -15,10 +14,10 @@ use axum::{
 };
 use serde::Deserialize;
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
-use tracing::{info, Span};
+use tracing::Span;
 use uuid::Uuid;
 
-pub fn router(state: DocumentService) -> Router {
+pub fn router(state: ServiceState) -> Router {
     let router = public_router(state.clone());
 
     let cors = CorsLayer::new()
@@ -35,134 +34,193 @@ pub fn router(state: DocumentService) -> Router {
         .layer(cors)
 }
 
-fn public_router(state: DocumentService) -> Router {
+fn public_router(state: ServiceState) -> Router {
     Router::new()
         .route("/sync", get(sync))
-        .route("/side", get(sidebar_init))
-        .route("/side/:id", get(sidebar_entries))
-        .route("/document/:id", get(get_file))
-        .route("/document/:id/chunk", post(chunk))
+        .route("/files", get(sidebar_init))
+        .route("/files/:id", get(sidebar_entries))
+        .route("/documents/:id", get(get_file))
+        .route("/documents/:id/chunk", post(chunk))
+        .route("/embeddings/", post(embed))
+        .route("/embeddings/models", get(list_embedding_models))
+        .route("/embeddings/collections", get(list_collections))
+        .route("/embeddings/collections", post(create_collection))
+        .route("/embeddings/search", post(search))
         .with_state(state)
 }
 
 // DOCUMENT SERVICE ROUTER
 
 pub async fn get_file(
-    service: axum::extract::State<DocumentService>,
+    service: axum::extract::State<ServiceState>,
     id: axum::extract::Path<uuid::Uuid>,
 ) -> Result<Json<FileResponse>, ChonkitError> {
-    let file = service.get_file(*id).await?;
+    let file = service.document.get_file(*id).await?;
 
     let FileOrDir::File(file) = file else {
         return Err(ChonkitError::NotFound(id.to_string()));
     };
 
-    let content = service.get_file_contents(&file.path).await?;
+    let content = service.document.get_file_contents(&file.path).await?;
 
     Ok(Json(FileResponse::from((file, content))))
 }
 
 async fn sync(
-    service: axum::extract::State<DocumentService>,
+    service: axum::extract::State<ServiceState>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.trim_non_existent().await?;
+    service.document.trim_non_existent().await?;
     Ok(())
 }
 
 pub async fn sidebar_init(
-    service: axum::extract::State<DocumentService>,
-) -> Result<Json<Vec<File>>, ChonkitError> {
-    let docs = service.db.list_root_files().await?;
+    service: axum::extract::State<ServiceState>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let docs = service.document.list_root_files().await?;
     Ok(Json(docs))
 }
 
 pub async fn sidebar_entries(
-    service: axum::extract::State<DocumentService>,
+    service: axum::extract::State<ServiceState>,
     id: axum::extract::Path<uuid::Uuid>,
-) -> Result<Json<Vec<File>>, ChonkitError> {
-    let files = service.db.list_children(*id).await?;
+) -> Result<impl IntoResponse, ChonkitError> {
+    let files = service.document.list_children(*id).await?;
     Ok(Json(files))
 }
 
 // CHUNK ROUTER
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum ChunkPayload {
-    SlidingWindow {
-        config: ChunkConfig,
-    },
-    SnappingWindow {
-        config: ChunkConfig,
-        skip_f: Vec<String>,
-        skip_b: Vec<String>,
-    },
-    Recursive {
-        config: ChunkConfig,
-        delimiters: Vec<String>,
-    },
-}
-
 async fn chunk(
-    service: axum::extract::State<DocumentService>,
+    service: axum::extract::State<ServiceState>,
     id: axum::extract::Path<Uuid>,
-    config: axum::extract::Json<ChunkPayload>,
+    config: axum::extract::Json<ChunkInput>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let file = service.get_file(id.0).await?;
+    let file = service.document.get_file(id.0).await?;
 
     let FileOrDir::File(file) = file else {
         return Err(ChonkitError::NotFound(id.to_string()));
     };
 
-    let content = service.get_file_contents(&file.path).await?;
+    let content = service.document.get_file_contents(&file.path).await?;
+    let chunks = service
+        .chunk
+        .chunk(config.0, &file, &content)
+        .unwrap()
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
 
-    match config.0 {
-        ChunkPayload::SlidingWindow {
-            config: ChunkConfig { size, overlap },
-        } => {
-            info!("Chunking {} with SlidingWindow", id.0);
-            let chunker = SlidingWindow::new(size, overlap);
-            let chunks = chunker
-                .chunk(&content)?
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<_>>();
-            Ok(Json(chunks))
-        }
-        ChunkPayload::SnappingWindow {
-            config: ChunkConfig { size, overlap },
-            skip_f,
-            skip_b,
-        } => {
-            info!("Chunking {} with SnappingWindow", id.0);
-            let skip_f = skip_f.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-            let skip_b = skip_b.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    Ok(Json(chunks))
+}
 
-            let chunker = SnappingWindow::new(size, overlap)
-                .skip_forward(&skip_f)
-                .skip_back(&skip_b);
+// VECTOR ROUTER
 
-            let chunks = chunker
-                .chunk(&content)?
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<_>>();
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbedPayload {
+    /// Document ID.
+    id: uuid::Uuid,
+    /// Vectpr collection
+    collection: String,
+    /// Chunking config.
+    input: ChunkInput,
+}
 
-            Ok(Json(chunks))
-        }
-        ChunkPayload::Recursive {
-            config: ChunkConfig { size, overlap },
-            delimiters,
-        } => {
-            let delims = delimiters.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-            let chunker = Recursive::new(size, overlap, &delims);
+async fn embed(
+    service: axum::extract::State<ServiceState>,
+    config: axum::extract::Json<EmbedPayload>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let EmbedPayload {
+        id,
+        collection,
+        input,
+    } = config.0;
 
-            let chunks = chunker
-                .chunk(&content)?
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<_>>();
-            Ok(Json(chunks))
-        }
-    }
+    let file = service.document.get_file(id).await?;
+
+    let FileOrDir::File(file) = file else {
+        return Err(ChonkitError::NotFound(id.to_string()));
+    };
+
+    let content = service.document.get_file_contents(&file.path).await?;
+    let chunks = service.chunk.chunk(input, &file, &content)?;
+
+    service
+        .vector
+        .embed(
+            chunks,
+            fastembed::EmbeddingModel::AllMiniLML6V2,
+            &collection,
+        )
+        .await;
+
+    Ok(format!("Successfully embedded {}", file.name))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchPayload {
+    model: String,
+    query: String,
+    collection: String,
+}
+
+async fn search(
+    service: axum::extract::State<ServiceState>,
+    search: axum::extract::Json<SearchPayload>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let SearchPayload {
+        ref model,
+        ref query,
+        collection,
+    } = search.0;
+
+    let model = service.vector.model_for_str(model).ok_or_else(|| {
+        ChonkitError::UnsupportedEmbeddingModel(format!("{model} is not a valid embedding model",))
+    })?;
+
+    let chunks = service.vector.search(model.model, query, collection).await;
+
+    Ok(Json(chunks))
+}
+
+async fn list_collections(
+    service: axum::extract::State<ServiceState>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let collections = service.vector.list_collections().await?;
+    Ok(Json(collections))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateCollectionPayload {
+    name: String,
+    model: String,
+}
+
+async fn create_collection(
+    service: axum::extract::State<ServiceState>,
+    payload: axum::extract::Json<CreateCollectionPayload>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let CreateCollectionPayload { name, model } = payload.0;
+
+    let model = service.vector.model_for_str(&model).ok_or_else(|| {
+        ChonkitError::UnsupportedEmbeddingModel(format!("{model} is not a valid embedding model",))
+    })?;
+
+    service.vector.create_collection(&name, model.model).await?;
+
+    Ok("Successfully created collection")
+}
+
+async fn list_embedding_models(
+    service: axum::extract::State<ServiceState>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let models = service
+        .vector
+        .list_embedding_models()
+        .into_iter()
+        .map(|info| info.model.to_string())
+        .collect::<Vec<_>>();
+    Ok(Json(models))
 }

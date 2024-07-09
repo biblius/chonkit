@@ -1,18 +1,12 @@
 use crate::{
-    document::{db::DocumentDb, FileInsert, FileOrDir},
+    db::document::DocumentDb,
     error::ChonkitError,
-    vector_db::VectorService,
+    model::document::{File, FileInsert, FileOrDir},
 };
 use async_recursion::async_recursion;
 use std::path::Path;
 use tracing::{info, warn};
 use uuid::Uuid;
-
-#[derive(Debug, Clone)]
-pub struct State {
-    pub documents: DocumentService,
-    pub vectorizer: VectorService,
-}
 
 #[derive(Debug, Clone)]
 pub struct DocumentService {
@@ -29,12 +23,10 @@ impl DocumentService {
     /// * `roots`: The directories to recursively store in the DB.
     pub async fn sync(&self, roots: &[&Path]) -> Result<(), ChonkitError> {
         // Trim any files and directories no longer on fs
-
         self.trim_non_existent().await?;
         for root in roots {
             self.process_root(root).await?;
         }
-
         Ok(())
     }
 
@@ -49,14 +41,22 @@ impl DocumentService {
         };
 
         if file.is_dir {
-            return Ok(FileOrDir::Dir(file));
+            Ok(FileOrDir::Dir(file))
+        } else {
+            Ok(FileOrDir::File(file))
         }
-
-        Ok(FileOrDir::File(file))
     }
 
     pub async fn get_file_contents(&self, path: &str) -> Result<String, ChonkitError> {
         Ok(tokio::fs::read_to_string(path).await?)
+    }
+
+    pub async fn list_root_files(&self) -> Result<Vec<File>, ChonkitError> {
+        self.db.list_root_files().await
+    }
+
+    pub async fn list_children(&self, id: uuid::Uuid) -> Result<Vec<File>, ChonkitError> {
+        self.db.list_children(id).await
     }
 
     /// Remove any non-existent files from the database.
@@ -75,7 +75,7 @@ impl DocumentService {
     }
 
     async fn process_root(&self, path: &Path) -> Result<(), ChonkitError> {
-        let root = Self::path_str(path)?;
+        let root = display_path(path);
 
         info!("Scanning root '{root}'");
 
@@ -83,7 +83,7 @@ impl DocumentService {
             Some(file) => file,
             None => {
                 // Insert root if it does not exist
-                let root_name = Self::get_valid_name(path)?;
+                let root_name = validate_name(path)?;
                 let file = FileInsert::new_root(root_name, &root);
                 self.db.insert_file(file).await?
             }
@@ -109,8 +109,8 @@ impl DocumentService {
         path: &Path,
         parent_id: uuid::Uuid,
     ) -> Result<(), ChonkitError> {
-        let name = Self::get_valid_name(path)?;
-        let path = Self::path_str(path)?;
+        let name = validate_name(path)?;
+        let path = display_path(path);
 
         info!("Scanning {path}");
 
@@ -138,8 +138,8 @@ impl DocumentService {
     }
 
     async fn process_file(&self, path: &Path, parent_id: uuid::Uuid) -> Result<(), ChonkitError> {
-        let name = Self::get_valid_name(path)?;
-        let path = Self::path_str(path)?;
+        let name = validate_name(path)?;
+        let path = display_path(path);
 
         info!("Processing {path}");
 
@@ -155,16 +155,18 @@ impl DocumentService {
 
         Ok(())
     }
+}
 
-    fn path_str(path: &Path) -> Result<String, ChonkitError> {
-        Ok(path.display().to_string())
-    }
+#[inline]
+fn validate_name(path: &Path) -> Result<&str, ChonkitError> {
+    let name = path.file_name().ok_or_else(|| {
+        ChonkitError::InvalidFileName(format!("{}: unsupported file name", path.display()))
+    })?;
+    name.to_str()
+        .ok_or_else(|| ChonkitError::InvalidFileName(format!("{name:?}: not valid utf-8")))
+}
 
-    fn get_valid_name(path: &Path) -> Result<&str, ChonkitError> {
-        let name = path.file_name().ok_or_else(|| {
-            ChonkitError::InvalidFileName(format!("{}: unsupported file name", path.display()))
-        })?;
-        name.to_str()
-            .ok_or_else(|| ChonkitError::InvalidFileName(format!("{name:?}: not valid utf-8")))
-    }
+#[inline]
+fn display_path(path: &Path) -> String {
+    path.display().to_string()
 }

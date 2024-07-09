@@ -1,13 +1,14 @@
 use crate::{
     config::{Config, StartArgs},
-    document::db::DocumentDb,
+    db::document::DocumentDb,
     service::document::DocumentService,
 };
 use clap::Parser;
-use qdrant_client::client::QdrantClient;
+use error::ChonkitError;
+use qdrant_client::{Qdrant, QdrantError};
+use service::{vector::VectorService, ServiceState};
 use std::num::NonZeroUsize;
 use tracing::info;
-use vector_db::VectorService;
 
 pub const FILES_PER_THREAD: usize = 128;
 
@@ -17,14 +18,12 @@ lazy_static::lazy_static! {
 
 pub mod config;
 pub mod db;
-pub mod document;
 pub mod dto;
 pub mod error;
 pub mod llm;
+pub mod model;
 pub mod router;
 pub mod service;
-pub mod state;
-pub mod vector_db;
 
 #[tokio::main]
 async fn main() {
@@ -66,7 +65,7 @@ async fn main() {
 
     let document_db = DocumentDb::new(db_pool.clone()).await;
 
-    let documents = DocumentService::new(document_db.clone());
+    let document_service = DocumentService::new(document_db.clone());
 
     info!("Starting TCP listener on {addr}");
 
@@ -76,15 +75,26 @@ async fn main() {
 
     info!("Connecting to qdrant at {qdrant_url}");
 
-    let qdrant = QdrantClient::from_url(&qdrant_url).build().unwrap();
+    let qdrant = Qdrant::from_url(&qdrant_url).build().unwrap();
 
-    let vectorizer = VectorService::new(qdrant, db_pool);
+    let vector_service = VectorService::new(qdrant, db_pool);
 
-    documents.sync(&[directory.as_path()]).await.unwrap();
+    document_service.sync(&[directory.as_path()]).await.unwrap();
 
-    vectorizer.init().await.unwrap();
+    if let Err(ChonkitError::Qdrant(QdrantError::ResponseError { status })) = vector_service
+        .create_collection("default", fastembed::EmbeddingModel::AllMiniLML6V2)
+        .await
+    {
+        if let tonic::Code::AlreadyExists = status.code() {
+            info!("Default collection already exists.")
+        } else {
+            panic!("{status}");
+        }
+    }
 
-    let router = router::router(documents);
+    let service_state = ServiceState::new(document_service, vector_service);
+
+    let router = router::router(service_state);
 
     //let mut hf_api = hf_hub::api::tokio::ApiBuilder::new()
     //    .with_progress(true)

@@ -3,20 +3,16 @@
   import { setContext } from "svelte";
   import SidebarEntry from "./lib/SidebarEntry.svelte";
   import showdown from "showdown";
-  import SwChunker from "./lib/chunker/SwChunker.svelte";
-  import SswChunker from "./lib/chunker/SswChunker.svelte";
-  import RecChunker from "./lib/chunker/RecChunker.svelte";
   import { SvelteToast } from "@zerodevx/svelte-toast";
   import { toast } from "@zerodevx/svelte-toast";
+  import * as Types from "./lib/typedefs";
+  import EmbeddingConfig from "./lib/EmbeddingConfig.svelte";
+  import Chunker from "./lib/Chunker.svelte";
 
-  /**
-   * The chonkening API.
-   */
+  /** The chonkening API. */
   const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
-  /**
-   * The application document url, i.e. browser url.
-   */
+  /** The application document url, i.e. browser url. */
   const baseUrl = import.meta.env.VITE_BASE_URL ?? "";
 
   const converter = new showdown.Converter({
@@ -27,14 +23,7 @@
 
   let id, content, meta;
 
-  const options = [
-    { name: "Sliding Window", component: SwChunker },
-    { name: "Snapping Window", component: SswChunker },
-    { name: "Recursive", component: RecChunker },
-  ];
-
-  let selectedChunker = options[0];
-
+  /** Current document chunks. */
   let chunks = [];
 
   // Set the document ID to the one in the URL
@@ -61,7 +50,7 @@
     selectListItem(docId);
 
     // Fetch the new document, display popup if not found
-    const base = `${apiUrl}/document`;
+    const base = `${apiUrl}/documents`;
     const url = docId ? `${base}/${docId}` : base;
 
     const response = await fetch(url);
@@ -82,7 +71,7 @@
 
     // Push state to history
     if (docId) {
-      let historyUrl = url.replace("/document", "").replace(apiUrl, baseUrl);
+      let historyUrl = url.replace("/documents", "").replace(apiUrl, baseUrl);
       history.pushState(data, "", historyUrl);
     } else {
       history.pushState(data, "", apiUrl);
@@ -100,7 +89,7 @@
   }
 
   async function loadSidebar() {
-    const res = await fetch(`${apiUrl}/side`);
+    const res = await fetch(`${apiUrl}/files`);
     const data = await res.json();
     return data;
   }
@@ -122,14 +111,21 @@
 
   /**
    * Chunk a document using a specific chunker configuration.
-   * Mainly called from Chunker components.
+   * Mainly called from Chunker components to preview chunks.
+   * Updates the chunks in this component.
+   * @param {
+       { slidingWindow: Types.SlidingWindowInput } |
+       { snappingWindow: Types.SnappingWindowInput } |
+       { recursive: Types.RecursiveInput }
+     } config - Chunk configuration.
+   * @returns {Promise<void>}
    **/
   async function chunk(config) {
     if (!id) {
-      return [];
+      return;
     }
 
-    const url = `${apiUrl}/document/${id}/chunk`;
+    const url = `${apiUrl}/documents/${id}/chunk`;
 
     try {
       const res = await fetch(url, {
@@ -140,10 +136,40 @@
         body: JSON.stringify(config),
       });
       chunks = await res.json();
-      toast.push("Chonked!");
     } catch (e) {
       console.error("Error in response", e);
-      toast.push("There was an error: " + e);
+      toast.push("Error while chunking: " + e);
+    }
+  }
+
+  /**
+   * Create embeddings for a document.
+   * @param {Types.EmbeddingPayload} config - Embedding configuration.
+   * @returns {Promise<void>}
+   */
+  async function embed(config) {
+    if (!id) {
+      return;
+    }
+
+    config.id = id;
+    config.collection = "default";
+
+    const url = `${apiUrl}/embeddings`;
+
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "content-type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify(config),
+      });
+      const response = await res.json();
+      toast.push(response);
+    } catch (e) {
+      console.error("Error in response", e);
+      toast.push("Error while embedding: " + e);
     }
   }
 
@@ -154,6 +180,7 @@
     getCurrentMainId,
     selectListItem,
     chunk,
+    embed,
   });
 </script>
 
@@ -178,27 +205,13 @@
       <SvelteToast />
     {:else}
       <h2>Welcome!</h2>
-      <p>Select a document to commence the chonkenking.</p>
+      <p>Select a document to commence the chonkening.</p>
     {/if}
   </main>
-
   <aside>
-    <select bind:value={selectedChunker}>
-      {#each options as option}
-        <option value={option}>{option.name}</option>
-      {/each}
-    </select>
-
-    {#if id}
-      <svelte:component this={selectedChunker.component} />
-
-      <div id="chunk-container">
-        <h3>Chunks</h3>
-        {#each chunks as chunk}
-          <p class="chunk">{chunk}</p>
-        {/each}
-      </div>
-    {/if}
+    <EmbeddingConfig />
+    <Chunker {id} {chunks} />
+    <aside></aside>
   </aside>
 </div>
 
@@ -226,6 +239,12 @@
     }
   }
 
+  aside {
+    margin: 1rem 0;
+    padding: 2rem;
+    width: 100%;
+  }
+
   ul {
     list-style-type: none;
     padding: 0;
@@ -244,12 +263,6 @@
     padding: 2rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 1rem;
-    width: 100%;
-  }
-
-  aside {
-    margin: 1rem 0;
-    padding: 2rem;
     width: 100%;
   }
 

@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-pub mod db;
-
 #[derive(Debug)]
 pub enum FileOrDir {
     File(File),

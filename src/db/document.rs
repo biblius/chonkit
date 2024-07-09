@@ -1,5 +1,5 @@
-use super::{File, FileInsert, FileUpdate};
 use crate::error::ChonkitError;
+use crate::model::document::{File, FileInsert, FileUpdate};
 use sqlx::PgPool;
 
 #[derive(Debug, Clone)]
