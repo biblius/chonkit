@@ -1,10 +1,10 @@
-<script>
-  import { toast } from "@zerodevx/svelte-toast";
+<script lang="ts">
+  import { getContext, onMount } from "svelte";
+  interface DocumentMainContext {
+    chunk: (config: any) => void;
+  }
 
-  // @ts-nocheck
-
-  import { onMount, getContext } from "svelte";
-  const { chunk } = getContext("documentMain");
+  const { chunk } = getContext<DocumentMainContext>("documentMain");
 
   let size = 500;
   let overlap = 10;
@@ -28,8 +28,12 @@
   };
 
   function setSliders() {
-    const sizeSlider = document.getElementById("chunk-size-slider");
-    const overlapSlider = document.getElementById("chunk-overlap-slider");
+    const sizeSlider = document.getElementById(
+      "chunk-size-slider",
+    ) as HTMLInputElement;
+    const overlapSlider = document.getElementById(
+      "chunk-overlap-slider",
+    ) as HTMLInputElement;
 
     size = parseInt(sizeSlider.value);
     overlap = parseInt(overlapSlider.value);
@@ -51,7 +55,7 @@
     }
   }
 
-  function removeSkip(s, skipType) {
+  function removeSkip(s: string, skipType: string) {
     if (!s && !skipType) return;
     if (skipType === "forwardSkip") {
       let removedArr = skipF.filter((x) => x !== s);

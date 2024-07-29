@@ -1,8 +1,9 @@
-<script>
-  // @ts-nocheck
-
+<script lang="ts">
   import { onMount, getContext } from "svelte";
-  const { chunk } = getContext("documentMain");
+  interface DocumentMainContext {
+    chunk: (config: any) => void;
+  }
+  const { chunk } = getContext<DocumentMainContext>("documentMain");
 
   let size = 1000;
   let overlap = 500;
@@ -24,8 +25,12 @@
   };
 
   function setSliders() {
-    const sizeSlider = document.getElementById("chunk-size-slider");
-    const overlapSlider = document.getElementById("chunk-overlap-slider");
+    const sizeSlider = document.getElementById(
+      "chunk-size-slider",
+    ) as HTMLInputElement;
+    const overlapSlider = document.getElementById(
+      "chunk-overlap-slider",
+    ) as HTMLInputElement;
 
     size = parseInt(sizeSlider.value);
     overlap = parseInt(overlapSlider.value);

@@ -3,6 +3,7 @@
   import Icon from "./icon/Icon.svelte";
   import MdIcon from "./icon/MarkdownIcon.svelte";
   import DirIcon from "./icon/DirectoryIcon.svelte";
+  import { toast } from "@zerodevx/svelte-toast";
 
   const { apiUrl } = getContext("apiUrl");
 
@@ -40,9 +41,17 @@
    * @param {string} id
    */
   async function loadSideElement(id) {
-    const res = await fetch(`${apiUrl}/files/${id}`);
-    const data = await res.json();
-    children = data;
+    try {
+      const res = await fetch(`${apiUrl}/files/${id}`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch side element");
+      }
+      const data = await res.json();
+      children = data;
+    } catch (e) {
+      console.error("Error loading side element:", e);
+      toast.push("Error loading side element: " + e);
+    }
   }
 
   onMount(() => {

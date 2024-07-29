@@ -1,9 +1,15 @@
-<script>
-  // @ts-nocheck
+<script lang="ts">
+  import { getContext, onMount } from "svelte";
 
-  import { onMount, getContext } from "svelte";
-  const { chunk, embed } = getContext("documentMain");
-  import { toast } from "@zerodevx/svelte-toast";
+  // note that here line 59 was giving problems "chunk(chunkConfig());"
+  // so i added chunk from context because i think that is was missing here, please check since i dont have full scope of project
+  // s ljubavlju hesoyam
+
+  interface DocumentMainContext {
+    chunk: (config: any) => void;
+  }
+
+  const { chunk } = getContext<DocumentMainContext>("documentMain");
 
   let size = 1000;
   let overlap = 500;
@@ -19,22 +25,27 @@
     };
   };
 
-  const embeddingConfig = () => {
-    return {
-      input: {
-        slidingWindow: {
-          config: {
-            size,
-            overlap,
-          },
-        },
-      },
-    };
-  };
+  //this function was not used
+  // const embeddingConfig = () => {
+  //   return {
+  //     input: {
+  //       slidingWindow: {
+  //         config: {
+  //           size,
+  //           overlap,
+  //         },
+  //       },
+  //     },
+  //   };
+  // };
 
   function setSliders() {
-    const sizeSlider = document.getElementById("chunk-size-slider");
-    const overlapSlider = document.getElementById("chunk-overlap-slider");
+    const sizeSlider = document.getElementById(
+      "chunk-size-slider",
+    ) as HTMLInputElement;
+    const overlapSlider = document.getElementById(
+      "chunk-overlap-slider",
+    ) as HTMLInputElement;
 
     size = parseInt(sizeSlider.value);
     overlap = parseInt(overlapSlider.value);

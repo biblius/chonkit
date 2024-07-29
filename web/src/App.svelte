@@ -1,19 +1,17 @@
-<script>
-  import { onMount } from "svelte";
-  import { setContext } from "svelte";
-  import SidebarEntry from "./lib/SidebarEntry.svelte";
+<script lang="ts">
+  import { SvelteToast, toast } from "@zerodevx/svelte-toast";
   import showdown from "showdown";
-  import { SvelteToast } from "@zerodevx/svelte-toast";
-  import { toast } from "@zerodevx/svelte-toast";
-  import * as Types from "./lib/typedefs";
-  import EmbeddingConfig from "./lib/EmbeddingConfig.svelte";
+  import { onMount, setContext } from "svelte";
   import Chunker from "./lib/Chunker.svelte";
+  import EmbeddingConfig from "./lib/EmbeddingConfig.svelte";
+  import SidebarEntry from "./lib/SidebarEntry.svelte";
+  import * as Types from "./lib/typedefs";
 
   /** The chonkening API. */
-  const apiUrl = import.meta.env.VITE_API_URL ?? "";
+  const apiUrl = (import.meta as any).env.VITE_API_URL ?? "";
 
   /** The application document url, i.e. browser url. */
-  const baseUrl = import.meta.env.VITE_BASE_URL ?? "";
+  const baseUrl = (import.meta as any).env.VITE_BASE_URL ?? "";
 
   const converter = new showdown.Converter({
     ghCodeBlocks: true,
@@ -270,8 +268,8 @@
     font-size: 1em;
   }
 
-  .chunk {
+  /* .chunk {
     font-size: 0.7em;
     word-break: break-all;
-  }
+  } */
 </style>
