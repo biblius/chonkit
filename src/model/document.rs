@@ -1,14 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-#[derive(Debug)]
-pub enum FileOrDir {
-    File(File),
-    Dir(File),
-}
-
 #[derive(Debug, Serialize)]
-pub struct File {
+pub struct Document {
     /// Primary key.
     pub id: uuid::Uuid,
 
@@ -30,16 +24,18 @@ pub struct File {
 
 /// DTO for inserting.
 #[derive(Debug)]
-pub struct FileInsert<'a> {
+pub struct DocumentInsert<'a> {
+    pub id: uuid::Uuid,
     pub name: &'a str,
     pub path: &'a str,
     pub label: Option<&'a str>,
     pub tags: Option<Vec<String>>,
 }
 
-impl<'a> FileInsert<'a> {
+impl<'a> DocumentInsert<'a> {
     pub fn new(name: &'a str, path: &'a str) -> Self {
         Self {
+            id: uuid::Uuid::new_v4(),
             name,
             path,
             label: None,
@@ -60,7 +56,7 @@ impl<'a> FileInsert<'a> {
 
 /// DTO for updating.
 #[derive(Debug)]
-pub struct FileUpdate<'a> {
+pub struct DocumentUpdate<'a> {
     pub name: Option<&'a str>,
     pub path: Option<&'a str>,
     pub label: Option<&'a str>,

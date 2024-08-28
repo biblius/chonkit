@@ -18,7 +18,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TABLE files (
+CREATE TABLE documents (
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
 
     -- File name with extension.
@@ -34,8 +34,16 @@ CREATE TABLE files (
     tags TEXT[],
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-SELECT manage_updated_at('files');
+CREATE TABLE collections(
+    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    model TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+SELECT manage_updated_at('documents');
+SELECT manage_updated_at('collections');
