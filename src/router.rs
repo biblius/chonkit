@@ -3,7 +3,6 @@ use std::time::Duration;
 use crate::{
     dto::file::FileResponse,
     error::ChonkitError,
-    model::document::FileOrDir,
     service::{chunk::ChunkInput, ServiceState},
 };
 use axum::{
@@ -37,8 +36,8 @@ pub fn router(state: ServiceState) -> Router {
 fn public_router(state: ServiceState) -> Router {
     Router::new()
         .route("/sync", get(sync))
-        .route("/files", get(sidebar_init))
-        .route("/files/:id", get(sidebar_entries))
+        //.route("/files", get(sidebar_init))
+        //.route("/files/:id", get(sidebar_entries))
         .route("/documents/:id", get(get_file))
         .route("/documents/:id/chunk", post(chunk))
         .route("/embeddings/", post(embed))
@@ -57,10 +56,6 @@ pub async fn get_file(
 ) -> Result<Json<FileResponse>, ChonkitError> {
     let file = service.document.get_file(*id).await?;
 
-    let FileOrDir::File(file) = file else {
-        return Err(ChonkitError::NotFound(id.to_string()));
-    };
-
     let content = service.document.get_file_contents(&file.path).await?;
 
     Ok(Json(FileResponse::from((file, content))))
@@ -73,20 +68,20 @@ async fn sync(
     Ok(())
 }
 
-pub async fn sidebar_init(
-    service: axum::extract::State<ServiceState>,
-) -> Result<impl IntoResponse, ChonkitError> {
-    let docs = service.document.list_root_files().await?;
-    Ok(Json(docs))
-}
-
-pub async fn sidebar_entries(
-    service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<uuid::Uuid>,
-) -> Result<impl IntoResponse, ChonkitError> {
-    let files = service.document.list_children(*id).await?;
-    Ok(Json(files))
-}
+//pub async fn sidebar_init(
+//    service: axum::extract::State<ServiceState>,
+//) -> Result<impl IntoResponse, ChonkitError> {
+//    let docs = service.document.list_root_files().await?;
+//    Ok(Json(docs))
+//}
+//
+//pub async fn sidebar_entries(
+//    service: axum::extract::State<ServiceState>,
+//    id: axum::extract::Path<uuid::Uuid>,
+//) -> Result<impl IntoResponse, ChonkitError> {
+//    let files = service.document.list_children(*id).await?;
+//    Ok(Json(files))
+//}
 
 // CHUNK ROUTER
 
@@ -96,10 +91,6 @@ async fn chunk(
     config: axum::extract::Json<ChunkInput>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let file = service.document.get_file(id.0).await?;
-
-    let FileOrDir::File(file) = file else {
-        return Err(ChonkitError::NotFound(id.to_string()));
-    };
 
     let content = service.document.get_file_contents(&file.path).await?;
     let chunks = service
@@ -137,10 +128,6 @@ async fn embed(
     } = config.0;
 
     let file = service.document.get_file(id).await?;
-
-    let FileOrDir::File(file) = file else {
-        return Err(ChonkitError::NotFound(id.to_string()));
-    };
 
     let content = service.document.get_file_contents(&file.path).await?;
     let chunks = service.chunk.chunk(input, &file, &content)?;

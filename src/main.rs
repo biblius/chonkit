@@ -7,16 +7,11 @@ use clap::Parser;
 use error::ChonkitError;
 use qdrant_client::{Qdrant, QdrantError};
 use service::{vector::VectorService, ServiceState};
-use std::num::NonZeroUsize;
 use tracing::info;
-
-pub const FILES_PER_THREAD: usize = 128;
-
-lazy_static::lazy_static! {
-    pub static ref MAX_THREADS: usize = std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap()).into();
-}
+use tracing_subscriber::EnvFilter;
 
 pub mod config;
+pub mod core;
 pub mod db;
 pub mod dto;
 pub mod error;
@@ -36,7 +31,21 @@ async fn main() {
         db_url,
     } = StartArgs::parse();
 
-    tracing_subscriber::fmt().with_max_level(level).init();
+    println!("Starting to parse this shite");
+
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_env_filter(EnvFilter::new("info,h2=off,lopdf=off,chonkit=debug"))
+        .init();
+
+    let file_docx = std::fs::read("test.docx").unwrap();
+    let file_pdf = std::fs::read("test.pdf").unwrap();
+
+    let out_docx = core::document::load_docx(&file_docx).unwrap();
+    let out_pdf = core::document::load_pdf(&file_pdf).unwrap();
+
+    std::fs::write("parsed_docx.txt", out_docx).unwrap();
+    std::fs::write("parsed_pdf.txt", out_pdf).unwrap();
 
     let db_url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,

@@ -1,4 +1,5 @@
 /target
+/test_docs
 web/.env
 config.json
 dist

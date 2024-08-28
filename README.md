@@ -32,5 +32,6 @@ The file should already have the correct parameters to get you up and running lo
 To run the web interface, run the following command from the `web` directory.
 
 ```bash
+npm i
 npm run dev
 ```

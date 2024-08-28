@@ -33,30 +33,18 @@ impl DocumentService {
     /// Read a file's contents from the fs based on its database ID.
     ///
     /// * `id`: The database ID of the file.
-    pub async fn get_file(&self, id: Uuid) -> Result<FileOrDir, ChonkitError> {
+    pub async fn get_file(&self, id: Uuid) -> Result<File, ChonkitError> {
         let file = self.db.get_file(id).await?;
 
         let Some(file) = file else {
             return Err(ChonkitError::NotFound(id.to_string()));
         };
 
-        if file.is_dir {
-            Ok(FileOrDir::Dir(file))
-        } else {
-            Ok(FileOrDir::File(file))
-        }
+        Ok(file)
     }
 
     pub async fn get_file_contents(&self, path: &str) -> Result<String, ChonkitError> {
         Ok(tokio::fs::read_to_string(path).await?)
-    }
-
-    pub async fn list_root_files(&self) -> Result<Vec<File>, ChonkitError> {
-        self.db.list_root_files().await
-    }
-
-    pub async fn list_children(&self, id: uuid::Uuid) -> Result<Vec<File>, ChonkitError> {
-        self.db.list_children(id).await
     }
 
     /// Remove any non-existent files from the database.
@@ -84,7 +72,7 @@ impl DocumentService {
             None => {
                 // Insert root if it does not exist
                 let root_name = validate_name(path)?;
-                let file = FileInsert::new_root(root_name, &root);
+                let file = FileInsert::new(root_name, &root);
                 self.db.insert_file(file).await?
             }
         };
@@ -94,7 +82,7 @@ impl DocumentService {
         while let Some(entry) = files.next_entry().await? {
             let path = entry.path().canonicalize()?;
             if entry.path().is_dir() {
-                self.process_directory(&path, root_file.id).await?;
+                // self.process_directory(&path, root_file.id).await?;
             } else {
                 self.process_file(&path, root_file.id).await?;
             }
@@ -104,11 +92,7 @@ impl DocumentService {
     }
 
     #[async_recursion]
-    async fn process_directory(
-        &self,
-        path: &Path,
-        parent_id: uuid::Uuid,
-    ) -> Result<(), ChonkitError> {
+    async fn process_directory(&self, path: &Path) -> Result<(), ChonkitError> {
         let name = validate_name(path)?;
         let path = display_path(path);
 
@@ -119,20 +103,20 @@ impl DocumentService {
             Some(dir) => dir,
             None => {
                 info!("Inserting {path}");
-                let file = FileInsert::new(name, &path, parent_id, true);
+                let file = FileInsert::new(name, &path);
                 self.db.insert_file(file).await?
             }
         };
 
         let mut entries = tokio::fs::read_dir(path).await?;
 
-        while let Some(entry) = entries.next_entry().await? {
-            if entry.path().is_dir() {
-                self.process_directory(&entry.path(), directory.id).await?;
-            } else {
-                self.process_file(&entry.path(), directory.id).await?;
-            }
-        }
+        //while let Some(entry) = entries.next_entry().await? {
+        //    if entry.path().is_dir() {
+        //        self.process_directory(&entry.path(), directory.id).await?;
+        //    } else {
+        //        self.process_file(&entry.path(), directory.id).await?;
+        //    }
+        //}
 
         Ok(())
     }
@@ -148,8 +132,8 @@ impl DocumentService {
                 info!("'{}' exists, skipping", file.name);
             }
             None => {
-                let file = FileInsert::new(name, &path, parent_id, false);
-                self.db.insert_file(file).await?;
+                // let file = FileInsert::new(name, &path, parent_id, false);
+                // self.db.insert_file(file).await?;
             }
         }
 

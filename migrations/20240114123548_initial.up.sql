@@ -21,19 +21,17 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE files (
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
 
-    -- File name with extension, directories do not have names
+    -- File name with extension.
     name TEXT NOT NULL,
 
-    -- Which directory the file belongs to, NULL if in root directory
-    parent UUID REFERENCES files(id) ON DELETE CASCADE ON UPDATE CASCADE, 
-
-    -- Absolute path in the fs
+    -- Absolute path to the file. This can be a URL for remote storage.
     path TEXT NOT NULL,
 
-    -- Tags for directories apply to all documents in it
-    tags TEXT[],
+    -- A label for grouping together files with the same label.
+    label TEXT,
 
-    is_dir BOOLEAN NOT NULL,
+    -- Tags for directories apply to all documents in it.
+    tags TEXT[],
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 

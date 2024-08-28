@@ -10,17 +10,17 @@ pub enum ChonkitError {
     #[error("IO: {0}")]
     IO(#[from] std::io::Error),
 
+    #[error("FMT: {0}")]
+    Fmt(#[from] std::fmt::Error),
+
     #[error("UTF-8: {0}")]
     Utf8(#[from] FromUtf8Error),
 
     #[error("Parse int: {0}")]
-    Parse(#[from] ParseIntError),
+    ParseInt(#[from] ParseIntError),
 
     #[error("Not found: {0}")]
     NotFound(String),
-
-    #[error("Inotify error: {0}")]
-    Watcher(#[from] notify::Error),
 
     #[error("SQL: {0}")]
     Sqlx(#[from] sqlx::Error),
@@ -34,9 +34,6 @@ pub enum ChonkitError {
     #[error("JSON error: {0}")]
     SerdeJson(#[from] serde_json::Error),
 
-    #[error("YAML error: {0}")]
-    SerdeYaml(#[from] serde_yaml::Error),
-
     #[error("Http: {0}")]
     Http(#[from] axum::http::Error),
 
@@ -48,6 +45,12 @@ pub enum ChonkitError {
 
     #[error("Qdrant: {0}")]
     Qdrant(#[from] QdrantError),
+
+    #[error("Parse pdf: {0}")]
+    ParsePdf(#[from] lopdf::Error),
+
+    #[error("Docx read: {0}")]
+    DocxRead(#[from] docx_rs::ReaderError),
 }
 
 impl IntoResponse for ChonkitError {
@@ -59,7 +62,7 @@ impl IntoResponse for ChonkitError {
         match self {
             KE::NotFound(e) => (StatusCode::NOT_FOUND, e).into_response(),
             KE::DoesNotExist(e) => (StatusCode::NOT_FOUND, e).into_response(),
-            KE::InvalidFileName(_) | KE::SerdeJson(_) => {
+            KE::SerdeJson(_) => {
                 (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()).into_response()
             }
             // Occurs on pw verification in handlers
@@ -70,14 +73,16 @@ impl IntoResponse for ChonkitError {
                 (StatusCode::BAD_REQUEST, status.to_string()).into_response()
             }
             KE::IO(_)
-            | KE::Parse(_)
+            | KE::Fmt(_)
+            | KE::ParseInt(_)
             | KE::Utf8(_)
-            | KE::Watcher(_)
             | KE::Sqlx(_)
             | KE::Chunk(_)
             | KE::Qdrant(_)
-            | KE::SerdeYaml(_)
+            | KE::InvalidFileName(_)
             | KE::Http(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()).into_response(),
+            KE::ParsePdf(_) => todo!(),
+            KE::DocxRead(_) => todo!(),
         }
     }
 }
