@@ -1,4 +1,4 @@
-use super::{concat, ChunkConfig, Chunker, ChunkerError};
+use super::{concat, ChunkBaseConfig, Chunker, ChunkerError};
 
 /// Heuristic chunker for texts intended for humans, e.g. documentation, books, blogs, etc.
 ///
@@ -19,7 +19,7 @@ use super::{concat, ChunkConfig, Chunker, ChunkerError};
 pub struct SnappingWindow<'skip> {
     /// The config here is semantically different. `size` will represent the
     /// amount of sentences.
-    config: ChunkConfig,
+    config: ChunkBaseConfig,
 
     /// The delimiter to use to split sentences. At time of writing the most common one is ".".
     delimiter: char,
@@ -40,7 +40,7 @@ pub struct SnappingWindow<'skip> {
 impl<'skip> SnappingWindow<'skip> {
     pub fn new(size: usize, overlap: usize) -> Self {
         Self {
-            config: ChunkConfig::new(size, overlap),
+            config: ChunkBaseConfig::new(size, overlap),
             ..Default::default()
         }
     }
@@ -64,7 +64,7 @@ impl<'skip> SnappingWindow<'skip> {
 impl<'skip> Chunker for SnappingWindow<'skip> {
     fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let Self {
-            config: ChunkConfig { size, overlap },
+            config: ChunkBaseConfig { size, overlap },
             delimiter: delim,
             skip_forward,
             skip_back,
@@ -145,7 +145,7 @@ impl<'skip> Chunker for SnappingWindow<'skip> {
 impl Default for SnappingWindow<'_> {
     fn default() -> Self {
         Self {
-            config: ChunkConfig::new(200, 100),
+            config: ChunkBaseConfig::new(200, 100),
             delimiter: '.',
             // Common urls, abbreviations, file extensions
             skip_forward: &["com", "org", "net", "g.", "e.", "sh", "rs", "js", "json"],
@@ -220,7 +220,6 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Returns `true` if the cursor is finished.
     fn advance_exact(&mut self, amt: usize) {
         if self.pos + amt >= self.buf.len() {
             self.pos = self.buf.len() - 1;
@@ -399,10 +398,10 @@ mod tests {
     #[test]
     fn constructor() {
         // For lifetime sanity checks
-        let skip_f = vec![String::from("foo"), String::from("bar")];
+        let skip_f = [String::from("foo"), String::from("bar")];
         let skip_f: Vec<_> = skip_f.iter().map(|s| s.as_str()).collect();
 
-        let skip_b = vec![String::from("foo"), String::from("bar")];
+        let skip_b = [String::from("foo"), String::from("bar")];
         let skip_b: Vec<_> = skip_b.iter().map(|s| s.as_str()).collect();
         let size = 1;
         let overlap = 1;
@@ -562,7 +561,7 @@ mod tests {
         let input =
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
         let chunker = SnappingWindow {
-            config: ChunkConfig::new(1, 1),
+            config: ChunkBaseConfig::new(1, 1),
             ..Default::default()
         };
         let expected = [
@@ -584,7 +583,7 @@ mod tests {
         let input =
             "I have a sentence. It contains letters, words, etc. This one contains more. The most important of which is foobar., because it must be skipped.";
         let chunker = SnappingWindow {
-            config: ChunkConfig::new(1, 1),
+            config: ChunkBaseConfig::new(1, 1),
             skip_back: &["etc", "foobar"],
             ..Default::default()
         };
@@ -606,7 +605,7 @@ mod tests {
         let input =
             "Go to sentences.org for more words. 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.";
         let chunker = SnappingWindow {
-            config: ChunkConfig::new(1, 1),
+            config: ChunkBaseConfig::new(1, 1),
             skip_forward: &["com", "org"],
             ..Default::default()
         };
@@ -629,7 +628,7 @@ mod tests {
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
         let chunker = SnappingWindow {
-            config: ChunkConfig::new(1, 1),
+            config: ChunkBaseConfig::new(1, 1),
             ..Default::default()
         };
 

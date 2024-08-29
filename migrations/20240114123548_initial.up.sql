@@ -24,7 +24,7 @@ CREATE TABLE documents (
     -- File name with extension.
     name TEXT NOT NULL,
 
-    -- Absolute path to the file. This can be a URL for remote storage.
+    -- Absolute path to the file depending on type of file storage.
     path TEXT NOT NULL,
 
     -- A label for grouping together files with the same label.
@@ -37,6 +37,7 @@ CREATE TABLE documents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Stores vector collections. 
 CREATE TABLE collections(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
@@ -45,5 +46,14 @@ CREATE TABLE collections(
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE chunk_configs(
+    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    document_id UUID NOT NULL REFERENCES documents,
+    config JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 SELECT manage_updated_at('documents');
 SELECT manage_updated_at('collections');
+SELECT manage_updated_at('chunk_configs');

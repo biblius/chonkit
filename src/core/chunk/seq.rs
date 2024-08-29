@@ -1,4 +1,4 @@
-use super::{ChunkConfig, Chunker, ChunkerError};
+use super::{ChunkBaseConfig, Chunker, ChunkerError};
 
 /// Default delimiters for the [recursive chunker][Recursive].
 const DEFAULT_DELIMS: &[&str] = &["\n\n", "\n", " ", ""];
@@ -21,7 +21,7 @@ const MARKDOWN_DELIMS: &[&str] = &[
 /// it with the next delimiter in the chain until small enough chunks can be assembled.
 #[derive(Debug)]
 pub struct Recursive<'a> {
-    config: ChunkConfig,
+    config: ChunkBaseConfig,
     /// The delimiters to use when splitting.
     pub delims: &'a [&'a str],
 }
@@ -29,7 +29,7 @@ pub struct Recursive<'a> {
 impl<'delim> Recursive<'delim> {
     pub fn new(size: usize, overlap: usize, delimiters: &'delim [&str]) -> Self {
         Recursive {
-            config: ChunkConfig::new(size, overlap),
+            config: ChunkBaseConfig::new(size, overlap),
             delims: delimiters,
         }
     }
@@ -51,7 +51,7 @@ impl<'delim> Recursive<'delim> {
 
     pub fn markdown() -> Self {
         Self {
-            config: ChunkConfig::default(),
+            config: ChunkBaseConfig::default(),
             delims: MARKDOWN_DELIMS,
         }
     }
@@ -88,7 +88,7 @@ impl<'delim> Recursive<'delim> {
         chunks: &mut Vec<&'input str>,
     ) -> Result<Option<&'input str>, ChunkerError> {
         let Recursive {
-            config: ChunkConfig { size, .. },
+            config: ChunkBaseConfig { size, .. },
             delims,
             ..
         } = self;
@@ -178,7 +178,7 @@ impl<'delim> Chunker for Recursive<'delim> {
 impl Default for Recursive<'_> {
     fn default() -> Self {
         Self {
-            config: ChunkConfig::default(),
+            config: ChunkBaseConfig::default(),
             delims: DEFAULT_DELIMS,
         }
     }
@@ -186,7 +186,15 @@ impl Default for Recursive<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::INPUT;
+    const INPUT: &str = r#"
+What I Worked On
+
+February 2021
+
+Before college the two main things I worked on, outside of school, were writing and programming. I didn't write essays. I wrote what beginning writers were supposed to write then, and probably still are: short stories. My stories were awful. They had hardly any plot... just characters with strong feelings, which I imagined made them deep.
+
+The first programs I tried writing were on the IBM 1401 that our school district used for what was then called "data processing." This was in 9th grade, so I was 13 or 14. The school district's 1401 happened to be in the basement of our junior high school, and my friend Rich Draves and I got permission to use it. It was like a mini Bond villain's lair down there, with all these alien-looking machines — CPU, disk drives, printer, card reader — sitting up on a raised floor under bright fluorescent lights.
+"#;
     use super::*;
 
     #[test]

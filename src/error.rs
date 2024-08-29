@@ -1,4 +1,4 @@
-use crate::llm::chunk::ChunkerError;
+use crate::core::chunk::ChunkerError;
 use axum::{http::StatusCode, response::IntoResponse};
 use qdrant_client::QdrantError;
 use std::{num::ParseIntError, string::FromUtf8Error};
@@ -51,6 +51,9 @@ pub enum ChonkitError {
 
     #[error("Docx read: {0}")]
     DocxRead(#[from] docx_rs::ReaderError),
+
+    #[error("Fastembed: {0}")]
+    Fastembed(String),
 }
 
 impl IntoResponse for ChonkitError {
@@ -73,6 +76,7 @@ impl IntoResponse for ChonkitError {
                 (StatusCode::BAD_REQUEST, status.to_string()).into_response()
             }
             KE::IO(_)
+            | KE::Fastembed(_)
             | KE::Fmt(_)
             | KE::ParseInt(_)
             | KE::Utf8(_)

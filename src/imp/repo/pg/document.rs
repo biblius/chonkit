@@ -1,6 +1,8 @@
-use crate::core::repo::{DocumentRepo, List};
+use crate::core::{
+    model::document::{Document, DocumentInsert, DocumentUpdate},
+    repo::{document::DocumentRepo, List},
+};
 use crate::error::ChonkitError;
-use crate::model::document::{Document, DocumentInsert, DocumentUpdate};
 use sqlx::PgPool;
 
 #[derive(Debug, Clone)]

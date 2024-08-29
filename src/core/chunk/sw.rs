@@ -1,4 +1,5 @@
-use super::{ChunkConfig, Chunker, ChunkerError};
+use super::{Chunker, ChunkerError};
+use crate::core::chunk::ChunkBaseConfig;
 use tracing::debug;
 
 /// The most basic of chunkers.
@@ -8,17 +9,17 @@ use tracing::debug;
 /// to extend the base with.
 #[derive(Debug, Default)]
 pub struct SlidingWindow {
-    config: ChunkConfig,
+    config: ChunkBaseConfig,
 }
 
 impl SlidingWindow {
-    pub fn from_config(config: ChunkConfig) -> Result<Self, ChunkerError> {
+    pub fn from_config(config: ChunkBaseConfig) -> Result<Self, ChunkerError> {
         Ok(Self { config })
     }
 
     pub fn new(size: usize, overlap: usize) -> Self {
         Self {
-            config: ChunkConfig::new(size, overlap),
+            config: ChunkBaseConfig::new(size, overlap),
         }
     }
 }
@@ -26,7 +27,7 @@ impl SlidingWindow {
 impl Chunker for SlidingWindow {
     fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let SlidingWindow {
-            config: ChunkConfig { size, overlap },
+            config: ChunkBaseConfig { size, overlap },
         } = self;
 
         let input = input.trim();
