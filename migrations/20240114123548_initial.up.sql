@@ -27,10 +27,15 @@ CREATE TABLE documents (
     -- Absolute path to the file depending on type of file storage.
     path TEXT NOT NULL,
 
+    -- The extension of the document used for parsing.
+    ext TEXT NOT NULL,
+
     -- A label for grouping together files with the same label.
+    -- Documents can have only a single label.
     label TEXT,
 
-    -- Tags for directories apply to all documents in it.
+    -- Tags for documents for grouping.
+    -- Multiple tags are allowed.
     tags TEXT[],
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

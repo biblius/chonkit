@@ -5,7 +5,6 @@ pub mod chunk;
 pub mod document;
 pub mod embedder;
 pub mod model;
-pub mod parse;
 pub mod repo;
 pub mod service;
 pub mod vector;

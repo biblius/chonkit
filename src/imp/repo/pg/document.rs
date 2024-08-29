@@ -47,7 +47,7 @@ impl DocumentRepo for PgDocumentRepo {
 
         let documents = sqlx::query_as!(
             Document,
-            r#"SELECT id, name, path, label, tags, created_at, updated_at
+            r#"SELECT id, name, path, ext, label, tags, created_at, updated_at
                    FROM documents
                    LIMIT $1
                    OFFSET $2
@@ -66,15 +66,18 @@ impl DocumentRepo for PgDocumentRepo {
             id,
             name,
             path,
+            ext,
             label,
             tags,
         } = file;
 
-        sqlx::query_as!(Document,
-            "INSERT INTO documents(id, name, path, label, tags) VALUES($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING RETURNING *",
+        sqlx::query_as!(
+            Document,
+            "INSERT INTO documents VALUES($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING *",
             id,
             name,
             path,
+            ext,
             label,
             tags.as_deref(),
         )

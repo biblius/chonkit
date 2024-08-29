@@ -1,12 +1,11 @@
 use crate::{
     core::{
-        document::DocumentStore,
+        document::store::DocumentStore,
         model::document::{Document, DocumentInsert},
         repo::document::DocumentRepo,
     },
     error::ChonkitError,
 };
-use tracing::info;
 use uuid::Uuid;
 
 /// # CORE
@@ -42,35 +41,40 @@ where
     /// Get document content.
     ///
     /// * `path`: Where to read from.
-    pub async fn get_content(&self, path: &str) -> Result<String, ChonkitError> {
-        self.storage.read(path).await
+    pub async fn get_content(&self, id: uuid::Uuid) -> Result<String, ChonkitError> {
+        let document = self.repo.get_by_id(id).await?;
+
+        let Some(document) = document else {
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+        };
+
+        // TODO: Load parsing configuration for documents.
+
+        // self.storage.read(path).await
+        todo!()
     }
 
     /// Insert the document to the repository and write its contents
     /// to the underlying storage implementation.
-    ///
-    /// * `name`: Document name.
-    /// * `content`: Document contents.
-    pub async fn upload(&self, name: &str, content: &str) -> Result<(), ChonkitError> {
-        let path = self.storage.write(name, content).await?;
-        let document = DocumentInsert::new(name, &path);
+    pub async fn upload(&self, name: &str, ext: &str, file: &[u8]) -> Result<(), ChonkitError> {
+        let path = self.storage.write(name, file).await?;
+        let document = DocumentInsert::new(name, &path, ext);
         self.repo.insert(document).await?;
         Ok(())
     }
 
-    pub async fn register(&self, path: &str) -> Result<(), ChonkitError> {
-        info!("Registering document at path: {path}");
-
-        match self.repo.get_by_path(path).await? {
-            Some(file) => {
-                info!("'{}' exists, skipping", file.name);
-            }
-            None => {
-                //let document = DocumentInsert::new(name, &path);
-                //self.repo.insert(document).await?;
-            }
-        }
-
-        Ok(())
-    }
+    // pub async fn sync(&self) -> Result<(), ChonkitError> {
+    //     match self.repo.get_by_path(path).await? {
+    //         Some(document) => {
+    //             info!("'{}' already exists", document.name);
+    //             return Ok(());
+    //         }
+    //         None => {
+    //             //let document = DocumentInsert::new(name, &path);
+    //             //self.repo.insert(document).await?;
+    //         }
+    //     }
+    //
+    //     Ok(())
+    // }
 }

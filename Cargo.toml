@@ -49,6 +49,7 @@ uuid = { version = "1.6.1", features = ["v4", "serde"] }
 validify = "1.3.0"
 docx-rs = "0.4.17"
 weaviate-community = "0.2.2"
+regex = "1.10.6"
 
 [profile.release]
 codegen-units = 1

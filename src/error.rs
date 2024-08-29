@@ -40,7 +40,10 @@ pub enum ChonkitError {
     #[error("Chunking: {0}")]
     Chunk(#[from] ChunkerError),
 
-    #[error("Unsupport embedding model: {0}")]
+    #[error("Unsupported file type: {0}")]
+    UnsupportedFileType(String),
+
+    #[error("Unsupported embedding model: {0}")]
     UnsupportedEmbeddingModel(String),
 
     #[error("Qdrant: {0}")]
@@ -75,8 +78,10 @@ impl IntoResponse for ChonkitError {
             KE::Qdrant(QdrantError::ResponseError { status }) => {
                 (StatusCode::BAD_REQUEST, status.to_string()).into_response()
             }
+            // TODO
             KE::IO(_)
             | KE::Fastembed(_)
+            | KE::UnsupportedFileType(_)
             | KE::Fmt(_)
             | KE::ParseInt(_)
             | KE::Utf8(_)

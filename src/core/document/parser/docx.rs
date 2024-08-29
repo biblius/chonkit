@@ -1,34 +1,43 @@
+use super::DocumentParser;
+use crate::error::ChonkitError;
+use docx_rs::read_docx;
 use docx_rs::{Paragraph, ParagraphChild, RunChild, Table};
 use std::{fmt::Write, time::Instant};
 use tracing::debug;
 
-pub fn parse(input: docx_rs::Docx) -> Result<String, std::fmt::Error> {
-    let start = Instant::now();
+#[derive(Debug, Default)]
+pub struct DocxParser {}
 
-    let mut out = String::new();
+impl DocumentParser for DocxParser {
+    fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
+        let start = Instant::now();
 
-    for el in input.document.children {
-        match el {
-            docx_rs::DocumentChild::Paragraph(ref el) => {
-                let text = extract_paragraph(el)?;
-                for text in text {
-                    writeln!(out, "{text}")?;
+        let input = read_docx(input)?;
+        let mut out = String::new();
+
+        for el in input.document.children {
+            match el {
+                docx_rs::DocumentChild::Paragraph(ref el) => {
+                    let text = extract_paragraph(el)?;
+                    for text in text {
+                        writeln!(out, "{text}")?;
+                    }
                 }
+                docx_rs::DocumentChild::Table(el) => {
+                    let table = extract_table(*el)?;
+                    writeln!(out, "{table}")?;
+                }
+                el => debug!("Unrecognized DOCX element {:?}", el),
             }
-            docx_rs::DocumentChild::Table(el) => {
-                let table = extract_table(*el)?;
-                writeln!(out, "{table}")?;
-            }
-            el => debug!("Unrecognized DOCX element {:?}", el),
         }
+
+        debug!(
+            "Finished processing DOCX, took {}ms",
+            Instant::now().duration_since(start).as_millis()
+        );
+
+        Ok(out)
     }
-
-    debug!(
-        "Finished processing DOCX, took {}ms",
-        Instant::now().duration_since(start).as_millis()
-    );
-
-    Ok(out)
 }
 
 /// Given a DOCX table, create the equivalent table in Markdown style.

@@ -5,7 +5,7 @@ use crate::{
 };
 use std::future::Future;
 
-/// Keep tracks of document paths/URLs and additional metadata.
+/// Keep tracks of document.
 /// Info obtained from here is usually used to load files.
 pub trait DocumentRepo {
     /// Get document metadata based on ID.

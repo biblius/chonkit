@@ -1,0 +1,109 @@
+use std::{path::PathBuf, str::FromStr};
+
+use crate::{
+    core::{
+        document::{parser::DocumentParser, store::DocumentStore},
+        model::document::{Document, DocumentType},
+    },
+    error::ChonkitError,
+};
+
+/// Simple FS based implementation of a [DocumentStore](crate::core::document::DocumentStore).
+#[derive(Debug, Clone)]
+pub struct FsDocumentStore {
+    /// The base directory to store the documents in.
+    base: PathBuf,
+}
+
+impl FsDocumentStore {
+    pub fn new(path: &str) -> Self {
+        Self {
+            base: PathBuf::from_str(path)
+                .expect("invalid path")
+                .canonicalize()
+                .expect("unable to canonicalize"),
+        }
+    }
+
+    fn get_extension(&self, path: &str) -> Result<DocumentType, ChonkitError> {
+        let pb = PathBuf::from(path);
+
+        if !pb.is_file() {
+            return Err(ChonkitError::InvalidFileName(format!("not a file: {path}")));
+        }
+
+        let Some(ext) = pb.extension() else {
+            return Err(ChonkitError::InvalidFileName(format!(
+                "missing extension: {path}"
+            )));
+        };
+
+        let Some(ext) = ext.to_str() else {
+            return Err(ChonkitError::InvalidFileName(format!(
+                "extension invalid unicode: {:?}",
+                ext
+            )));
+        };
+
+        match ext {
+            "pdf" => Ok(DocumentType::Pdf),
+            "docx" => Ok(DocumentType::Docx),
+            "txt" | "json" | "md" | "xml" | "html" => Ok(DocumentType::Text),
+            ext => Err(ChonkitError::UnsupportedFileType(ext.to_string())),
+        }
+    }
+}
+
+impl DocumentStore for FsDocumentStore {
+    async fn read(
+        &self,
+        document: &Document,
+        parser: impl DocumentParser + Send,
+    ) -> Result<String, ChonkitError> {
+        let file = tokio::fs::read(&document.path).await?;
+        parser.parse(&file)
+    }
+
+    async fn write(&self, name: &str, file: &[u8]) -> Result<String, ChonkitError> {
+        let path = format!("{}/{name}", self.base.display());
+        tokio::fs::write(&path, file).await?;
+
+        Ok(path)
+    }
+
+    async fn delete(&self, path: &str) -> Result<(), ChonkitError> {
+        Ok(tokio::fs::remove_file(path).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DocumentStore, FsDocumentStore};
+    use crate::core::{document::parser::parse_text, model::document::Document};
+
+    const DIR: &str = "__fs_doc_store_tests";
+    const CONTENT: &str = "Hello world.";
+
+    #[tokio::test]
+    async fn works() {
+        tokio::fs::create_dir(DIR).await.unwrap();
+
+        let store = FsDocumentStore::new(DIR);
+
+        let d = Document {
+            name: "foo".to_string(),
+            path: "foo".to_string(),
+            ..Default::default()
+        };
+        let path = store.write(&d.name, CONTENT.as_bytes()).await.unwrap();
+        let file = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(CONTENT, file);
+
+        let read = store.read(&d, parse_text).await.unwrap();
+        assert_eq!(CONTENT, read);
+
+        store.delete(&path).await.unwrap();
+
+        tokio::fs::remove_dir(DIR).await.unwrap();
+    }
+}

@@ -1,5 +1,7 @@
 use crate::config::StartArgs;
 use clap::Parser;
+use core::document::parser::pdf::PdfParser;
+use core::document::parser::DocumentParser;
 use imp::service::ServiceState;
 use qdrant_client::Qdrant;
 use tracing::info;
@@ -30,13 +32,16 @@ async fn main() {
         .init();
 
     // let file_docx = std::fs::read("test_docs/test.docx").unwrap();
-    // let file_pdf = std::fs::read("test_docs/test.pdf").unwrap();
-    //
+    let file_pdf = std::fs::read("test_docs/test.pdf").unwrap();
+
     // let out_docx = core::document::load_docx(&file_docx).unwrap();
-    // let out_pdf = core::document::load_pdf(&file_pdf).unwrap();
-    //
+    let pdf_parser =
+        PdfParser::default().line_filter(regex::Regex::new("raywenderlich.com").unwrap());
+
+    let out_pdf = pdf_parser.parse(&file_pdf).unwrap();
+
     // std::fs::write("test_docs/parsed_docx.txt", out_docx).unwrap();
-    // std::fs::write("test_docs/parsed_pdf.txt", out_pdf).unwrap();
+    std::fs::write("test_docs/parsed_pdf.txt", out_pdf).unwrap();
 
     let db_url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,

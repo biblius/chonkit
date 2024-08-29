@@ -1,7 +1,6 @@
+use super::{document::store::FsDocumentStore, embedder::FastEmbedder};
 use crate::{
     core::{
-        document::FsDocumentStore,
-        embedder::FastEmbedder,
         service::{document::DocumentService, vector::VectorService},
         vector::QdrantVectorStore,
     },
