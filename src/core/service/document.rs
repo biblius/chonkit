@@ -54,13 +54,22 @@ where
         todo!()
     }
 
-    /// Insert the document to the repository and write its contents
-    /// to the underlying storage implementation.
-    pub async fn upload(&self, name: &str, ext: &str, file: &[u8]) -> Result<(), ChonkitError> {
+    /// Insert the document metadata to the repository and persist it
+    /// in the underlying storage implementation.
+    ///
+    /// * `name`: Document name.
+    /// * `ext`:  Document extension.
+    /// * `file`: Document file.
+    pub async fn upload(
+        &self,
+        name: &str,
+        ext: &str,
+        file: &[u8],
+    ) -> Result<Document, ChonkitError> {
         let path = self.storage.write(name, file).await?;
         let document = DocumentInsert::new(name, &path, ext);
-        self.repo.insert(document).await?;
-        Ok(())
+        let document = self.repo.insert(document).await?;
+        Ok(document)
     }
 
     // pub async fn sync(&self) -> Result<(), ChonkitError> {

@@ -42,6 +42,16 @@ CREATE TABLE documents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Stores chunking configurations for documents.
+CREATE TABLE doc_configs(
+    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    document_id UUID NOT NULL REFERENCES documents,
+    chunk_config JSONB, -- Only god can judge us.
+    parse_config JSONB, -- Only god can judge us.
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Stores vector collections. 
 CREATE TABLE collections(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
@@ -51,14 +61,6 @@ CREATE TABLE collections(
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE chunk_configs(
-    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    document_id UUID NOT NULL REFERENCES documents,
-    config JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 SELECT manage_updated_at('documents');
+SELECT manage_updated_at('doc_configs');
 SELECT manage_updated_at('collections');
-SELECT manage_updated_at('chunk_configs');

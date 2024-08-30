@@ -518,6 +518,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sqlx",
+ "suitest",
  "thiserror",
  "tokio",
  "tonic",
@@ -3474,6 +3475,30 @@ name = "subtle"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
+
+[[package]]
+name = "suitest"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b37c390419ba621162e2bfb0474567aafbb40d100ea594578de67710786033"
+dependencies = [
+ "futures-util",
+ "once_cell",
+ "suitest_macros",
+ "tokio",
+]
+
+[[package]]
+name = "suitest_macros"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "456e01ff0739f0d727834b194361e75eb92edf16faa37d3a160a9e34b99c4c59"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.60",
+]
 
 [[package]]
 name = "syn"

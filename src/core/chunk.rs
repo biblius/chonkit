@@ -136,7 +136,7 @@ impl Default for ChunkBaseConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChunkConfig {
     SlidingWindow {

@@ -1,9 +1,10 @@
 use crate::config::StartArgs;
-use clap::Parser;
 use core::document::parser::pdf::PdfParser;
 use core::document::parser::DocumentParser;
 use imp::service::ServiceState;
 use qdrant_client::Qdrant;
+use std::collections::HashMap;
+use std::hash::Hash;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -24,7 +25,19 @@ async fn main() {
         log_level: level,
         qdrant_url,
         db_url,
-    } = StartArgs::parse();
+    } = <StartArgs as clap::Parser>::parse();
+
+    let foo = 420usize;
+    let mut map = HashMap::new();
+
+    map.insert(
+        std::any::TypeId::of::<usize>(),
+        Box::new(foo) as Box<dyn std::any::Any + Send + Sync>,
+    );
+
+    let foo = map.get(&std::any::TypeId::of::<usize>()).unwrap();
+
+    dbg!(foo.downcast_ref::<usize>());
 
     tracing_subscriber::fmt()
         .with_max_level(level)

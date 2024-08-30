@@ -60,7 +60,7 @@ impl DocumentStore for FsDocumentStore {
         document: &Document,
         parser: impl DocumentParser + Send,
     ) -> Result<String, ChonkitError> {
-        let file = tokio::fs::read(&document.path).await?;
+        let file = tokio::fs::read(&format!("{}/{}", self.base.display(), document.path)).await?;
         parser.parse(&file)
     }
 

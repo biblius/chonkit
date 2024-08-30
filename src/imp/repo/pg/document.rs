@@ -1,5 +1,8 @@
 use crate::core::{
-    model::document::{Document, DocumentInsert, DocumentUpdate},
+    model::document::{
+        config::{DocumentConfig, DocumentConfigInsert},
+        Document, DocumentInsert, DocumentUpdate,
+    },
     repo::{document::DocumentRepo, List},
 };
 use crate::error::ChonkitError;
@@ -89,12 +92,10 @@ impl DocumentRepo for PgDocumentRepo {
     async fn update(&self, id: uuid::Uuid, update: DocumentUpdate<'_>) -> Result<(), ChonkitError> {
         let DocumentUpdate {
             name,
-            path: file_path,
+            path,
             label,
             tags,
         } = update;
-
-        let tags = tags.as_ref().map(|v| v.as_slice());
 
         sqlx::query!(
             r#"
@@ -106,13 +107,14 @@ impl DocumentRepo for PgDocumentRepo {
             WHERE id = $5 
         "#,
             name.as_ref(),
-            file_path.as_ref(),
+            path.as_ref(),
             label.as_ref(),
-            tags.as_ref(),
+            tags.as_deref(),
             id
         )
         .execute(&self.pool)
         .await?;
+
         Ok(())
     }
 
@@ -128,5 +130,93 @@ impl DocumentRepo for PgDocumentRepo {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    async fn get_config(&self, id: uuid::Uuid) -> Result<Option<DocumentConfig>, ChonkitError> {
+        sqlx::query_as!(
+            DocumentConfig,
+            "SELECT 
+                id,
+                document_id,
+                chunk_config,
+                parse_config,
+                created_at,
+                updated_at 
+             FROM doc_configs 
+             WHERE document_id = $1",
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        todo!()
+    }
+
+    async fn insert_config(
+        &self,
+        config: DocumentConfigInsert,
+    ) -> Result<DocumentConfig, ChonkitError> {
+        let DocumentConfigInsert {
+            id,
+            document_id,
+            chunk_config,
+            parse_config,
+        } = config;
+
+        let config = sqlx::query_as!(
+            DocumentConfig,
+            "INSERT INTO doc_configs
+                (id, document_id, chunk_config, parse_config)
+             VALUES
+                ($1, $2, $3, $4)
+             RETURNING
+                id, document_id, chunk_config, parse_config, created_at, updated_at",
+            id,
+            document_id,
+            chunk_config,
+            parse_config
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(config)
+    }
+}
+
+#[cfg(test)]
+#[suitest::suite(pg_document_repo_int)]
+mod tests {
+
+    use super::PgDocumentRepo;
+    use crate::{
+        core::{model::document::DocumentInsert, repo::document::DocumentRepo},
+        imp::repo::pg::init,
+    };
+    use suitest::before_all;
+
+    #[before_all]
+    async fn setup() -> PgDocumentRepo {
+        let url = std::env::var("DATABASE_URL").expect("no database url");
+        let client = init(&url).await;
+
+        let repo = PgDocumentRepo::new(client).await;
+
+        repo
+    }
+
+    #[test]
+    async fn insert_works(repo: PgDocumentRepo) {
+        let doc = DocumentInsert::new("My file", "path/to/file", "txt");
+        let doc = repo.insert(doc).await.unwrap();
+        let doc = repo.get_by_id(doc.id).await.unwrap().unwrap();
+
+        assert_eq!("My file", doc.name);
+        assert_eq!("path/to/file", doc.path);
+        assert_eq!("txt", doc.ext);
+
+        repo.remove_by_id(doc.id).await.unwrap();
+
+        let doc = repo.get_by_id(doc.id).await.unwrap();
+
+        assert!(doc.is_none());
     }
 }

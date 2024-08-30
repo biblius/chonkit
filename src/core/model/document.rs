@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+pub mod config;
+
+/// Main document model for the `documents` table.
 #[derive(Debug, Serialize, Default)]
 pub struct Document {
     /// Primary key.
@@ -25,10 +28,17 @@ pub struct Document {
     pub updated_at: DateTime<Utc>,
 }
 
+/// All possible file types chonkit can process.
 #[derive(Debug, Clone)]
 pub enum DocumentType {
+    /// This encapsulates any files that can be read as strings.
+    /// Does not necessarily have to be `.txt`, could be `.json`, `.csv`, etc.
     Text,
+
+    /// Microschlong steaming pile of garabage document.
     Docx,
+
+    /// PDF document.
     Pdf,
 }
 
