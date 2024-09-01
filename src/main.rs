@@ -1,9 +1,7 @@
 use crate::config::StartArgs;
 use app::service::ServiceState;
-use core::document::parser::pdf::PdfParser;
-use core::document::parser::{DocumentParser, ParseConfig};
+use cfg_if::cfg_if;
 use qdrant_client::Qdrant;
-use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 pub mod app;
@@ -12,62 +10,56 @@ pub mod control;
 pub mod core;
 pub mod error;
 
+pub const DB_URL: &str = "postgresql://postgres:postgres@localhost:5433/chonkit";
+pub const VEC_DB_URL: &str = "http://localhost:6334";
 pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 
+cfg_if!(
+    if #[cfg(feature = "server")] {
+        async fn run() { run_server().await; }
+    } else if #[cfg(feature = "cli")]  {
+        async fn run() { run_cli().await; }
+    }
+);
+
 #[tokio::main]
 async fn main() {
-    let StartArgs {
-        address: host,
-        port,
-        log_level: level,
-        qdrant_url,
-        db_url,
-    } = <StartArgs as clap::Parser>::parse();
+    run().await;
+}
+
+#[cfg(feature = "server")]
+async fn run_server() {
+    let args = <StartArgs as clap::Parser>::parse();
 
     tracing_subscriber::fmt()
-        .with_max_level(level)
+        .with_max_level(args.log_level)
         .with_env_filter(EnvFilter::new("info,h2=off,lopdf=off,chonkit=debug"))
         .init();
 
-    // let file_docx = std::fs::read("test_docs/test.docx").unwrap();
-    let file_pdf = std::fs::read("test_docs/test.pdf").unwrap();
-
-    // let out_docx = core::document::load_docx(&file_docx).unwrap();
-    let cfg = ParseConfig::default()
-        .skip_f(11)
-        .skip_b(1)
-        .filter(regex::Regex::new("raywenderlich.com").unwrap());
-
-    let pdf_parser = PdfParser::new(cfg);
-
-    let out_pdf = pdf_parser.parse(&file_pdf).unwrap();
-
-    // std::fs::write("test_docs/parsed_docx.txt", out_docx).unwrap();
-    std::fs::write("test_docs/parsed_pdf.txt", out_pdf).unwrap();
-
-    let db_url = match std::env::var("DATABASE_URL") {
-        Ok(url) => url,
-        Err(_) => {
-            info!("DATABASE_URL not set, falling back to {db_url}");
-            db_url
-        }
-    };
-
-    let qdrant_url = match std::env::var("QDRANT_URL") {
-        Ok(url) => url,
-        Err(_) => {
-            info!("QDRANT_URL not set, falling back to {qdrant_url}");
-            qdrant_url
-        }
-    };
+    let db_url = args.db_url();
+    let qd_url = args.qdrant_url();
 
     let db_pool = app::repo::pg::init(&db_url).await;
-    let qdrant = Qdrant::from_url(&qdrant_url).build().unwrap();
+    let qdrant = Qdrant::from_url(&qd_url).build().unwrap();
 
     let services = ServiceState::init(db_pool, qdrant).await;
 
-    let addr = format!("{host}:{port}");
-
+    let addr = format!("{}:{}", args.address, args.port);
     control::http::server(&addr, services).await;
+}
+
+#[cfg(feature = "cli")]
+async fn run_cli() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(
+            "debug,sqlx=off,h2=off,lopdf=off,chonkit=debug",
+        ))
+        .init();
+
+    let db_pool = app::repo::pg::init(DB_URL).await;
+    let qdrant = Qdrant::from_url(VEC_DB_URL).build().unwrap();
+
+    let services = ServiceState::init(db_pool, qdrant).await;
+    control::cli::run(services).await;
 }

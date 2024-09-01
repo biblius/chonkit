@@ -1,5 +1,8 @@
 use super::parser::DocumentParser;
-use crate::{core::model::document::Document, error::ChonkitError};
+use crate::{
+    core::{model::document::Document, repo::document::DocumentRepo},
+    error::ChonkitError,
+};
 use std::future::Future;
 
 /// Reads documents' content. Serves as indirection to decouple the documents from their source.
@@ -28,4 +31,12 @@ pub trait DocumentStore {
         name: &str,
         content: &[u8],
     ) -> impl Future<Output = Result<String, ChonkitError>> + Send;
+
+    /// Sync the storage client's contents with the repository.
+    ///
+    /// * `repo`: Document repository.
+    fn sync(
+        &self,
+        repo: &(impl DocumentRepo + Sync),
+    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
 }

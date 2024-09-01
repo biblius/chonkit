@@ -11,8 +11,8 @@ use crate::{
     error::ChonkitError,
 };
 use uuid::Uuid;
+use validify::Validify;
 
-/// # CORE
 /// High level operations for document management.
 #[derive(Debug, Clone)]
 pub struct DocumentService<R, S> {
@@ -22,7 +22,7 @@ pub struct DocumentService<R, S> {
 
 impl<R, S> DocumentService<R, S>
 where
-    R: DocumentRepo,
+    R: DocumentRepo + Sync,
     S: DocumentStore,
 {
     pub fn new(repo: R, storage: S) -> Self {
@@ -42,9 +42,10 @@ where
         Ok(file)
     }
 
-    /// Get document content.
+    /// Get document content using its path and parsing configuration,
+    /// or the default parser if it has no configuration.
     ///
-    /// * `path`: Where to read from.
+    /// * `id`: The document ID.
     pub async fn get_content(&self, id: uuid::Uuid) -> Result<String, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
@@ -69,16 +70,25 @@ where
     /// * `name`: Document name.
     /// * `ext`:  Document extension.
     /// * `file`: Document file.
-    pub async fn upload(
-        &self,
-        name: &str,
-        ty: DocumentType,
-        file: &[u8],
-    ) -> Result<Document, ChonkitError> {
+    pub async fn upload(&self, mut params: DocumentUpload<'_>) -> Result<Document, ChonkitError> {
+        params.validify()?;
+        let DocumentUpload { ref name, ty, file } = params;
         let path = self.storage.write(name, file).await?;
         let insert = DocumentInsert::new(name, &path, ty);
         let document = self.repo.insert(insert).await?;
         Ok(document)
+    }
+
+    pub async fn sync(&self) -> Result<(), ChonkitError> {
+        self.storage.sync(&self.repo).await
+    }
+
+    pub async fn parse_preview(
+        &self,
+        id: uuid::Uuid,
+        parser: ParseConfig,
+    ) -> Result<String, ChonkitError> {
+        todo!()
     }
 
     pub async fn update_parser(
@@ -98,6 +108,15 @@ where
     }
 }
 
+#[derive(Debug, Validify)]
+pub struct DocumentUpload<'a> {
+    #[modify(trim)]
+    #[validate(length(min = 1, message = "Document name cannot be empty."))]
+    pub name: String,
+    pub ty: DocumentType,
+    pub file: &'a [u8],
+}
+
 #[cfg(test)]
 #[suitest::suite(service_doc_pg_fs_int)]
 mod document_service_tests {
@@ -111,7 +130,7 @@ mod document_service_tests {
                 docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser,
             },
             model::document::DocumentType,
-            service::document::DocumentService,
+            service::document::{DocumentService, DocumentUpload},
         },
     };
     use suitest::{after_all, before_all, cleanup};
@@ -145,11 +164,14 @@ mod document_service_tests {
 
     #[test]
     async fn upload_text_happy(service: Service) {
-        let name = "UPLOAD_TEST_TXT";
-        let ext = DocumentType::Text;
-        let content = b"Hello World!";
+        let content = b"Hello world";
+        let upload = DocumentUpload {
+            name: "UPLOAD_TEST_TXT".to_string(),
+            ty: DocumentType::Text,
+            file: content,
+        };
 
-        let document = service.upload(name, ext, content).await.unwrap();
+        let document = service.upload(upload).await.unwrap();
 
         let text_from_bytes = TextParser::default().parse(content).unwrap();
         let text_from_store = service.get_content(document.id).await.unwrap();
@@ -159,13 +181,16 @@ mod document_service_tests {
 
     #[test]
     async fn upload_pdf_happy(service: Service) {
-        let name = "UPLOAD_TEST_PDF";
-        let ext = DocumentType::Pdf;
-        let content = tokio::fs::read("test_docs/test.pdf").await.unwrap();
+        let content = &tokio::fs::read("test_docs/test.pdf").await.unwrap();
+        let upload = DocumentUpload {
+            name: "UPLOAD_TEST_PDF".to_string(),
+            ty: DocumentType::Pdf,
+            file: content,
+        };
 
-        let document = service.upload(name, ext, &content).await.unwrap();
+        let document = service.upload(upload).await.unwrap();
 
-        let text_from_bytes = PdfParser::default().parse(&content).unwrap();
+        let text_from_bytes = PdfParser::default().parse(content).unwrap();
         let text_from_store = service.get_content(document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
@@ -173,13 +198,16 @@ mod document_service_tests {
 
     #[test]
     async fn upload_docx_happy(service: Service) {
-        let name = "UPLOAD_TEST_DOCX";
-        let ext = DocumentType::Docx;
-        let content = tokio::fs::read("test_docs/test.docx").await.unwrap();
+        let content = &tokio::fs::read("test_docs/test.docx").await.unwrap();
+        let upload = DocumentUpload {
+            name: "UPLOAD_TEST_DOCX".to_string(),
+            ty: DocumentType::Docx,
+            file: content,
+        };
 
-        let document = service.upload(name, ext, &content).await.unwrap();
+        let document = service.upload(upload).await.unwrap();
 
-        let text_from_bytes = DocxParser::default().parse(&content).unwrap();
+        let text_from_bytes = DocxParser::default().parse(content).unwrap();
         let text_from_store = service.get_content(document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);

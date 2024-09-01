@@ -1,9 +1,12 @@
 use crate::core::chunk::ChunkerError;
-use axum::{http::StatusCode, response::IntoResponse};
 use qdrant_client::QdrantError;
 use std::{num::ParseIntError, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
+use validify::ValidationErrors;
+
+#[cfg(feature = "server")]
+use axum::{http::StatusCode, response::IntoResponse};
 
 #[derive(Debug, Error)]
 pub enum ChonkitError {
@@ -34,9 +37,6 @@ pub enum ChonkitError {
     #[error("JSON error: {0}")]
     SerdeJson(#[from] serde_json::Error),
 
-    #[error("Http: {0}")]
-    Http(#[from] axum::http::Error),
-
     #[error("Chunking: {0}")]
     Chunk(#[from] ChunkerError),
 
@@ -57,8 +57,16 @@ pub enum ChonkitError {
 
     #[error("Fastembed: {0}")]
     Fastembed(String),
+
+    #[error("Validation: {0}")]
+    Validation(#[from] ValidationErrors),
+
+    #[cfg(feature = "server")]
+    #[error("Http: {0}")]
+    Http(#[from] axum::http::Error),
 }
 
+#[cfg(feature = "server")]
 impl IntoResponse for ChonkitError {
     fn into_response(self) -> axum::response::Response {
         error!("Error: {self}");
@@ -69,6 +77,9 @@ impl IntoResponse for ChonkitError {
             KE::NotFound(e) => (StatusCode::NOT_FOUND, e).into_response(),
             KE::DoesNotExist(e) => (StatusCode::NOT_FOUND, e).into_response(),
             KE::SerdeJson(_) => {
+                (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()).into_response()
+            }
+            KE::Validation(_) => {
                 (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()).into_response()
             }
             // Occurs on pw verification in handlers

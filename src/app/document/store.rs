@@ -1,9 +1,12 @@
 use std::{path::PathBuf, str::FromStr};
 
+use tracing::{error, info};
+
 use crate::{
     core::{
         document::{parser::DocumentParser, store::DocumentStore},
-        model::document::{Document, DocumentType},
+        model::document::{Document, DocumentInsert, DocumentType},
+        repo::document::DocumentRepo,
     },
     error::ChonkitError,
 };
@@ -25,16 +28,18 @@ impl FsDocumentStore {
         }
     }
 
-    fn get_extension(&self, path: &str) -> Result<DocumentType, ChonkitError> {
-        let pb = PathBuf::from(path);
-
+    fn get_extension(&self, pb: PathBuf) -> Result<DocumentType, ChonkitError> {
         if !pb.is_file() {
-            return Err(ChonkitError::InvalidFileName(format!("not a file: {path}")));
+            return Err(ChonkitError::InvalidFileName(format!(
+                "not a file: {}",
+                pb.display()
+            )));
         }
 
         let Some(ext) = pb.extension() else {
             return Err(ChonkitError::InvalidFileName(format!(
-                "missing extension: {path}"
+                "missing extension: {}",
+                pb.display()
             )));
         };
 
@@ -72,6 +77,36 @@ impl DocumentStore for FsDocumentStore {
 
     async fn delete(&self, path: &str) -> Result<(), ChonkitError> {
         Ok(tokio::fs::remove_file(path).await?)
+    }
+
+    async fn sync(&self, repo: &(impl DocumentRepo + Sync)) -> Result<(), ChonkitError> {
+        let mut files = tokio::fs::read_dir(&self.base).await?;
+        while let Some(file) = files.next_entry().await? {
+            let ext = match self.get_extension(file.path()) {
+                Ok(ext) => ext,
+                Err(e) => {
+                    error!("{e}");
+                    continue;
+                }
+            };
+            let name = file.file_name().to_string_lossy().to_string();
+            let path = file.path().display().to_string();
+
+            let doc = repo.get_by_path(&path).await?;
+
+            if let Some(Document { id, path, .. }) = doc {
+                info!("Document '{path}' already exists ({id})");
+                continue;
+            }
+
+            let insert = DocumentInsert::new(&name, &path, ext);
+
+            match repo.insert(insert).await {
+                Ok(Document { id, path, .. }) => info!("Successfully inserted '{path}' ({id})"),
+                Err(e) => error!("{e}"),
+            }
+        }
+        Ok(())
     }
 }
 

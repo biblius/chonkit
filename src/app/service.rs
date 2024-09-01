@@ -30,7 +30,7 @@ impl ServiceState {
         let repo_document = PgDocumentRepo::new(pool.clone());
 
         let service_doc =
-            DocumentService::new(repo_document.clone(), FsDocumentStore::new("content"));
+            DocumentService::new(repo_document.clone(), FsDocumentStore::new("test_docs"));
         let service_vec = VectorService::new(repo_document, store_vector, embedder);
 
         service_vec.create_default_collection().await;

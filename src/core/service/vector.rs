@@ -82,7 +82,7 @@ where
     /// Query the vector database (semantic search).
     ///
     /// * `model`: The embedding model. The model's embeddings must be the same size as the ones
-    /// used in the collection or this will return an error.
+    ///    used in the collection or this will return an error.
     /// * `query`: The text to search by.
     /// * `collection`: The collection to search in.
     /// * `limit`: Amount of results returned.
