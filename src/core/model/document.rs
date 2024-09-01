@@ -1,3 +1,4 @@
+use crate::error::ChonkitError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -29,7 +30,7 @@ pub struct Document {
 }
 
 /// All possible file types chonkit can process.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum DocumentType {
     /// This encapsulates any files that can be read as strings.
     /// Does not necessarily have to be `.txt`, could be `.json`, `.csv`, etc.
@@ -52,19 +53,32 @@ impl std::fmt::Display for DocumentType {
     }
 }
 
+impl TryFrom<&str> for DocumentType {
+    type Error = ChonkitError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "txt" => Ok(Self::Text),
+            "pdf" => Ok(Self::Pdf),
+            "docx" => Ok(Self::Docx),
+            _ => Err(ChonkitError::UnsupportedFileType(value.to_owned())),
+        }
+    }
+}
+
 /// DTO for inserting.
 #[derive(Debug)]
 pub struct DocumentInsert<'a> {
     pub id: uuid::Uuid,
     pub name: &'a str,
     pub path: &'a str,
-    pub ext: &'a str,
+    pub ext: DocumentType,
     pub label: Option<&'a str>,
     pub tags: Option<Vec<String>>,
 }
 
 impl<'a> DocumentInsert<'a> {
-    pub fn new(name: &'a str, path: &'a str, ext: &'a str) -> Self {
+    pub fn new(name: &'a str, path: &'a str, ext: DocumentType) -> Self {
         Self {
             id: uuid::Uuid::new_v4(),
             name,

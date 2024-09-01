@@ -1,10 +1,8 @@
-use std::time::Duration;
-
 use crate::{
-    control::dto::{CreateCollectionPayload, EmbedPayload, SearchPayload},
+    app::service::ServiceState,
+    control::dto::{CreateCollectionPayload, SearchPayload},
     core::chunk::ChunkConfig,
     error::ChonkitError,
-    imp::service::ServiceState,
 };
 use axum::{
     http::Method,
@@ -12,6 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use std::time::Duration;
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::Span;
 use uuid::Uuid;

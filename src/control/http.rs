@@ -1,4 +1,4 @@
-use crate::imp::service::ServiceState;
+use crate::app::service::ServiceState;
 
 pub mod router;
 

@@ -1,55 +1,63 @@
+use crate::core::{chunk::ChunkConfig, document::parser::Parser};
 use chrono::{DateTime, Utc};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 
-use crate::core::{chunk::ChunkConfig, document::parser::DocumentParser};
-
-/// Main config model for the `doc_configs` table.
-#[derive(Debug, Serialize, Default)]
-pub struct DocumentConfig {
+/// Main config model for the `chunkers` table.
+#[derive(Debug, Serialize)]
+pub struct DocumentChunkConfig {
     /// Primary key.
     pub id: uuid::Uuid,
-
     /// References the document which this config belongs to.
     pub document_id: uuid::Uuid,
-
     /// JSON string of the chunking configuration.
-    pub chunk_config: Option<serde_json::Value>,
-
-    /// JSON string of the parsing configuration.
-    pub parse_config: Option<serde_json::Value>,
-
+    pub config: ChunkConfig,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct DocumentConfigInsert {
+pub struct DocumentChunkConfigInsert {
     pub id: uuid::Uuid,
     pub document_id: uuid::Uuid,
-    pub chunk_config: Option<serde_json::Value>,
-    pub parse_config: Option<serde_json::Value>,
+    pub config: ChunkConfig,
 }
 
-impl DocumentConfigInsert {
-    pub fn new(document_id: uuid::Uuid) -> Self {
-        Self {
+impl DocumentChunkConfigInsert {
+    pub fn new(document_id: uuid::Uuid, config: ChunkConfig) -> Result<Self, serde_json::Error> {
+        Ok(Self {
             id: uuid::Uuid::new_v4(),
             document_id,
-            chunk_config: None,
-            parse_config: None,
-        }
+            config,
+        })
     }
+}
 
-    pub fn with_chunk_config(mut self, cfg: ChunkConfig) -> Result<Self, serde_json::Error> {
-        self.chunk_config = Some(serde_json::to_value(cfg)?);
-        Ok(self)
-    }
+/// Main config model for the `parsers` table.
+#[derive(Debug, Serialize)]
+pub struct DocumentParseConfig {
+    /// Primary key.
+    pub id: uuid::Uuid,
+    /// References the document which this config belongs to.
+    pub document_id: uuid::Uuid,
+    /// JSON string of the parsing configuration.
+    pub config: Parser,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
 
-    pub fn with_parse_config(
-        mut self,
-        parser: impl DocumentParser + Serialize + DeserializeOwned,
-    ) -> Result<Self, serde_json::Error> {
-        self.parse_config = Some(serde_json::to_value(parser)?);
-        Ok(self)
+#[derive(Debug, Serialize)]
+pub struct DocumentParseConfigInsert {
+    pub id: uuid::Uuid,
+    pub document_id: uuid::Uuid,
+    pub config: Parser,
+}
+
+impl DocumentParseConfigInsert {
+    pub fn new(document_id: uuid::Uuid, parser: Parser) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            id: uuid::Uuid::new_v4(),
+            document_id,
+            config: parser,
+        })
     }
 }

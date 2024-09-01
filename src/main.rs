@@ -1,18 +1,16 @@
 use crate::config::StartArgs;
+use app::service::ServiceState;
 use core::document::parser::pdf::PdfParser;
-use core::document::parser::DocumentParser;
-use imp::service::ServiceState;
+use core::document::parser::{DocumentParser, ParseConfig};
 use qdrant_client::Qdrant;
-use std::collections::HashMap;
-use std::hash::Hash;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+pub mod app;
 pub mod config;
 pub mod control;
 pub mod core;
 pub mod error;
-pub mod imp;
 
 pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
@@ -27,18 +25,6 @@ async fn main() {
         db_url,
     } = <StartArgs as clap::Parser>::parse();
 
-    let foo = 420usize;
-    let mut map = HashMap::new();
-
-    map.insert(
-        std::any::TypeId::of::<usize>(),
-        Box::new(foo) as Box<dyn std::any::Any + Send + Sync>,
-    );
-
-    let foo = map.get(&std::any::TypeId::of::<usize>()).unwrap();
-
-    dbg!(foo.downcast_ref::<usize>());
-
     tracing_subscriber::fmt()
         .with_max_level(level)
         .with_env_filter(EnvFilter::new("info,h2=off,lopdf=off,chonkit=debug"))
@@ -48,8 +34,12 @@ async fn main() {
     let file_pdf = std::fs::read("test_docs/test.pdf").unwrap();
 
     // let out_docx = core::document::load_docx(&file_docx).unwrap();
-    let pdf_parser =
-        PdfParser::default().line_filter(regex::Regex::new("raywenderlich.com").unwrap());
+    let cfg = ParseConfig::default()
+        .skip_f(11)
+        .skip_b(1)
+        .filter(regex::Regex::new("raywenderlich.com").unwrap());
+
+    let pdf_parser = PdfParser::new(cfg);
 
     let out_pdf = pdf_parser.parse(&file_pdf).unwrap();
 
@@ -72,7 +62,7 @@ async fn main() {
         }
     };
 
-    let db_pool = imp::repo::pg::init(&db_url).await;
+    let db_pool = app::repo::pg::init(&db_url).await;
     let qdrant = Qdrant::from_url(&qdrant_url).build().unwrap();
 
     let services = ServiceState::init(db_pool, qdrant).await;

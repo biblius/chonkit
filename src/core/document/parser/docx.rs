@@ -1,12 +1,23 @@
-use super::DocumentParser;
+use super::{DocumentParser, ParseConfig};
+use crate::core::model::document::DocumentType;
 use crate::error::ChonkitError;
 use docx_rs::read_docx;
 use docx_rs::{Paragraph, ParagraphChild, RunChild, Table};
+use serde::{Deserialize, Serialize};
 use std::{fmt::Write, time::Instant};
 use tracing::debug;
 
-#[derive(Debug, Default)]
-pub struct DocxParser {}
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct DocxParser {
+    // TODO: Implement
+    config: ParseConfig,
+}
+
+impl DocxParser {
+    pub fn new(config: ParseConfig) -> Self {
+        Self { config }
+    }
+}
 
 impl DocumentParser for DocxParser {
     fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
@@ -37,6 +48,10 @@ impl DocumentParser for DocxParser {
         );
 
         Ok(out)
+    }
+
+    fn dtype(&self) -> DocumentType {
+        DocumentType::Docx
     }
 }
 

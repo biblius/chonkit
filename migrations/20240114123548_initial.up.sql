@@ -43,11 +43,19 @@ CREATE TABLE documents (
 );
 
 -- Stores chunking configurations for documents.
-CREATE TABLE doc_configs(
+CREATE TABLE chunkers(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
     document_id UUID NOT NULL REFERENCES documents,
-    chunk_config JSONB, -- Only god can judge us.
-    parse_config JSONB, -- Only god can judge us.
+    config JSONB NOT NULL, -- Only god can judge us.
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Stores parsing configurations for documents.
+CREATE TABLE parsers(
+    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    document_id UUID NOT NULL REFERENCES documents,
+    config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -62,5 +70,6 @@ CREATE TABLE collections(
 );
 
 SELECT manage_updated_at('documents');
-SELECT manage_updated_at('doc_configs');
+SELECT manage_updated_at('chunkers');
+SELECT manage_updated_at('parsers');
 SELECT manage_updated_at('collections');

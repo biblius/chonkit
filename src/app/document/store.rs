@@ -60,14 +60,13 @@ impl DocumentStore for FsDocumentStore {
         document: &Document,
         parser: impl DocumentParser + Send,
     ) -> Result<String, ChonkitError> {
-        let file = tokio::fs::read(&format!("{}/{}", self.base.display(), document.path)).await?;
+        let file = tokio::fs::read(&document.path).await?;
         parser.parse(&file)
     }
 
     async fn write(&self, name: &str, file: &[u8]) -> Result<String, ChonkitError> {
         let path = format!("{}/{name}", self.base.display());
         tokio::fs::write(&path, file).await?;
-
         Ok(path)
     }
 
@@ -79,7 +78,7 @@ impl DocumentStore for FsDocumentStore {
 #[cfg(test)]
 mod tests {
     use super::{DocumentStore, FsDocumentStore};
-    use crate::core::{document::parser::parse_text, model::document::Document};
+    use crate::core::{document::parser::text::TextParser, model::document::Document};
 
     const DIR: &str = "__fs_doc_store_tests";
     const CONTENT: &str = "Hello world.";
@@ -92,14 +91,16 @@ mod tests {
 
         let d = Document {
             name: "foo".to_string(),
-            path: "foo".to_string(),
+            path: format!("{DIR}/foo"),
             ..Default::default()
         };
+
         let path = store.write(&d.name, CONTENT.as_bytes()).await.unwrap();
+
         let file = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(CONTENT, file);
 
-        let read = store.read(&d, parse_text).await.unwrap();
+        let read = store.read(&d, TextParser::default()).await.unwrap();
         assert_eq!(CONTENT, read);
 
         store.delete(&path).await.unwrap();

@@ -1,7 +1,10 @@
 use super::{List, Pagination};
 use crate::{
     core::model::document::{
-        config::{DocumentConfig, DocumentConfigInsert},
+        config::{
+            DocumentChunkConfig, DocumentChunkConfigInsert, DocumentParseConfig,
+            DocumentParseConfigInsert,
+        },
         Document, DocumentInsert, DocumentUpdate,
     },
     error::ChonkitError,
@@ -73,16 +76,30 @@ pub trait DocumentRepo {
     /// * `path`: Document path.
     fn remove_by_path(&self, path: &str) -> impl Future<Output = Result<(), ChonkitError>> + Send;
 
-    /// Get the document's configuration for chunking/parsing.
+    /// Get the document's configuration for chunking.
     ///
     /// * `id`: Document ID.
-    fn get_config(
+    fn get_chunk_config(
         &self,
         id: uuid::Uuid,
-    ) -> impl Future<Output = Result<Option<DocumentConfig>, ChonkitError>> + Send;
+    ) -> impl Future<Output = Result<Option<DocumentChunkConfig>, ChonkitError>> + Send;
 
-    fn insert_config(
+    /// Get the document's configuration for parsing.
+    ///
+    ///
+    /// * `id`: Document ID.
+    fn get_parse_config(
         &self,
-        config: DocumentConfigInsert,
-    ) -> impl Future<Output = Result<DocumentConfig, ChonkitError>> + Send;
+        id: uuid::Uuid,
+    ) -> impl Future<Output = Result<Option<DocumentParseConfig>, ChonkitError>> + Send;
+
+    fn insert_chunk_config(
+        &self,
+        config: DocumentChunkConfigInsert,
+    ) -> impl Future<Output = Result<DocumentChunkConfig, ChonkitError>> + Send;
+
+    fn insert_parse_config(
+        &self,
+        config: DocumentParseConfigInsert,
+    ) -> impl Future<Output = Result<DocumentParseConfig, ChonkitError>> + Send;
 }

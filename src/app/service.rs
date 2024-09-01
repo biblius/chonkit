@@ -1,10 +1,10 @@
 use super::{document::store::FsDocumentStore, embedder::FastEmbedder};
 use crate::{
+    app::repo::pg::document::PgDocumentRepo,
     core::{
         service::{document::DocumentService, vector::VectorService},
         vector::QdrantVectorStore,
     },
-    imp::repo::pg::document::PgDocumentRepo,
 };
 use qdrant_client::Qdrant;
 use sqlx::PgPool;
@@ -27,7 +27,7 @@ impl ServiceState {
         let embedder = FastEmbedder;
         let store_vector = QdrantVectorStore::new(qdrant);
 
-        let repo_document = PgDocumentRepo::new(pool.clone()).await;
+        let repo_document = PgDocumentRepo::new(pool.clone());
 
         let service_doc =
             DocumentService::new(repo_document.clone(), FsDocumentStore::new("content"));

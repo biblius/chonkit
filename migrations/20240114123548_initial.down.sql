@@ -1,3 +1,4 @@
 DROP TABLE collections;
-DROP TABLE doc_configs;
+DROP TABLE parsers;
+DROP TABLE chunkers;
 DROP TABLE documents;
