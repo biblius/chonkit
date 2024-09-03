@@ -26,11 +26,9 @@ pub fn chunk(config: ChunkConfig, content: &str) -> Result<Vec<&str>, ChunkerErr
             skip_f,
             skip_b,
         } => {
-            let skip_f = skip_f.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-            let skip_b = skip_b.iter().map(|s| s.as_str()).collect::<Vec<_>>();
             let chunker = SnappingWindow::new(size, overlap)
-                .skip_forward(&skip_f)
-                .skip_back(&skip_b);
+                .skip_forward(skip_f)
+                .skip_back(skip_b);
             let chunks = chunker.chunk(content)?.into_iter().collect::<Vec<_>>();
             Ok(chunks)
         }

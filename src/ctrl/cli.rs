@@ -139,10 +139,13 @@ pub async fn run(services: ServiceState) {
                         .unwrap();
 
                     for (i, preview) in preview.iter().enumerate() {
-                        if i < start.saturating_sub(1) || i > end {
+                        if i < start.saturating_sub(1) {
                             continue;
                         }
-                        println!("Chunk {i} {}", format!("{:=>60}", "v"));
+                        if i > end {
+                            break;
+                        }
+                        println!("Chunk {i} {:=>60}", "v");
                         println!();
                         println!("{preview}");
                         println!();

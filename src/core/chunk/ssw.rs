@@ -17,29 +17,28 @@ use tracing::trace;
 /// represent the amount of sentences in the chunk and the `overlap` will represent
 /// how many back/forward sentences will be included.
 #[derive(Debug)]
-pub struct SnappingWindow<'skip> {
-    /// The config here is semantically different. `size` will represent the
-    /// amount of bytes in the base chunk, while `overlap` will represent the amount
-    /// of trailing/leading sentences.
+pub struct SnappingWindow {
+    /// Here `size` represents the amount of bytes in the base chunk
+    /// while `overlap` will represent the amount of leading/trailing sentences.
     config: ChunkBaseConfig,
 
     /// The delimiter to use to split sentences. At time of writing the most common one is ".".
     delimiter: char,
 
     /// Whenever a delimiter is found, the chunker will look ahead for these sequences
-    /// and will skip the delimiter if found, basically treating it as a regular char.
+    /// and will skip the delimiter if found, treating it as a regular char.
     ///
     /// Useful for common abbreviations and urls.
-    skip_forward: &'skip [&'skip str],
+    skip_forward: Vec<String>,
 
     /// Whenever a delimiter is found, the chunker will look back for these sequences
-    /// and will skip the delimiter if found, basically treating it as a regular char.
+    /// and will skip the delimiter if found, treating it as a regular char.
     ///
     /// Useful for common abbreviations and urls.
-    skip_back: &'skip [&'skip str],
+    skip_back: Vec<String>,
 }
 
-impl<'skip> SnappingWindow<'skip> {
+impl SnappingWindow {
     pub fn new(size: usize, overlap: usize) -> Self {
         Self {
             config: ChunkBaseConfig::new(size, overlap),
@@ -52,18 +51,18 @@ impl<'skip> SnappingWindow<'skip> {
         self
     }
 
-    pub fn skip_forward(mut self, skip_forward: &'skip [&'skip str]) -> Self {
+    pub fn skip_forward(mut self, skip_forward: Vec<String>) -> Self {
         self.skip_forward = skip_forward;
         self
     }
 
-    pub fn skip_back(mut self, skip_back: &'skip [&'skip str]) -> Self {
+    pub fn skip_back(mut self, skip_back: Vec<String>) -> Self {
         self.skip_back = skip_back;
         self
     }
 }
 
-impl<'skip> Chunker for SnappingWindow<'skip> {
+impl Chunker for SnappingWindow {
     fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let Self {
             config: ChunkBaseConfig { size, overlap },
@@ -116,12 +115,12 @@ impl<'skip> Chunker for SnappingWindow<'skip> {
 
             for _ in 0..*overlap {
                 p_cursor.advance();
-                while p_cursor.advance_if_peek(skip_forward, skip_back) {
+                while p_cursor.advance_if_peek(&skip_forward, &skip_back) {
                     p_cursor.advance();
                 }
 
                 n_cursor.advance();
-                while n_cursor.advance_if_peek(skip_forward, skip_back) {
+                while n_cursor.advance_if_peek(&skip_forward, &skip_back) {
                     n_cursor.advance();
                 }
             }
@@ -162,14 +161,29 @@ impl<'skip> Chunker for SnappingWindow<'skip> {
     }
 }
 
-impl Default for SnappingWindow<'_> {
+impl Default for SnappingWindow {
     fn default() -> Self {
         Self {
             config: ChunkBaseConfig::new(500, 10),
             delimiter: '.',
             // Common urls, abbreviations, file extensions
-            skip_forward: &["com", "org", "net", "g.", "e.", "sh", "rs", "js", "json"],
-            skip_back: &["www", "etc", "e.g", "i.e"],
+            skip_forward: vec![
+                "com".to_string(),
+                "org".to_string(),
+                "net".to_string(),
+                "g.".to_string(),
+                "e.".to_string(),
+                "sh".to_string(),
+                "rs".to_string(),
+                "js".to_string(),
+                "json".to_string(),
+            ],
+            skip_back: vec![
+                "www".to_string(),
+                "etc".to_string(),
+                "e.g".to_string(),
+                "i.e".to_string(),
+            ],
         }
     }
 }
@@ -298,7 +312,7 @@ impl<'a> Cursor<'a> {
         &self.buf[self.byte_offset..end] == pat
     }
 
-    fn advance_if_peek(&mut self, forward: &[&str], back: &[&str]) -> bool {
+    fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
         for s in back {
             if self.peek_back(s) {
                 return true;
@@ -442,7 +456,7 @@ impl<'a> CursorRev<'a> {
         &self.buf[start..end] == pat
     }
 
-    fn advance_if_peek(&mut self, forward: &[&str], back: &[&str]) -> bool {
+    fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
         for s in back {
             if self.peek_back(s) {
                 self.advance_exact(s);
@@ -502,25 +516,22 @@ mod tests {
     #[test]
     fn constructor() {
         // For lifetime sanity checks
-        let skip_f = [String::from("foo"), String::from("bar")];
-        let skip_f: Vec<_> = skip_f.iter().map(|s| s.as_str()).collect();
-
-        let skip_b = [String::from("foo"), String::from("bar")];
-        let skip_b: Vec<_> = skip_b.iter().map(|s| s.as_str()).collect();
+        let skip_f = vec![String::from("foo"), String::from("bar")];
+        let skip_b = vec![String::from("foo"), String::from("bar")];
         let size = 1;
         let overlap = 1;
         let delimiter = '!';
 
         let chunker = SnappingWindow::new(size, overlap)
             .delimiter(delimiter)
-            .skip_forward(&skip_f)
-            .skip_back(&skip_b);
+            .skip_forward(skip_f.clone())
+            .skip_back(skip_b.clone());
 
         assert_eq!(delimiter, chunker.delimiter);
         assert_eq!(size, chunker.config.size);
         assert_eq!(overlap, chunker.config.overlap);
-        assert_eq!(&skip_f, chunker.skip_forward);
-        assert_eq!(&skip_b, chunker.skip_back);
+        assert_eq!(skip_f, chunker.skip_forward);
+        assert_eq!(skip_b, chunker.skip_back);
     }
 
     #[test]
@@ -685,7 +696,7 @@ mod tests {
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
         let chunker = SnappingWindow {
             config: ChunkBaseConfig::new(1, 1),
-            skip_back: &["etc", "foobar"],
+            skip_back: vec!["etc".to_string(), "foobar".to_string()],
             ..Default::default()
         };
         let expected = [input];
@@ -705,7 +716,7 @@ mod tests {
 
         let chunker = SnappingWindow {
             config: ChunkBaseConfig::new(1, 1),
-            skip_forward: &["com", "org"],
+            skip_forward: vec!["com".to_string(), "org".to_string()],
             ..Default::default()
         };
 
@@ -751,8 +762,16 @@ mod tests {
 
         let chunker = SnappingWindow {
             config: ChunkBaseConfig::new(1, 1),
-            skip_forward: &["0", "1", "2", "3", "4", "co", "com"],
-            skip_back: &["com"],
+            skip_forward: vec![
+                "0".to_string(),
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "4".to_string(),
+                "co".to_string(),
+                "com".to_string(),
+            ],
+            skip_back: vec!["com".to_string()],
             ..Default::default()
         };
 

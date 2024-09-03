@@ -1,6 +1,5 @@
 use crate::{
     app::service::ServiceState,
-    control::dto::{CreateCollectionPayload, SearchPayload},
     core::{
         chunk::ChunkConfig,
         document::parser::ParseConfig,
@@ -8,6 +7,7 @@ use crate::{
         repo::Pagination,
         service::document::DocumentUpload,
     },
+    ctrl::dto::{CreateCollectionPayload, SearchPayload},
     error::ChonkitError,
 };
 use axum::{
