@@ -1,19 +1,27 @@
 use crate::{
     app::service::ServiceState,
     control::dto::{CreateCollectionPayload, SearchPayload},
-    core::chunk::ChunkConfig,
+    core::{
+        chunk::ChunkConfig,
+        document::parser::ParseConfig,
+        model::document::{Document, DocumentType},
+        repo::Pagination,
+        service::document::DocumentUpload,
+    },
     error::ChonkitError,
 };
 use axum::{
+    extract::{DefaultBodyLimit, Query},
     http::Method,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
-use std::time::Duration;
+use serde::Serialize;
+use std::{collections::HashMap, time::Duration};
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
-use tracing::Span;
-use uuid::Uuid;
+use tracing::{error, Span};
+use validify::Validate;
 
 pub fn router(state: ServiceState) -> Router {
     let router = public_router(state.clone());
@@ -34,65 +42,19 @@ pub fn router(state: ServiceState) -> Router {
 
 fn public_router(state: ServiceState) -> Router {
     Router::new()
-        //.route("/files", get(sidebar_init))
-        //.route("/files/:id", get(sidebar_entries))
-        // .route("/documents/:id", get(get_file))
-        .route("/documents/:id/chunk", post(chunk))
+        .route("/documents", get(list_documents))
+        .route("/documents", post(upload_documents))
+        .layer(DefaultBodyLimit::max(50_000_000))
+        .route("/documents/:id", get(get_document))
+        .route("/documents/:id", delete(delete_document))
+        .route("/documents/:id/chunk/preview", post(chunk_preview))
+        .route("/documents/:id/parse/preview", post(parse_preview))
+        .route("/documents/sync", get(sync))
         .route("/embeddings/models", get(list_embedding_models))
         .route("/embeddings/collections", get(list_collections))
         .route("/embeddings/collections", post(create_collection))
         .route("/embeddings/search", post(search))
         .with_state(state)
-}
-
-// DOCUMENT SERVICE ROUTER
-
-//pub async fn get_file(
-//    service: axum::extract::State<ServiceState>,
-//    id: axum::extract::Path<uuid::Uuid>,
-//) -> Result<Json<FileResponse>, ChonkitError> {
-//    let file = service.document.get_file(*id).await?;
-//
-//    let content = service.document.get_file_contents(&file.path).await?;
-//
-//    Ok(Json(FileResponse::from((file, content))))
-//}
-
-//pub async fn sidebar_init(
-//    service: axum::extract::State<ServiceState>,
-//) -> Result<impl IntoResponse, ChonkitError> {
-//    let docs = service.document.list_root_files().await?;
-//    Ok(Json(docs))
-//}
-//
-//pub async fn sidebar_entries(
-//    service: axum::extract::State<ServiceState>,
-//    id: axum::extract::Path<uuid::Uuid>,
-//) -> Result<impl IntoResponse, ChonkitError> {
-//    let files = service.document.list_children(*id).await?;
-//    Ok(Json(files))
-//}
-
-// CHUNK ROUTER
-
-async fn chunk(
-    service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<Uuid>,
-    config: axum::extract::Json<ChunkConfig>,
-) -> Result<impl IntoResponse, ChonkitError> {
-    let file = service.document.get_metadata(id.0).await?;
-
-    // let content = service.document.get_file_contents(&file.path).await?;
-    //let chunks = service
-    //    .chunk
-    //    .chunk(config.0, &file, &content)
-    //    .unwrap()
-    //    .iter()
-    //    .map(|s| s.to_string())
-    //    .collect::<Vec<_>>();
-
-    //Ok(Json(chunks))
-    Ok("")
 }
 
 // VECTOR ROUTER
@@ -116,10 +78,110 @@ async fn search(
     Ok(Json(chunks))
 }
 
-async fn list_collections(
+async fn list_documents(
+    service: axum::extract::State<ServiceState>,
+    pagination: Option<axum::extract::Query<Pagination>>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let Query(pagination) = pagination.unwrap_or_default();
+    pagination.validate()?;
+    let documents = service.document.list_documents(pagination).await?;
+    Ok(Json(documents))
+}
+
+async fn get_document(
+    service: axum::extract::State<ServiceState>,
+    id: axum::extract::Path<uuid::Uuid>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let document = service.document.get_metadata(id.0).await?;
+    Ok(Json(document))
+}
+
+async fn delete_document(
+    service: axum::extract::State<ServiceState>,
+    id: axum::extract::Path<uuid::Uuid>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    service.document.delete(id.0).await?;
+    Ok(format!("Successfully deleted {}", id.0))
+}
+
+#[derive(Debug, Serialize)]
+struct UploadResponse {
+    documents: Vec<Document>,
+    /// Map form keys to errors
+    errors: HashMap<String, String>,
+}
+
+async fn upload_documents(
+    service: axum::extract::State<ServiceState>,
+    mut form: axum::extract::Multipart,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let mut documents = vec![];
+    let mut errors = HashMap::new();
+
+    while let Ok(Some(field)) = form.next_field().await {
+        let Some(name) = field.file_name() else {
+            continue;
+        };
+
+        let name = name.to_string();
+
+        let file = match field.bytes().await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!("error in form: {e}");
+                errors.insert(name, e.to_string());
+                continue;
+            }
+        };
+
+        let typ = match DocumentType::try_from_file_name(&name) {
+            Ok(ty) => ty,
+            Err(e) => {
+                error!("{e}");
+                errors.insert(name, e.to_string());
+                continue;
+            }
+        };
+
+        let upload = DocumentUpload::new(name.to_string(), typ, &file);
+        let document = service.document.upload(upload).await?;
+
+        documents.push(document);
+    }
+
+    Ok(Json(UploadResponse { documents, errors }))
+}
+
+async fn chunk_preview(
+    service: axum::extract::State<ServiceState>,
+    id: axum::extract::Path<uuid::Uuid>,
+    config: axum::extract::Json<ChunkConfig>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let parsed = service.document.chunk_preview(id.0, config.0).await?;
+    Ok(Json(parsed))
+}
+
+async fn parse_preview(
+    service: axum::extract::State<ServiceState>,
+    id: axum::extract::Path<uuid::Uuid>,
+    parser: axum::extract::Json<ParseConfig>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let parsed = service.document.parse_preview(id.0, parser.0).await?;
+    Ok(Json(parsed))
+}
+
+async fn sync(
     service: axum::extract::State<ServiceState>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collections = service.vector.list_collections().await?;
+    service.document.sync().await?;
+    Ok("Successfully synced")
+}
+
+async fn list_collections(
+    service: axum::extract::State<ServiceState>,
+    pagination: axum::extract::Query<Pagination>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let collections = service.vector.list_collections(pagination.0).await?;
     Ok(Json(collections))
 }
 

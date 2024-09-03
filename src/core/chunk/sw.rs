@@ -1,6 +1,6 @@
 use super::{Chunker, ChunkerError};
 use crate::core::chunk::ChunkBaseConfig;
-use tracing::debug;
+use tracing::{debug, trace};
 
 /// The most basic of chunkers.
 ///
@@ -36,6 +36,7 @@ impl Chunker for SlidingWindow {
             return Ok(vec![]);
         }
 
+        // Return whole input if it fits
         if input.len() <= size + overlap {
             return Ok(vec![input]);
         }
@@ -47,8 +48,20 @@ impl Chunker for SlidingWindow {
         let input_size = input.len();
 
         loop {
-            let chunk_start = if start == 0 { 0 } else { start - overlap };
-            let chunk_end = end + overlap;
+            let mut chunk_start = if start == 0 { 0 } else { start - overlap };
+            let mut chunk_end = end + overlap;
+
+            // Snap to first char boundary
+            while !input.is_char_boundary(chunk_start) {
+                dbg!("WHAT THE FUCK", chunk_start);
+                chunk_start -= 1;
+            }
+
+            // Snap to last char boundary
+            while !input.is_char_boundary(chunk_end) && chunk_end < input.len() - 1 {
+                dbg!("WHAT THE FUCK", chunk_end);
+                chunk_end += 1;
+            }
 
             if chunk_end > input_size {
                 let chunk = &input[chunk_start..input_size];

@@ -5,5 +5,5 @@ pub mod dto;
 #[cfg(feature = "cli")]
 pub mod cli;
 
-#[cfg(feature = "server")]
+#[cfg(feature = "http")]
 pub mod http;

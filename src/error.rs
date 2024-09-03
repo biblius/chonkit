@@ -5,8 +5,8 @@ use thiserror::Error;
 use tracing::error;
 use validify::ValidationErrors;
 
-#[cfg(feature = "server")]
-use axum::{http::StatusCode, response::IntoResponse};
+#[cfg(feature = "http")]
+pub mod http;
 
 #[derive(Debug, Error)]
 pub enum ChonkitError {
@@ -22,17 +22,17 @@ pub enum ChonkitError {
     #[error("Parse int: {0}")]
     ParseInt(#[from] ParseIntError),
 
-    #[error("Not found: {0}")]
-    NotFound(String),
-
     #[error("SQL: {0}")]
     Sqlx(#[from] sqlx::Error),
 
     #[error("Does not exist: {0}")]
     DoesNotExist(String),
 
-    #[error("Invalid Directory: {0}")]
+    #[error("Invalid file name: {0}")]
     InvalidFileName(String),
+
+    #[error("File exists: {0}")]
+    FileAlreadyExists(String),
 
     #[error("JSON error: {0}")]
     SerdeJson(#[from] serde_json::Error),
@@ -61,48 +61,7 @@ pub enum ChonkitError {
     #[error("Validation: {0}")]
     Validation(#[from] ValidationErrors),
 
-    #[cfg(feature = "server")]
+    #[cfg(feature = "http")]
     #[error("Http: {0}")]
     Http(#[from] axum::http::Error),
-}
-
-#[cfg(feature = "server")]
-impl IntoResponse for ChonkitError {
-    fn into_response(self) -> axum::response::Response {
-        error!("Error: {self}");
-
-        use ChonkitError as KE;
-
-        match self {
-            KE::NotFound(e) => (StatusCode::NOT_FOUND, e).into_response(),
-            KE::DoesNotExist(e) => (StatusCode::NOT_FOUND, e).into_response(),
-            KE::SerdeJson(_) => {
-                (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()).into_response()
-            }
-            KE::Validation(_) => {
-                (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()).into_response()
-            }
-            // Occurs on pw verification in handlers
-            KE::UnsupportedEmbeddingModel(e) => {
-                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
-            }
-            KE::Qdrant(QdrantError::ResponseError { status }) => {
-                (StatusCode::BAD_REQUEST, status.to_string()).into_response()
-            }
-            // TODO
-            KE::IO(_)
-            | KE::Fastembed(_)
-            | KE::UnsupportedFileType(_)
-            | KE::Fmt(_)
-            | KE::ParseInt(_)
-            | KE::Utf8(_)
-            | KE::Sqlx(_)
-            | KE::Chunk(_)
-            | KE::Qdrant(_)
-            | KE::InvalidFileName(_)
-            | KE::Http(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()).into_response(),
-            KE::ParsePdf(_) => todo!(),
-            KE::DocxRead(_) => todo!(),
-        }
-    }
 }

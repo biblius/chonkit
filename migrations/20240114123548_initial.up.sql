@@ -45,7 +45,7 @@ CREATE TABLE documents (
 -- Stores chunking configurations for documents.
 CREATE TABLE chunkers(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    document_id UUID NOT NULL REFERENCES documents,
+    document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
     config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -54,7 +54,7 @@ CREATE TABLE chunkers(
 -- Stores parsing configurations for documents.
 CREATE TABLE parsers(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    document_id UUID NOT NULL REFERENCES documents,
+    document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
     config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -63,7 +63,7 @@ CREATE TABLE parsers(
 -- Stores vector collections. 
 CREATE TABLE collections(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
+    name TEXT UNIQUE NOT NULL,
     model TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -15,8 +15,10 @@ pub const VEC_DB_URL: &str = "http://localhost:6334";
 pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 
+pub const DEFAULT_LOG: &str = "info,h2=off,lopdf=off,chonkit=debug";
+
 cfg_if!(
-    if #[cfg(feature = "server")] {
+    if #[cfg(feature = "http")] {
         async fn run() { run_server().await; }
     } else if #[cfg(feature = "cli")]  {
         async fn run() { run_cli().await; }
@@ -28,13 +30,13 @@ async fn main() {
     run().await;
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "http")]
 async fn run_server() {
     let args = <StartArgs as clap::Parser>::parse();
 
     tracing_subscriber::fmt()
         .with_max_level(args.log_level)
-        .with_env_filter(EnvFilter::new("info,h2=off,lopdf=off,chonkit=debug"))
+        .with_env_filter(EnvFilter::from_default_env())
         .init();
 
     let db_url = args.db_url();

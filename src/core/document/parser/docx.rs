@@ -29,10 +29,16 @@ impl DocumentParser for DocxParser {
         for el in input.document.children {
             match el {
                 docx_rs::DocumentChild::Paragraph(ref el) => {
+                    let mut paragraph = String::new();
                     let text = extract_paragraph(el)?;
                     for text in text {
-                        writeln!(out, "{text}")?;
+                        let text = text.trim();
+                        if text.is_empty() {
+                            continue;
+                        }
+                        let _ = write!(paragraph, "{text} ");
                     }
+                    let _ = writeln!(out, "{paragraph}");
                 }
                 docx_rs::DocumentChild::Table(el) => {
                     let table = extract_table(*el)?;

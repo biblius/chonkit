@@ -43,6 +43,17 @@ pub enum DocumentType {
     Pdf,
 }
 
+impl DocumentType {
+    pub fn try_from_file_name(name: &str) -> Result<Self, ChonkitError> {
+        let Some((_, ext)) = name.rsplit_once('.') else {
+            return Err(ChonkitError::UnsupportedFileType(format!(
+                "{name} - missing extension"
+            )));
+        };
+        Self::try_from(ext)
+    }
+}
+
 impl std::fmt::Display for DocumentType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -58,11 +69,19 @@ impl TryFrom<&str> for DocumentType {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "txt" => Ok(Self::Text),
+            "txt" | "md" | "xml" | "json" => Ok(Self::Text),
             "pdf" => Ok(Self::Pdf),
             "docx" => Ok(Self::Docx),
             _ => Err(ChonkitError::UnsupportedFileType(value.to_owned())),
         }
+    }
+}
+
+impl TryFrom<String> for DocumentType {
+    type Error = ChonkitError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.as_str().try_into()
     }
 }
 

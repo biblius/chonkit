@@ -1,15 +1,16 @@
 use crate::{
     core::{
-        chunk::ChunkConfig,
+        chunk::{chunk, ChunkConfig},
         document::{
             parser::{ParseConfig, Parser},
             store::DocumentStore,
         },
         model::document::{Document, DocumentInsert, DocumentType},
-        repo::document::DocumentRepo,
+        repo::{document::DocumentRepo, List, Pagination},
     },
     error::ChonkitError,
 };
+use tracing::info;
 use uuid::Uuid;
 use validify::Validify;
 
@@ -29,14 +30,18 @@ where
         Self { repo, storage }
     }
 
+    pub async fn list_documents(&self, p: Pagination) -> Result<List<Document>, ChonkitError> {
+        self.repo.list(p).await
+    }
+
     /// Get the metadata for a document.
     ///
-    /// * `id`: The ID of the document.
+    /// * `id`: The Document ID.
     pub async fn get_metadata(&self, id: Uuid) -> Result<Document, ChonkitError> {
         let file = self.repo.get_by_id(id).await?;
 
         let Some(file) = file else {
-            return Err(ChonkitError::NotFound(id.to_string()));
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
         Ok(file)
@@ -53,15 +58,18 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let config = self.repo.get_parse_config(document.id).await?;
         let ext = document.ext.as_str();
-
-        let parser = match config {
-            Some(cfg) => cfg.config,
-            None => Parser::new(ext.try_into()?),
-        };
+        let parser = self.get_parser(id, ext.try_into()?).await?;
 
         self.storage.read(&document, parser).await
+    }
+
+    async fn get_parser(&self, id: Uuid, ext: DocumentType) -> Result<Parser, ChonkitError> {
+        let config = self.repo.get_parse_config(id).await?;
+        match config {
+            Some(cfg) => Ok(cfg.config),
+            None => Ok(Parser::new(ext)),
+        }
     }
 
     /// Insert the document metadata to the repository and persist it
@@ -79,6 +87,16 @@ where
         Ok(document)
     }
 
+    pub async fn delete(&self, id: Uuid) -> Result<(), ChonkitError> {
+        let document = self.repo.get_by_id(id).await?;
+        let Some(document) = document else {
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+        };
+        self.repo.remove_by_id(document.id).await?;
+        self.storage.delete(&document.path).await
+    }
+
+    /// Sync storage contents with the repo.
     pub async fn sync(&self) -> Result<(), ChonkitError> {
         self.storage.sync(&self.repo).await
     }
@@ -88,15 +106,40 @@ where
         id: uuid::Uuid,
         parser: ParseConfig,
     ) -> Result<String, ChonkitError> {
-        todo!()
+        let document = self.repo.get_by_id(id).await?;
+
+        let Some(document) = document else {
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+        };
+
+        let parser = Parser::new_from(document.ext.as_str().try_into()?, parser);
+
+        self.storage.read(&document, parser).await
     }
 
-    pub async fn update_parser(
+    pub async fn chunk_preview(
         &self,
         id: uuid::Uuid,
-        config: ParseConfig,
-    ) -> Result<(), ChonkitError> {
-        todo!()
+        config: ChunkConfig,
+    ) -> Result<Vec<String>, ChonkitError> {
+        let document = self.repo.get_by_id(id).await?;
+        let Some(document) = document else {
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+        };
+        let ext = document.ext.as_str();
+        let parser = self.get_parser(id, ext.try_into()?).await?;
+        let content = self.storage.read(&document, parser).await?;
+
+        info!("Chunking {} with {config}", document.name);
+        Ok(chunk(config, &content)?
+            .into_iter()
+            .map(|chunk| chunk.to_owned())
+            .collect())
+    }
+
+    pub async fn update_parser(&self, id: uuid::Uuid, parser: Parser) -> Result<(), ChonkitError> {
+        self.repo.update_parse_config(id, parser).await?;
+        Ok(())
     }
 
     pub async fn update_chunker(
@@ -104,7 +147,8 @@ where
         id: uuid::Uuid,
         config: ChunkConfig,
     ) -> Result<(), ChonkitError> {
-        todo!()
+        self.repo.update_chunk_config(id, config).await?;
+        Ok(())
     }
 }
 
@@ -115,6 +159,12 @@ pub struct DocumentUpload<'a> {
     pub name: String,
     pub ty: DocumentType,
     pub file: &'a [u8],
+}
+
+impl<'a> DocumentUpload<'a> {
+    pub fn new(name: String, ty: DocumentType, file: &'a [u8]) -> Self {
+        Self { name, ty, file }
+    }
 }
 
 #[cfg(test)]

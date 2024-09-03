@@ -1,12 +1,13 @@
 use crate::core::embedder::Embedder;
-use crate::core::repo::document::DocumentRepo;
-use crate::core::vector::VectorStore;
+use crate::core::model::collection::{Collection, CollectionInsert};
+use crate::core::repo::vector::VectorRepo;
+use crate::core::repo::{List, Pagination};
+use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
 use crate::DEFAULT_COLLECTION_MODEL;
 use std::fmt::Debug;
 use tracing::info;
 
-/// # CORE
 /// High level operations related to embeddings and vector storage.
 #[derive(Debug, Clone)]
 pub struct VectorService<R, V, E> {
@@ -17,7 +18,7 @@ pub struct VectorService<R, V, E> {
 
 impl<R, V, E> VectorService<R, V, E>
 where
-    R: DocumentRepo,
+    R: VectorRepo,
     V: VectorStore,
     E: Embedder,
 {
@@ -27,11 +28,6 @@ where
             vectors,
             embedder,
         }
-    }
-
-    /// Return a list of all the vector collections.
-    pub async fn list_collections(&self) -> Result<Vec<String>, ChonkitError> {
-        self.vectors.list_collections().await
     }
 
     /// Return a list of models supported by this instance's embedder.
@@ -48,11 +44,15 @@ where
         self.vectors.create_default_collection(size).await;
     }
 
-    /// Create a collection in the vector DB.
+    /// Create a collection in the vector DB and store its info in the repository.
     ///
     /// * `name`: Name of the collection.
     /// * `model`: Will be used to determine the collection dimensions.
-    pub async fn create_collection(&self, name: &str, model: &str) -> Result<(), ChonkitError> {
+    pub async fn create_collection(
+        &self,
+        name: &str,
+        model: &str,
+    ) -> Result<Collection, ChonkitError> {
         info!("Creating collection '{name}' with embedding model '{model}'",);
 
         let size = self.embedder.size(model).ok_or_else(|| {
@@ -60,6 +60,32 @@ where
         })?;
 
         self.vectors.create_collection(name, size).await?;
+
+        let collection = CollectionInsert::new(name, model);
+        let collection = self.repo.create_collection(collection).await?;
+
+        Ok(collection)
+    }
+
+    /// List vector collections.
+    ///
+    /// * `p`: Pagination params.
+    pub async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
+        self.repo.list(p).await
+    }
+
+    /// Delete a vector collection from the repository and the store.
+    ///
+    /// * `id`: Collection ID.
+    pub async fn delete_collection(&self, id: uuid::Uuid) -> Result<(), ChonkitError> {
+        let collection = self.repo.get_collection(id).await?;
+
+        let Some(collection) = collection else {
+            return Ok(());
+        };
+
+        self.vectors.delete_collection(&collection.name).await?;
+        self.repo.delete_collection(collection.id).await?;
 
         Ok(())
     }

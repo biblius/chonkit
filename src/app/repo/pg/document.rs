@@ -8,7 +8,7 @@ use crate::core::{
         },
         Document, DocumentInsert, DocumentUpdate,
     },
-    repo::{document::DocumentRepo, List},
+    repo::{document::DocumentRepo, List, Pagination},
 };
 use crate::error::ChonkitError;
 use chrono::{DateTime, Utc};
@@ -49,11 +49,13 @@ impl DocumentRepo for PgDocumentRepo {
             .map(|el| el.path))
     }
 
-    async fn list(&self, p: crate::core::repo::Pagination) -> Result<List<Document>, ChonkitError> {
+    async fn list(&self, p: Pagination) -> Result<List<Document>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(id) FROM documents")
             .fetch_one(&self.pool)
             .await
-            .map(|row| row.count)?;
+            .map(|row| row.count.map(|count| count as usize))?;
+
+        let (limit, offset) = p.to_limit_offset();
 
         let documents = sqlx::query_as!(
             Document,
@@ -62,13 +64,13 @@ impl DocumentRepo for PgDocumentRepo {
                    LIMIT $1
                    OFFSET $2
                 "#,
-            p.per_page as i64,
-            p.page as i64,
+            limit,
+            offset
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(List::new(total.map(|c| c as usize), documents))
+        Ok(List::new(total, documents))
     }
 
     async fn insert(&self, file: DocumentInsert<'_>) -> Result<Document, ChonkitError> {
@@ -96,7 +98,11 @@ impl DocumentRepo for PgDocumentRepo {
         .map_err(ChonkitError::from)
     }
 
-    async fn update(&self, id: uuid::Uuid, update: DocumentUpdate<'_>) -> Result<(), ChonkitError> {
+    async fn update(
+        &self,
+        id: uuid::Uuid,
+        update: DocumentUpdate<'_>,
+    ) -> Result<u64, ChonkitError> {
         let DocumentUpdate {
             name,
             path,
@@ -104,7 +110,7 @@ impl DocumentRepo for PgDocumentRepo {
             tags,
         } = update;
 
-        sqlx::query!(
+        let result = sqlx::query!(
             r#"
             UPDATE documents SET 
             name = $1,
@@ -122,21 +128,21 @@ impl DocumentRepo for PgDocumentRepo {
         .execute(&self.pool)
         .await?;
 
-        Ok(())
+        Ok(result.rows_affected())
     }
 
-    async fn remove_by_id(&self, id: uuid::Uuid) -> Result<(), ChonkitError> {
-        sqlx::query!("DELETE FROM documents WHERE id = $1", id)
+    async fn remove_by_id(&self, id: uuid::Uuid) -> Result<u64, ChonkitError> {
+        let result = sqlx::query!("DELETE FROM documents WHERE id = $1", id)
             .execute(&self.pool)
             .await?;
-        Ok(())
+        Ok(result.rows_affected())
     }
 
-    async fn remove_by_path(&self, path: &str) -> Result<(), ChonkitError> {
-        sqlx::query!("DELETE FROM documents WHERE path = $1", path)
+    async fn remove_by_path(&self, path: &str) -> Result<u64, ChonkitError> {
+        let result = sqlx::query!("DELETE FROM documents WHERE path = $1", path)
             .execute(&self.pool)
             .await?;
-        Ok(())
+        Ok(result.rows_affected())
     }
 
     async fn get_chunk_config(
@@ -241,6 +247,38 @@ impl DocumentRepo for PgDocumentRepo {
 
         Ok(DocumentParseConfig::from(config))
     }
+
+    async fn update_chunk_config(
+        &self,
+        id: uuid::Uuid,
+        config: ChunkConfig,
+    ) -> Result<u64, ChonkitError> {
+        let result = sqlx::query!(
+            "UPDATE chunkers SET config = $1 WHERE id = $2",
+            Json(config) as Json<ChunkConfig>,
+            id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    async fn update_parse_config(
+        &self,
+        id: uuid::Uuid,
+        config: Parser,
+    ) -> Result<u64, ChonkitError> {
+        let result = sqlx::query!(
+            "UPDATE parsers SET config = $1 WHERE id = $2",
+            Json(config) as Json<Parser>,
+            id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
 }
 
 // Private dtos.
@@ -325,7 +363,8 @@ mod tests {
     use crate::{
         app::repo::pg::init,
         core::{
-            model::document::{DocumentInsert, DocumentType},
+            chunk::ChunkConfig,
+            model::document::{config::DocumentChunkConfigInsert, DocumentInsert, DocumentType},
             repo::document::DocumentRepo,
         },
     };
@@ -356,5 +395,21 @@ mod tests {
         let doc = repo.get_by_id(doc.id).await.unwrap();
 
         assert!(doc.is_none());
+    }
+
+    #[test]
+    async fn inserting_chunk_config_works(repo: PgDocumentRepo) {
+        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text);
+        let doc = repo.insert(doc).await.unwrap();
+        let chunker = ChunkConfig::sw(420, 69);
+        let cfg = DocumentChunkConfigInsert::new(doc.id, chunker.clone()).unwrap();
+        repo.insert_chunk_config(cfg).await.unwrap();
+        let config = repo.get_chunk_config(doc.id).await.unwrap().unwrap();
+        let ChunkConfig::SlidingWindow { config } = config.config else {
+            panic!("invalid config variant");
+        };
+        assert_eq!(chunker.size(), config.size);
+        assert_eq!(chunker.overlap(), config.overlap);
+        repo.remove_by_id(doc.id).await.unwrap();
     }
 }

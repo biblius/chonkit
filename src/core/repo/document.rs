@@ -1,17 +1,21 @@
 use super::{List, Pagination};
 use crate::{
-    core::model::document::{
-        config::{
-            DocumentChunkConfig, DocumentChunkConfigInsert, DocumentParseConfig,
-            DocumentParseConfigInsert,
+    core::{
+        chunk::ChunkConfig,
+        document::parser::Parser,
+        model::document::{
+            config::{
+                DocumentChunkConfig, DocumentChunkConfigInsert, DocumentParseConfig,
+                DocumentParseConfigInsert,
+            },
+            Document, DocumentInsert, DocumentUpdate,
         },
-        Document, DocumentInsert, DocumentUpdate,
     },
     error::ChonkitError,
 };
 use std::future::Future;
 
-/// Keep tracks of document.
+/// Keep tracks of documents and their chunking/parsing configurations.
 /// Info obtained from here is usually used to load files.
 pub trait DocumentRepo {
     /// Get document metadata based on ID.
@@ -63,18 +67,20 @@ pub trait DocumentRepo {
         &self,
         id: uuid::Uuid,
         document: DocumentUpdate<'_>,
-    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 
     /// Remove document metadata by id.
     ///
     /// * `id`: Document ID.
-    fn remove_by_id(&self, id: uuid::Uuid)
-        -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    fn remove_by_id(
+        &self,
+        id: uuid::Uuid,
+    ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 
     /// Remove document metadata by path.
     ///
     /// * `path`: Document path.
-    fn remove_by_path(&self, path: &str) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    fn remove_by_path(&self, path: &str) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 
     /// Get the document's configuration for chunking.
     ///
@@ -102,4 +108,16 @@ pub trait DocumentRepo {
         &self,
         config: DocumentParseConfigInsert,
     ) -> impl Future<Output = Result<DocumentParseConfig, ChonkitError>> + Send;
+
+    fn update_chunk_config(
+        &self,
+        id: uuid::Uuid,
+        config: ChunkConfig,
+    ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
+
+    fn update_parse_config(
+        &self,
+        id: uuid::Uuid,
+        config: Parser,
+    ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 }

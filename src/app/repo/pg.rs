@@ -1,7 +1,8 @@
-pub mod document;
-
 use sqlx::PgPool;
 use tracing::info;
+
+pub mod document;
+pub mod vector;
 
 pub async fn init(url: &str) -> PgPool {
     info!("Connecting to postgres at {url}");

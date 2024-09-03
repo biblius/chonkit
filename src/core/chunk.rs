@@ -1,30 +1,22 @@
 use serde::{Deserialize, Serialize};
 use std::str::Utf8Error;
 use thiserror::Error;
-use tracing::info;
 
-mod seq;
+mod rec;
 mod ssw;
 mod sw;
 
-pub use seq::Recursive;
+pub use rec::Recursive;
 pub use ssw::SnappingWindow;
 pub use sw::SlidingWindow;
 
 use crate::error::ChonkitError;
 
-use super::model::document::Document;
-
-pub fn chunk<'content>(
-    config: ChunkConfig,
-    document: &Document,
-    content: &'content str,
-) -> Result<Vec<&'content str>, ChunkerError> {
+pub fn chunk(config: ChunkConfig, content: &str) -> Result<Vec<&str>, ChunkerError> {
     match config {
         ChunkConfig::SlidingWindow {
             config: ChunkBaseConfig { size, overlap },
         } => {
-            info!("Chunking {} with SlidingWindow", document.name);
             let chunker = SlidingWindow::new(size, overlap);
             let chunks = chunker.chunk(content)?.into_iter().collect::<Vec<_>>();
             Ok(chunks)
@@ -34,7 +26,6 @@ pub fn chunk<'content>(
             skip_f,
             skip_b,
         } => {
-            info!("Chunking {} with SnappingWindow", document.name);
             let skip_f = skip_f.iter().map(|s| s.as_str()).collect::<Vec<_>>();
             let skip_b = skip_b.iter().map(|s| s.as_str()).collect::<Vec<_>>();
             let chunker = SnappingWindow::new(size, overlap)
@@ -47,7 +38,6 @@ pub fn chunk<'content>(
             config: ChunkBaseConfig { size, overlap },
             delimiters,
         } => {
-            info!("Chunking {} with Recursive", document.name);
             let delims = delimiters.iter().map(|s| s.as_str()).collect::<Vec<_>>();
             let chunker = Recursive::new(size, overlap, &delims);
             let chunks = chunker.chunk(content)?.into_iter().collect::<Vec<_>>();
@@ -136,7 +126,7 @@ impl Default for ChunkBaseConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChunkConfig {
     SlidingWindow {
@@ -151,6 +141,70 @@ pub enum ChunkConfig {
         config: ChunkBaseConfig,
         delimiters: Vec<String>,
     },
+}
+
+impl ChunkConfig {
+    /// Create a `SlidingWindow` chunker.
+    ///
+    /// * `size`: Chunk base size.
+    /// * `overlap`: Chunk overlap.
+    pub fn sw(size: usize, overlap: usize) -> Self {
+        Self::SlidingWindow {
+            config: ChunkBaseConfig::new(size, overlap),
+        }
+    }
+
+    /// Create a `SnappingWindow` chunker.
+    ///
+    /// * `size`: Chunk base size.
+    /// * `overlap`: Chunk overlap.
+    /// * `skip_f`: Patterns in front of delimiters to not treat as sentence stops.
+    /// * `skip_b`: Patterns behind delimiters to not treat as sentence stops.
+    pub fn ssw(size: usize, overlap: usize, skip_f: Vec<String>, skip_b: Vec<String>) -> Self {
+        Self::SnappingWindow {
+            config: ChunkBaseConfig::new(size, overlap),
+            skip_f,
+            skip_b,
+        }
+    }
+
+    /// Create a `Recursive` chunker.
+    ///
+    /// * `size`: Chunk base size.
+    /// * `overlap`: Chunk overlap.
+    /// * `delimiters`: Delimiters to use to split text.
+    pub fn rec(size: usize, overlap: usize, delimiters: Vec<String>) -> Self {
+        Self::Recursive {
+            config: ChunkBaseConfig::new(size, overlap),
+            delimiters,
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            ChunkConfig::SlidingWindow { config } => config.size,
+            ChunkConfig::SnappingWindow { config, .. } => config.size,
+            ChunkConfig::Recursive { config, .. } => config.size,
+        }
+    }
+
+    pub fn overlap(&self) -> usize {
+        match self {
+            ChunkConfig::SlidingWindow { config } => config.overlap,
+            ChunkConfig::SnappingWindow { config, .. } => config.overlap,
+            ChunkConfig::Recursive { config, .. } => config.overlap,
+        }
+    }
+}
+
+impl std::fmt::Display for ChunkConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChunkConfig::SlidingWindow { .. } => write!(f, "SlidingWindow"),
+            ChunkConfig::SnappingWindow { .. } => write!(f, "SnappingWindow"),
+            ChunkConfig::Recursive { .. } => write!(f, "Recursive"),
+        }
+    }
 }
 
 #[inline(always)]

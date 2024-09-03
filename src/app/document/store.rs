@@ -1,12 +1,12 @@
 use std::{path::PathBuf, str::FromStr};
 
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{
     core::{
         document::{parser::DocumentParser, store::DocumentStore},
         model::document::{Document, DocumentInsert, DocumentType},
-        repo::document::DocumentRepo,
+        repo::{document::DocumentRepo, Pagination},
     },
     error::ChonkitError,
 };
@@ -50,12 +50,7 @@ impl FsDocumentStore {
             )));
         };
 
-        match ext {
-            "pdf" => Ok(DocumentType::Pdf),
-            "docx" => Ok(DocumentType::Docx),
-            "txt" | "json" | "md" | "xml" | "html" => Ok(DocumentType::Text),
-            ext => Err(ChonkitError::UnsupportedFileType(ext.to_string())),
-        }
+        DocumentType::try_from(ext)
     }
 }
 
@@ -65,22 +60,54 @@ impl DocumentStore for FsDocumentStore {
         document: &Document,
         parser: impl DocumentParser + Send,
     ) -> Result<String, ChonkitError> {
+        debug!("Reading {}", document.path);
         let file = tokio::fs::read(&document.path).await?;
         parser.parse(&file)
     }
 
     async fn write(&self, name: &str, file: &[u8]) -> Result<String, ChonkitError> {
         let path = format!("{}/{name}", self.base.display());
-        tokio::fs::write(&path, file).await?;
-        Ok(path)
+        debug!("Writing {path}");
+        match tokio::fs::read(&path).await {
+            Ok(_) => Err(ChonkitError::FileAlreadyExists(name.to_string())),
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    tokio::fs::write(&path, file).await?;
+                    Ok(path)
+                }
+                _ => Err(e.into()),
+            },
+        }
     }
 
     async fn delete(&self, path: &str) -> Result<(), ChonkitError> {
+        debug!("Removing {path}");
         Ok(tokio::fs::remove_file(path).await?)
     }
 
     async fn sync(&self, repo: &(impl DocumentRepo + Sync)) -> Result<(), ChonkitError> {
+        debug!("Starting sync");
+        // Prune
+        let documents = repo.list(Pagination::new(1, 10_000)).await?;
+
+        for document in documents {
+            if let Err(e) = tokio::fs::metadata(&document.path).await {
+                match e.kind() {
+                    std::io::ErrorKind::NotFound => {
+                        info!(
+                            "Document '{}' not found in storage, trimming",
+                            document.name
+                        );
+                        repo.remove_by_id(document.id).await?;
+                    }
+                    _ => return Err(e.into()),
+                }
+            }
+        }
+
+        // Store
         let mut files = tokio::fs::read_dir(&self.base).await?;
+
         while let Some(file) = files.next_entry().await? {
             let ext = match self.get_extension(file.path()) {
                 Ok(ext) => ext,
@@ -94,15 +121,15 @@ impl DocumentStore for FsDocumentStore {
 
             let doc = repo.get_by_path(&path).await?;
 
-            if let Some(Document { id, path, .. }) = doc {
-                info!("Document '{path}' already exists ({id})");
+            if let Some(Document { id, name, .. }) = doc {
+                info!("Document '{name}' already exists ({id})");
                 continue;
             }
 
             let insert = DocumentInsert::new(&name, &path, ext);
 
             match repo.insert(insert).await {
-                Ok(Document { id, path, .. }) => info!("Successfully inserted '{path}' ({id})"),
+                Ok(Document { id, name, .. }) => info!("Successfully inserted '{name}' ({id})"),
                 Err(e) => error!("{e}"),
             }
         }
