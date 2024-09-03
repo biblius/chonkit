@@ -6,8 +6,8 @@ use tracing_subscriber::EnvFilter;
 
 pub mod app;
 pub mod config;
-pub mod control;
 pub mod core;
+pub mod ctrl;
 pub mod error;
 
 pub const DB_URL: &str = "postgresql://postgres:postgres@localhost:5433/chonkit";
@@ -48,7 +48,7 @@ async fn run_server() {
     let services = ServiceState::init(db_pool, qdrant).await;
 
     let addr = format!("{}:{}", args.address, args.port);
-    control::http::server(&addr, services).await;
+    ctrl::http::server(&addr, services).await;
 }
 
 #[cfg(feature = "cli")]
@@ -63,5 +63,5 @@ async fn run_cli() {
     let qdrant = Qdrant::from_url(VEC_DB_URL).build().unwrap();
 
     let services = ServiceState::init(db_pool, qdrant).await;
-    control::cli::run(services).await;
+    ctrl::cli::run(services).await;
 }

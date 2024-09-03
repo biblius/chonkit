@@ -64,14 +64,6 @@ where
         self.storage.read(&document, parser).await
     }
 
-    async fn get_parser(&self, id: Uuid, ext: DocumentType) -> Result<Parser, ChonkitError> {
-        let config = self.repo.get_parse_config(id).await?;
-        match config {
-            Some(cfg) => Ok(cfg.config),
-            None => Ok(Parser::new(ext)),
-        }
-    }
-
     /// Insert the document metadata to the repository and persist it
     /// in the underlying storage implementation.
     ///
@@ -150,6 +142,14 @@ where
         self.repo.update_chunk_config(id, config).await?;
         Ok(())
     }
+
+    async fn get_parser(&self, id: Uuid, ext: DocumentType) -> Result<Parser, ChonkitError> {
+        let config = self.repo.get_parse_config(id).await?;
+        match config {
+            Some(cfg) => Ok(cfg.config),
+            None => Ok(Parser::new(ext)),
+        }
+    }
 }
 
 #[derive(Debug, Validify)]
@@ -227,6 +227,8 @@ mod document_service_tests {
         let text_from_store = service.get_content(document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
+
+        service.delete(document.id).await.unwrap();
     }
 
     #[test]
@@ -244,6 +246,8 @@ mod document_service_tests {
         let text_from_store = service.get_content(document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
+
+        service.delete(document.id).await.unwrap();
     }
 
     #[test]
@@ -261,5 +265,7 @@ mod document_service_tests {
         let text_from_store = service.get_content(document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
+
+        service.delete(document.id).await.unwrap();
     }
 }

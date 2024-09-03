@@ -51,7 +51,7 @@ tower-http = { version = "0.5.0", features = [
 ], optional = true }
 
 [features]
-default = ["http"]
+default = ["cli"]
 cli = []
 http = ["axum", "axum-extra", "axum-macros", "tower-http"]
 

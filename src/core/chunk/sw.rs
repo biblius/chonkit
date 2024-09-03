@@ -53,13 +53,11 @@ impl Chunker for SlidingWindow {
 
             // Snap to first char boundary
             while !input.is_char_boundary(chunk_start) {
-                dbg!("WHAT THE FUCK", chunk_start);
                 chunk_start -= 1;
             }
 
             // Snap to last char boundary
             while !input.is_char_boundary(chunk_end) && chunk_end < input.len() - 1 {
-                dbg!("WHAT THE FUCK", chunk_end);
                 chunk_end += 1;
             }
 

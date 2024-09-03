@@ -88,7 +88,7 @@ impl DocumentStore for FsDocumentStore {
     async fn sync(&self, repo: &(impl DocumentRepo + Sync)) -> Result<(), ChonkitError> {
         debug!("Starting sync");
         // Prune
-        let documents = repo.list(Pagination::new(1, 10_000)).await?;
+        let documents = repo.list(Pagination::new(10_000, 1)).await?;
 
         for document in documents {
             if let Err(e) = tokio::fs::metadata(&document.path).await {

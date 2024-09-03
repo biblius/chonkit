@@ -32,18 +32,18 @@ impl<T> std::iter::IntoIterator for List<T> {
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {
-    /// The offset.
-    #[validate(range(min = 1.))]
-    pub page: usize,
-
     /// The limit.
     #[validate(range(min = 1.))]
     pub per_page: usize,
+
+    /// The offset.
+    #[validate(range(min = 1.))]
+    pub page: usize,
 }
 
 impl Pagination {
-    pub fn new(page: usize, per_page: usize) -> Self {
-        Self { page, per_page }
+    pub fn new(per_page: usize, page: usize) -> Self {
+        Self { per_page, page }
     }
 
     /// Returns a tuple whose first element is the LIMIT and second
@@ -57,8 +57,8 @@ impl Pagination {
 impl Default for Pagination {
     fn default() -> Self {
         Self {
-            page: 1,
             per_page: 10,
+            page: 1,
         }
     }
 }
