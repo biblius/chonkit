@@ -72,6 +72,8 @@ impl DocumentChunker for SnappingWindow {
             skip_back,
         } = self;
 
+        let total_bytes = byte_count(input);
+
         let mut chunks = vec![];
 
         let mut cursor = Cursor::new(input, *delim);
@@ -104,30 +106,23 @@ impl DocumentChunker for SnappingWindow {
 
             chunk = concat(chunk, piece)?;
 
-            if chunk.len() < *size {
+            if byte_count(chunk) < *size {
+                if cursor.finished() {
+                    let prev = &input[..cursor.byte_offset - byte_count(chunk)];
+                    let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
+                    let chunk_full = concat(prev, chunk)?;
+                    chunks.push(chunk_full);
+                    trace!("Added chunk, total: {}", chunks.len());
+                    break;
+                }
                 continue;
             }
 
             let prev = &input[..cursor.byte_offset - byte_count(chunk)];
             let next = &input[cursor.byte_offset..];
 
-            let mut p_cursor = CursorRev::new(prev, *delim);
-            let mut n_cursor = Cursor::new(next, *delim);
-
-            for _ in 0..*overlap {
-                p_cursor.advance();
-                while p_cursor.advance_if_peek(skip_forward, skip_back) {
-                    p_cursor.advance();
-                }
-
-                n_cursor.advance();
-                while n_cursor.advance_if_peek(skip_forward, skip_back) {
-                    n_cursor.advance();
-                }
-            }
-
-            let prev = p_cursor.get_slice();
-            let next = n_cursor.get_slice();
+            let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
+            let (next, next_offset) = next_chunk(next, *overlap, *delim, skip_forward, skip_back);
 
             let chunk_full = concat(concat(prev, chunk)?, next)?;
 
@@ -138,10 +133,9 @@ impl DocumentChunker for SnappingWindow {
             }
 
             start += 1;
-
             snap_front(&mut start, input);
 
-            if start + n_cursor.byte_offset >= input.len() {
+            if start + next_offset >= total_bytes {
                 // Handles case where the full text is chunked
                 // and there is no previous chunk
                 if chunks.is_empty() {
@@ -152,14 +146,47 @@ impl DocumentChunker for SnappingWindow {
             }
 
             let mut chunk_start = start - 1;
-
-            snap_front(&mut chunk_start, input);
+            snap_back(&mut chunk_start, input);
 
             chunk = &input[chunk_start..start];
         }
 
         Ok(chunks)
     }
+}
+
+fn previous_chunk<'a>(
+    input: &'a str,
+    overlap: usize,
+    delim: char,
+    skip_forward: &[String],
+    skip_back: &[String],
+) -> &'a str {
+    let mut p_cursor = CursorRev::new(input, delim);
+    for _ in 0..overlap {
+        p_cursor.advance();
+        while p_cursor.advance_if_peek(skip_forward, skip_back) {
+            p_cursor.advance();
+        }
+    }
+    p_cursor.get_slice()
+}
+
+fn next_chunk<'a>(
+    input: &'a str,
+    overlap: usize,
+    delim: char,
+    skip_forward: &[String],
+    skip_back: &[String],
+) -> (&'a str, usize) {
+    let mut n_cursor = Cursor::new(input, delim);
+    for _ in 0..overlap {
+        n_cursor.advance();
+        while n_cursor.advance_if_peek(skip_forward, skip_back) {
+            n_cursor.advance();
+        }
+    }
+    (n_cursor.get_slice(), n_cursor.byte_offset)
 }
 
 impl Default for SnappingWindow {
@@ -219,8 +246,12 @@ impl<'a> Cursor<'a> {
         }
     }
 
+    fn finished(&self) -> bool {
+        self.byte_offset == self.byte_count - 1
+    }
+
     fn get_slice(&self) -> &'a str {
-        if self.buf.is_empty() || self.byte_offset == self.byte_count - 1 {
+        if self.buf.is_empty() || self.finished() {
             return self.buf;
         }
         &self.buf[..self.byte_offset]
@@ -229,7 +260,7 @@ impl<'a> Cursor<'a> {
     /// Advance the byte_offset until `delim` is found. The byte_offset will be set
     /// to the index following the delim.
     fn advance(&mut self) {
-        if self.buf.is_empty() || self.byte_offset == self.byte_count - 1 {
+        if self.buf.is_empty() || self.finished() {
             return;
         }
 
@@ -275,7 +306,7 @@ impl<'a> Cursor<'a> {
         let amt = byte_count(pat);
         if self.byte_offset + amt >= self.byte_count {
             self.byte_offset = self.byte_count - 1;
-            self.char_offset += self.buf.chars().count();
+            self.char_offset = self.buf.chars().count();
             return;
         }
         self.byte_offset += amt;
@@ -290,7 +321,7 @@ impl<'a> Cursor<'a> {
         }
 
         // Skip if we are done.
-        if self.byte_offset == self.byte_count - 1 {
+        if self.finished() {
             return false;
         }
 
@@ -366,18 +397,22 @@ impl<'a> CursorRev<'a> {
         }
     }
 
+    fn finished(&self) -> bool {
+        self.byte_offset == 0
+    }
+
     fn get_slice(&self) -> &'a str {
-        if self.byte_offset == 0 {
+        if self.finished() {
             self.buf
         } else {
             let mut start = self.byte_offset + 1;
-            snap_back(&mut start, self.buf);
+            snap_front(&mut start, self.buf);
             &self.buf[start..]
         }
     }
 
     fn advance(&mut self) {
-        if self.byte_offset == 0 {
+        if self.finished() {
             return;
         }
 
@@ -397,7 +432,7 @@ impl<'a> CursorRev<'a> {
                 break;
             };
 
-            if self.byte_offset == 0 {
+            if self.finished() {
                 break;
             }
 
@@ -432,7 +467,7 @@ impl<'a> CursorRev<'a> {
 
     fn peek_back(&self, pat: &str) -> bool {
         // Skip if we are done.
-        if self.byte_offset == 0 {
+        if self.finished() {
             return false;
         }
         let mut start = self.byte_offset.saturating_sub(byte_count(pat));
@@ -444,7 +479,7 @@ impl<'a> CursorRev<'a> {
         let pat_offset = byte_count(pat);
 
         // Skip if we are done or at the start.
-        if self.byte_offset == 0 || self.byte_offset + pat_offset >= self.byte_count {
+        if self.finished() || self.byte_offset + pat_offset >= self.byte_count {
             return false;
         }
 
