@@ -19,6 +19,9 @@ pub struct Document {
     /// File extension.
     pub ext: String,
 
+    /// Content hash.
+    pub hash: String,
+
     /// Label used to group the file.
     pub label: Option<String>,
 
@@ -91,18 +94,20 @@ pub struct DocumentInsert<'a> {
     pub id: uuid::Uuid,
     pub name: &'a str,
     pub path: &'a str,
+    pub hash: &'a str,
     pub ext: DocumentType,
     pub label: Option<&'a str>,
     pub tags: Option<Vec<String>>,
 }
 
 impl<'a> DocumentInsert<'a> {
-    pub fn new(name: &'a str, path: &'a str, ext: DocumentType) -> Self {
+    pub fn new(name: &'a str, path: &'a str, ext: DocumentType, hash: &'a str) -> Self {
         Self {
             id: uuid::Uuid::new_v4(),
             name,
             path,
             ext,
+            hash,
             label: None,
             tags: None,
         }
@@ -123,7 +128,6 @@ impl<'a> DocumentInsert<'a> {
 #[derive(Debug)]
 pub struct DocumentUpdate<'a> {
     pub name: Option<&'a str>,
-    pub path: Option<&'a str>,
     pub label: Option<&'a str>,
     pub tags: Option<Vec<String>>,
 }

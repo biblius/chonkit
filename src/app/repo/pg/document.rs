@@ -30,14 +30,14 @@ impl PgDocumentRepo {
 impl DocumentRepo for PgDocumentRepo {
     async fn get_by_id(&self, id: uuid::Uuid) -> Result<Option<Document>, ChonkitError> {
         Ok(
-            sqlx::query_as!(Document, "SELECT * FROM documents WHERE id = $1", id)
+            sqlx::query_as!(Document, "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE id = $1", id)
                 .fetch_optional(&self.pool)
                 .await?,
         )
     }
 
     async fn get_by_path(&self, path: &str) -> Result<Option<Document>, ChonkitError> {
-        sqlx::query_as!(Document, "SELECT * FROM documents WHERE path = $1", path)
+        sqlx::query_as!(Document, "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at  FROM documents WHERE path = $1", path)
             .fetch_optional(&self.pool)
             .await
             .map_err(ChonkitError::from)
@@ -60,7 +60,7 @@ impl DocumentRepo for PgDocumentRepo {
 
         let documents = sqlx::query_as!(
             Document,
-            r#"SELECT id, name, path, ext, label, tags, created_at, updated_at
+            r#"SELECT id, name, path, ext, hash, label, tags, created_at, updated_at
                    FROM documents
                    LIMIT $1
                    OFFSET $2
@@ -80,17 +80,21 @@ impl DocumentRepo for PgDocumentRepo {
             name,
             path,
             ext,
+            hash,
             label,
             tags,
         } = file;
 
         sqlx::query_as!(
             Document,
-            "INSERT INTO documents VALUES($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING *",
+            "INSERT INTO documents
+             VALUES($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING
+             RETURNING id, name, path, ext, hash, label, tags, created_at, updated_at",
             id,
             name,
             path,
             ext.to_string(),
+            hash,
             label,
             tags.as_deref(),
         )
@@ -104,24 +108,17 @@ impl DocumentRepo for PgDocumentRepo {
         id: uuid::Uuid,
         update: DocumentUpdate<'_>,
     ) -> Result<u64, ChonkitError> {
-        let DocumentUpdate {
-            name,
-            path,
-            label,
-            tags,
-        } = update;
+        let DocumentUpdate { name, label, tags } = update;
 
         let result = sqlx::query!(
             r#"
             UPDATE documents SET 
             name = $1,
-            path = $2,
-            label = $3,
-            tags = $4
-            WHERE id = $5 
+            label = $2,
+            tags = $3
+            WHERE id = $4 
         "#,
             name.as_ref(),
-            path.as_ref(),
             label.as_ref(),
             tags.as_deref(),
             id
@@ -383,7 +380,7 @@ mod tests {
 
     #[test]
     async fn inserting_document_works(repo: PgDocumentRepo) {
-        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text);
+        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text, "SHA256");
         let doc = repo.insert(doc).await.unwrap();
         let doc = repo.get_by_id(doc.id).await.unwrap().unwrap();
 
@@ -400,7 +397,7 @@ mod tests {
 
     #[test]
     async fn inserting_chunk_config_works(repo: PgDocumentRepo) {
-        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text);
+        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text, "SHA256");
         let doc = repo.insert(doc).await.unwrap();
         let chunker = ChunkConfig::sw(420, 69);
         let cfg = DocumentChunkConfigInsert::new(doc.id, chunker.clone()).unwrap();

@@ -74,8 +74,8 @@ where
     pub async fn upload(&self, mut params: DocumentUpload<'_>) -> Result<Document, ChonkitError> {
         params.validify()?;
         let DocumentUpload { ref name, ty, file } = params;
-        let path = self.storage.write(name, file).await?;
-        let insert = DocumentInsert::new(name, &path, ty);
+        let (path, hash) = self.storage.write(name, file).await?;
+        let insert = DocumentInsert::new(name, &path, ty, &hash);
         let document = self.repo.insert(insert).await?;
         Ok(document)
     }

@@ -1,3 +1,4 @@
+use crate::error::ChonkitError;
 use serde::{Deserialize, Serialize};
 use std::str::Utf8Error;
 use thiserror::Error;
@@ -9,8 +10,6 @@ mod sw;
 pub use rec::Recursive;
 pub use ssw::SnappingWindow;
 pub use sw::SlidingWindow;
-
-use crate::error::ChonkitError;
 
 pub fn chunk(config: ChunkConfig, content: &str) -> Result<Vec<&str>, ChunkerError> {
     match config {

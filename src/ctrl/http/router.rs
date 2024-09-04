@@ -3,11 +3,10 @@ use crate::{
     core::{
         chunk::ChunkConfig,
         document::parser::ParseConfig,
-        model::document::{Document, DocumentType},
-        model::Pagination,
+        model::{document::DocumentType, Pagination},
         service::document::DocumentUpload,
     },
-    ctrl::dto::{CreateCollectionPayload, SearchPayload},
+    ctrl::dto::{CreateCollectionPayload, SearchPayload, UploadResult},
     error::ChonkitError,
 };
 use axum::{
@@ -17,7 +16,6 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use serde::Serialize;
 use std::{collections::HashMap, time::Duration};
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, Span};
@@ -50,10 +48,10 @@ fn public_router(state: ServiceState) -> Router {
         .route("/documents/:id/chunk/preview", post(chunk_preview))
         .route("/documents/:id/parse/preview", post(parse_preview))
         .route("/documents/sync", get(sync))
-        .route("/embeddings/models", get(list_embedding_models))
-        .route("/embeddings/collections", get(list_collections))
-        .route("/embeddings/collections", post(create_collection))
-        .route("/embeddings/search", post(search))
+        .route("/vectors", get(list_collections))
+        .route("/vectors", post(create_collection))
+        .route("/vectors/models", get(list_embedding_models))
+        .route("/embeddings", post(search))
         .with_state(state)
 }
 
@@ -104,17 +102,10 @@ async fn delete_document(
     Ok(format!("Successfully deleted {}", id.0))
 }
 
-#[derive(Debug, Serialize)]
-struct UploadResponse {
-    documents: Vec<Document>,
-    /// Map form keys to errors
-    errors: HashMap<String, String>,
-}
-
 async fn upload_documents(
     service: axum::extract::State<ServiceState>,
     mut form: axum::extract::Multipart,
-) -> Result<impl IntoResponse, ChonkitError> {
+) -> Result<Json<UploadResult>, ChonkitError> {
     let mut documents = vec![];
     let mut errors = HashMap::new();
 
@@ -149,7 +140,7 @@ async fn upload_documents(
         documents.push(document);
     }
 
-    Ok(Json(UploadResponse { documents, errors }))
+    Ok(Json(UploadResult { documents, errors }))
 }
 
 async fn chunk_preview(

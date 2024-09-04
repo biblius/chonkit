@@ -1,8 +1,13 @@
 use crate::{
     core::{
-        document::{parser::DocumentParser, store::DocumentStore},
-        model::document::{Document, DocumentInsert, DocumentType},
-        model::Pagination,
+        document::{
+            parser::DocumentParser,
+            store::{sha256, DocumentStore},
+        },
+        model::{
+            document::{Document, DocumentInsert, DocumentType},
+            Pagination,
+        },
         repo::document::DocumentRepo,
     },
     error::ChonkitError,
@@ -64,15 +69,16 @@ impl DocumentStore for FsDocumentStore {
         parser.parse(&file)
     }
 
-    async fn write(&self, name: &str, file: &[u8]) -> Result<String, ChonkitError> {
+    async fn write(&self, name: &str, file: &[u8]) -> Result<(String, String), ChonkitError> {
         let path = format!("{}/{name}", self.base.display());
         debug!("Writing {path}");
         match tokio::fs::read(&path).await {
             Ok(_) => Err(ChonkitError::FileAlreadyExists(name.to_string())),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => {
+                    let hash = sha256(file);
                     tokio::fs::write(&path, file).await?;
-                    Ok(path)
+                    Ok((path, hash))
                 }
                 _ => Err(e.into()),
             },
@@ -118,6 +124,9 @@ impl DocumentStore for FsDocumentStore {
             let name = file.file_name().to_string_lossy().to_string();
             let path = file.path().display().to_string();
 
+            let content = tokio::fs::read(&path).await?;
+            let hash = sha256(&content);
+
             let doc = repo.get_by_path(&path).await?;
 
             if let Some(Document { id, name, .. }) = doc {
@@ -125,7 +134,7 @@ impl DocumentStore for FsDocumentStore {
                 continue;
             }
 
-            let insert = DocumentInsert::new(&name, &path, ext);
+            let insert = DocumentInsert::new(&name, &path, ext, &hash);
 
             match repo.insert(insert).await {
                 Ok(Document { id, name, .. }) => info!("Successfully inserted '{name}' ({id})"),
@@ -156,7 +165,7 @@ mod tests {
             ..Default::default()
         };
 
-        let path = store.write(&d.name, CONTENT.as_bytes()).await.unwrap();
+        let (path, _) = store.write(&d.name, CONTENT.as_bytes()).await.unwrap();
 
         let file = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(CONTENT, file);

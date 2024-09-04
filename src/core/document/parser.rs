@@ -1,10 +1,9 @@
+use crate::{core::model::document::DocumentType, error::ChonkitError};
 use docx::DocxParser;
 use pdf::PdfParser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use text::TextParser;
-
-use crate::{core::model::document::DocumentType, error::ChonkitError};
 
 pub mod docx;
 pub mod pdf;

@@ -30,6 +30,9 @@ CREATE TABLE documents (
     -- The extension of the document used for parsing.
     ext TEXT NOT NULL,
 
+    -- The content hash of the document.
+    hash TEXT NOT NULL,
+
     -- A label for grouping together files with the same label.
     -- Documents can have only a single label.
     label TEXT,
