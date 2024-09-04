@@ -53,7 +53,7 @@ sha2 = "0.10.8"
 hex = "0.4.3"
 
 [features]
-default = ["http"]
+default = ["cli"]
 cli = []
 http = ["axum", "axum-extra", "axum-macros", "tower-http"]
 

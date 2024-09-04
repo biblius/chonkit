@@ -30,10 +30,15 @@ impl DocumentParser for PdfParser {
         let _start = Instant::now();
 
         let ParseConfig {
-            skip_front,
-            skip_back,
+            skip_start,
+            skip_end,
             ref filters,
+            range,
         } = self.config;
+
+        if let Some(_range) = range {
+            todo!()
+        }
 
         let mut input = lopdf::Document::load_mem(input)?;
 
@@ -44,19 +49,23 @@ impl DocumentParser for PdfParser {
 
         let pages = input.page_iter();
 
-        // Size hint of pages is the amount
+        // Size hint of pages is the total amount
         let total_pages = pages.size_hint().0;
 
-        for (page_num, page_id) in pages
-            .enumerate()
-            .map(|(page_num, oid)| (page_num as u32 + 1, oid))
-            .skip(skip_front as usize)
-        {
-            if total_pages - (page_num as usize - 1) - skip_back as usize == 0 {
+        // For debugging
+        let mut page_count = 0;
+
+        for (page_num, page_id) in pages.enumerate().skip(skip_start) {
+            if total_pages
+                .saturating_sub(page_num)
+                .saturating_sub(skip_end)
+                == 0
+            {
                 break;
             }
 
-            let text = input.extract_text(&[page_num]).map_err(|e| {
+            // page_num is 0 based
+            let text = input.extract_text(&[page_num as u32 + 1]).map_err(|e| {
                 Error::new(
                     ErrorKind::Other,
                     format!("Failed to extract text from page {page_num} id={page_id:?}: {e:?}"),
@@ -79,10 +88,12 @@ impl DocumentParser for PdfParser {
 
                 let _ = writeln!(out, "{line}");
             }
+
+            page_count += 1;
         }
 
         debug!(
-            "Finished processing PDF, took {}ms",
+            "Finished processing PDF, {page_count}/{total_pages} pages took {}ms",
             Instant::now().duration_since(_start).as_millis()
         );
 

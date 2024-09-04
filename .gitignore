@@ -1,5 +1,6 @@
 /target
 /test_docs
+/chunks
 web/.env
 config.json
 dist

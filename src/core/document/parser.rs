@@ -17,30 +17,37 @@ pub trait DocumentParser {
 }
 
 /// General parsing configuration for documents.
-/// The semantics of this struct's parameters are
-/// defined in parser implementations.
+/// A text element is parser specific, it could be PDF pages,
+/// DOCX paragraphs, CSV rows, etc.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ParseConfig {
-    pub skip_front: u32,
-    pub skip_back: u32,
+    /// Skip the first amount of text elements.
+    pub skip_start: usize,
+
+    /// Skip the last amount of text elements.
+    pub skip_end: usize,
+
+    /// If given, parsers should prioritize over the skips.
+    /// Set the range of text elements to be parsed.
+    pub range: Option<(usize, usize)>,
+
+    /// Filter specific patterns in text elements. Parser specific.
     #[serde(with = "serde_regex")]
     pub filters: Vec<Regex>,
 }
 
 impl ParseConfig {
-    /// Skip the first `amt` text elements when parsing.
-    ///
-    /// * `amt`: Amount.
-    pub fn skip_f(mut self, amt: u32) -> Self {
-        self.skip_front = amt;
-        self
+    pub fn new(skip_start: usize, skip_end: usize) -> Self {
+        Self {
+            skip_start,
+            skip_end,
+            ..Default::default()
+        }
     }
 
-    /// Omit the last `amt` text elements when parsing.
-    ///
-    /// * `amt`: Amount.
-    pub fn skip_b(mut self, amt: u32) -> Self {
-        self.skip_back = amt;
+    /// Set the range of elements to parse to parse.
+    pub fn use_range(mut self, start: usize, end: usize) -> Self {
+        self.range = Some((start, end));
         self
     }
 
