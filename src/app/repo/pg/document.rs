@@ -1,14 +1,13 @@
 use crate::core::{
     chunk::Chunker,
-    document::parser::Parser,
-    model::document::{
-        config::{
-            DocumentChunkConfig, DocumentChunkConfigInsert, DocumentParseConfig,
-            DocumentParseConfigInsert,
+    document::parser::{ParseConfig, Parser},
+    model::{
+        document::{
+            config::{DocumentChunkConfig, DocumentParseConfig},
+            Document, DocumentConfig, DocumentInsert, DocumentUpdate,
         },
-        Document, DocumentInsert, DocumentUpdate,
+        List, Pagination,
     },
-    model::{List, Pagination},
     repo::document::DocumentRepo,
 };
 use crate::error::ChonkitError;
@@ -34,6 +33,32 @@ impl DocumentRepo for PgDocumentRepo {
                 .fetch_optional(&self.pool)
                 .await?,
         )
+    }
+
+    async fn get_config_by_id(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<Option<DocumentConfig>, ChonkitError> {
+        Ok(sqlx::query_as!(
+            SelectDocumentConfig,
+            r#"
+            SELECT 
+                d.id,
+                d.name,
+                d.path,
+                d.ext,
+                d.hash,
+                c.config AS "chunk_config: Option<Json<Chunker>>",
+                p.config AS "parse_config: _"
+            FROM documents d 
+            LEFT JOIN chunkers c ON c.document_id = d.id
+            LEFT JOIN parsers p ON p.document_id = d.id
+            WHERE d.id = $1"#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(DocumentConfig::from))
     }
 
     async fn get_by_path(&self, path: &str) -> Result<Option<Document>, ChonkitError> {
@@ -94,8 +119,8 @@ impl DocumentRepo for PgDocumentRepo {
 
         sqlx::query_as!(
             Document,
-            "INSERT INTO documents
-             VALUES($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING
+            "INSERT INTO documents(id, name, path, ext, hash, label, tags)
+             VALUES($1, $2, $3, $4, $5, $6, $7)
              RETURNING id, name, path, ext, hash, label, tags, created_at, updated_at",
             id,
             name,
@@ -192,11 +217,12 @@ impl DocumentRepo for PgDocumentRepo {
         .map(DocumentParseConfig::from))
     }
 
-    async fn insert_chunk_config(
+    async fn upsert_chunk_config(
         &self,
-        config: DocumentChunkConfigInsert,
+        document_id: uuid::Uuid,
+        chunker: Chunker,
     ) -> Result<DocumentChunkConfig, ChonkitError> {
-        let config = InsertConfig::from(config);
+        let config = InsertConfig::new(document_id, chunker);
 
         let InsertConfig {
             id,
@@ -210,6 +236,7 @@ impl DocumentRepo for PgDocumentRepo {
                 (id, document_id, config)
              VALUES
                 ($1, $2, $3)
+             ON CONFLICT(document_id) DO UPDATE SET config = $3
              RETURNING
                 id, document_id, config AS "config: _", created_at, updated_at
             "#,
@@ -223,11 +250,12 @@ impl DocumentRepo for PgDocumentRepo {
         Ok(DocumentChunkConfig::from(config))
     }
 
-    async fn insert_parse_config(
+    async fn upsert_parse_config(
         &self,
-        config: DocumentParseConfigInsert,
+        document_id: uuid::Uuid,
+        config: ParseConfig,
     ) -> Result<DocumentParseConfig, ChonkitError> {
-        let config = InsertConfig::from(config);
+        let config = InsertConfig::new(document_id, config);
 
         let InsertConfig {
             id,
@@ -241,75 +269,71 @@ impl DocumentRepo for PgDocumentRepo {
                 (id, document_id, config)
              VALUES
                 ($1, $2, $3)
+             ON CONFLICT(document_id) DO UPDATE SET config = $3
              RETURNING
                 id, document_id, config AS "config: _", created_at, updated_at"#,
             id,
             document_id,
-            config as Json<Parser>,
+            config as Json<ParseConfig>,
         )
         .fetch_one(&self.pool)
         .await?;
 
         Ok(DocumentParseConfig::from(config))
     }
-
-    async fn update_chunk_config(
-        &self,
-        id: uuid::Uuid,
-        config: Chunker,
-    ) -> Result<u64, ChonkitError> {
-        let result = sqlx::query!(
-            "UPDATE chunkers SET config = $1 WHERE id = $2",
-            Json(config) as Json<Chunker>,
-            id
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected())
-    }
-
-    async fn update_parse_config(
-        &self,
-        id: uuid::Uuid,
-        config: Parser,
-    ) -> Result<u64, ChonkitError> {
-        let result = sqlx::query!(
-            "UPDATE parsers SET config = $1 WHERE id = $2",
-            Json(config) as Json<Parser>,
-            id
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected())
-    }
 }
 
 // Private dtos.
 
 struct InsertConfig<T: Serialize> {
-    pub id: uuid::Uuid,
-    pub document_id: uuid::Uuid,
-    pub config: sqlx::types::Json<T>,
+    id: uuid::Uuid,
+    document_id: uuid::Uuid,
+    config: sqlx::types::Json<T>,
 }
 
-impl From<DocumentParseConfigInsert> for InsertConfig<Parser> {
-    fn from(value: DocumentParseConfigInsert) -> Self {
+impl<T> InsertConfig<T>
+where
+    T: Serialize,
+{
+    fn new(document_id: uuid::Uuid, config: T) -> Self {
         Self {
-            id: value.id,
-            document_id: value.document_id,
-            config: sqlx::types::Json(value.config),
+            id: uuid::Uuid::new_v4(),
+            document_id,
+            config: Json(config),
         }
     }
 }
 
-impl From<DocumentChunkConfigInsert> for InsertConfig<Chunker> {
-    fn from(value: DocumentChunkConfigInsert) -> Self {
+struct SelectDocumentConfig {
+    id: uuid::Uuid,
+    name: String,
+    path: String,
+    ext: String,
+    hash: String,
+    chunk_config: Option<Json<Chunker>>,
+    parse_config: Option<Json<ParseConfig>>,
+}
+
+impl From<SelectDocumentConfig> for DocumentConfig {
+    fn from(
+        SelectDocumentConfig {
+            id,
+            name,
+            path,
+            ext,
+            hash,
+            chunk_config,
+            parse_config,
+        }: SelectDocumentConfig,
+    ) -> Self {
         Self {
-            id: value.id,
-            document_id: value.document_id,
-            config: sqlx::types::Json(value.config),
+            id,
+            name,
+            path,
+            ext,
+            hash,
+            chunk_config: chunk_config.map(|c| c.0),
+            parse_config: parse_config.map(|c| c.0),
         }
     }
 }
@@ -369,7 +393,7 @@ mod tests {
         app::repo::pg::init,
         core::{
             chunk::Chunker,
-            model::document::{config::DocumentChunkConfigInsert, DocumentInsert, DocumentType},
+            model::document::{DocumentInsert, DocumentType},
             repo::document::DocumentRepo,
         },
     };
@@ -404,11 +428,17 @@ mod tests {
 
     #[test]
     async fn inserting_chunk_config_works(repo: PgDocumentRepo) {
-        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text, "SHA256");
+        let doc = DocumentInsert::new(
+            "My file",
+            "path/to/file/2",
+            DocumentType::Text,
+            "Other hash",
+        );
         let doc = repo.insert(doc).await.unwrap();
         let chunker = Chunker::sliding(420, 69);
-        let cfg = DocumentChunkConfigInsert::new(doc.id, chunker.clone()).unwrap();
-        repo.insert_chunk_config(cfg).await.unwrap();
+        repo.upsert_chunk_config(doc.id, chunker.clone())
+            .await
+            .unwrap();
         let config = repo.get_chunk_config(doc.id).await.unwrap().unwrap();
         let Chunker::Sliding(sliding) = config.config else {
             panic!("invalid config variant");

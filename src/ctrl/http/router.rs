@@ -4,16 +4,16 @@ use crate::{
         chunk::Chunker,
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
-        service::document::DocumentUpload,
+        service::document::{dto::CreateCollectionPayload, DocumentUpload},
     },
-    ctrl::dto::{CreateCollectionPayload, EmbedPayload, SearchPayload, UploadResult},
+    ctrl::dto::{SearchPayload, UploadResult},
     error::ChonkitError,
 };
 use axum::{
-    extract::{DefaultBodyLimit, Query},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::Method,
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use std::{collections::HashMap, time::Duration};
@@ -46,40 +46,22 @@ fn public_router(state: ServiceState) -> Router {
         .route("/documents/:id", get(get_document))
         .route("/documents/:id", delete(delete_document))
         .route("/documents/:id/chunk/preview", post(chunk_preview))
+        .route("/documents/:id/chunk", put(update_chunk_config))
         .route("/documents/:id/parse/preview", post(parse_preview))
+        .route("/documents/:id/parse", put(update_parse_config))
         .route("/documents/sync", get(sync))
         .route("/vectors", get(list_collections))
         .route("/vectors", post(create_collection))
+        .route("/vectors/:id", get(get_collection))
         .route("/vectors/models", get(list_embedding_models))
-        .route("/embeddings/:id", post(embed))
+        .route("/documents/:id/embeddings/:id", post(embed))
         .route("/embeddings", post(search))
         .with_state(state)
 }
 
-// VECTOR ROUTER
-
-async fn search(
-    service: axum::extract::State<ServiceState>,
-    search: axum::extract::Json<SearchPayload>,
-) -> Result<impl IntoResponse, ChonkitError> {
-    let SearchPayload {
-        ref model,
-        ref query,
-        ref collection,
-        limit,
-    } = search.0;
-
-    let chunks = service
-        .vector
-        .search(model, query, collection, limit)
-        .await?;
-
-    Ok(Json(chunks))
-}
-
 async fn list_documents(
-    service: axum::extract::State<ServiceState>,
-    pagination: Option<axum::extract::Query<Pagination>>,
+    service: State<ServiceState>,
+    pagination: Option<Query<Pagination>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let Query(pagination) = pagination.unwrap_or_default();
     pagination.validate()?;
@@ -89,18 +71,18 @@ async fn list_documents(
 
 async fn get_document(
     service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<uuid::Uuid>,
+    Path(id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let document = service.document.get_metadata(id.0).await?;
+    let document = service.document.get_config(id).await?;
     Ok(Json(document))
 }
 
 async fn delete_document(
     service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<uuid::Uuid>,
+    Path(id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.document.delete(id.0).await?;
-    Ok(format!("Successfully deleted {}", id.0))
+    service.document.delete(id).await?;
+    Ok(format!("Successfully deleted {id}"))
 }
 
 async fn upload_documents(
@@ -144,21 +126,45 @@ async fn upload_documents(
     Ok(Json(UploadResult { documents, errors }))
 }
 
-async fn chunk_preview(
-    service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<uuid::Uuid>,
-    chunker: axum::extract::Json<Chunker>,
+async fn update_chunk_config(
+    service: State<ServiceState>,
+    Path(document_id): Path<uuid::Uuid>,
+    Json(chunker): Json<Chunker>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let parsed = service.document.chunk_preview(id.0, chunker.0).await?;
+    service
+        .document
+        .update_chunker(document_id, chunker)
+        .await?;
+    Ok(format!("Successfully updated chunker for {document_id}"))
+}
+
+async fn chunk_preview(
+    service: State<ServiceState>,
+    Path(id): Path<uuid::Uuid>,
+    chunker: Option<Json<Chunker>>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let parsed = service
+        .document
+        .chunk_preview(id, chunker.map(|c| c.0))
+        .await?;
     Ok(Json(parsed))
 }
 
-async fn parse_preview(
-    service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<uuid::Uuid>,
-    parser: axum::extract::Json<ParseConfig>,
+async fn update_parse_config(
+    service: State<ServiceState>,
+    Path(document_id): Path<uuid::Uuid>,
+    Json(config): Json<ParseConfig>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let parsed = service.document.parse_preview(id.0, parser.0).await?;
+    service.document.update_parser(document_id, config).await?;
+    Ok(format!("Successfully updated parser for {document_id}"))
+}
+
+async fn parse_preview(
+    service: State<ServiceState>,
+    Path(id): Path<uuid::Uuid>,
+    Json(parser): Json<ParseConfig>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let parsed = service.document.parse_preview(id, parser).await?;
     Ok(Json(parsed))
 }
 
@@ -172,24 +178,33 @@ async fn sync(
 // VECTORS
 
 async fn list_collections(
-    service: axum::extract::State<ServiceState>,
-    pagination: axum::extract::Query<Pagination>,
+    service: State<ServiceState>,
+    pagination: Option<Query<Pagination>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collections = service.vector.list_collections(pagination.0).await?;
+    let Query(pagination) = pagination.unwrap_or_default();
+    pagination.validate()?;
+    let collections = service.vector.list_collections(pagination).await?;
     Ok(Json(collections))
 }
 
 async fn create_collection(
-    service: axum::extract::State<ServiceState>,
-    payload: axum::extract::Json<CreateCollectionPayload>,
+    service: State<ServiceState>,
+    Json(payload): Json<CreateCollectionPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let CreateCollectionPayload { name, model } = payload.0;
-    service.vector.create_collection(&name, &model).await?;
+    service.vector.create_collection(payload).await?;
     Ok("Successfully created collection")
 }
 
+async fn get_collection(
+    service: State<ServiceState>,
+    Path(id): Path<uuid::Uuid>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let collection = service.vector.get_collection(id).await?;
+    Ok(Json(collection))
+}
+
 async fn list_embedding_models(
-    service: axum::extract::State<ServiceState>,
+    service: State<ServiceState>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let models = service
         .vector
@@ -201,11 +216,33 @@ async fn list_embedding_models(
 
 async fn embed(
     service: axum::extract::State<ServiceState>,
-    id: axum::extract::Path<uuid::Uuid>,
-    payload: axum::extract::Json<EmbedPayload>,
+    Path((document_id, collection_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let document = service.document.get_metadata(id.0).await?;
-    let content = service.document.get_content(id.0).await?;
-    // service.vector.create_embeddings().await?;
+    let document = service.document.get_config(document_id).await?;
+    let chunks = service.document.get_chunks(document_id).await?;
+    let collection = service.vector.get_collection(collection_id).await?;
+    service
+        .vector
+        .create_embeddings(document.id, chunks, &collection)
+        .await?;
     Ok("Successfully embedded")
+}
+
+async fn search(
+    service: State<ServiceState>,
+    Json(search): Json<SearchPayload>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let SearchPayload {
+        ref model,
+        ref query,
+        ref collection,
+        limit,
+    } = search;
+
+    let chunks = service
+        .vector
+        .search(model, query, collection, limit)
+        .await?;
+
+    Ok(Json(chunks))
 }

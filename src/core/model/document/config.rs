@@ -15,23 +15,6 @@ pub struct DocumentChunkConfig {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct DocumentChunkConfigInsert {
-    pub id: uuid::Uuid,
-    pub document_id: uuid::Uuid,
-    pub config: Chunker,
-}
-
-impl DocumentChunkConfigInsert {
-    pub fn new(document_id: uuid::Uuid, config: Chunker) -> Result<Self, serde_json::Error> {
-        Ok(Self {
-            id: uuid::Uuid::new_v4(),
-            document_id,
-            config,
-        })
-    }
-}
-
 /// Main config model for the `parsers` table.
 #[derive(Debug, Serialize)]
 pub struct DocumentParseConfig {
@@ -43,21 +26,4 @@ pub struct DocumentParseConfig {
     pub config: Parser,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DocumentParseConfigInsert {
-    pub id: uuid::Uuid,
-    pub document_id: uuid::Uuid,
-    pub config: Parser,
-}
-
-impl DocumentParseConfigInsert {
-    pub fn new(document_id: uuid::Uuid, parser: Parser) -> Result<Self, serde_json::Error> {
-        Ok(Self {
-            id: uuid::Uuid::new_v4(),
-            document_id,
-            config: parser,
-        })
-    }
 }

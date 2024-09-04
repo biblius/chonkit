@@ -88,7 +88,7 @@ impl VectorStore for QdrantVectorStore {
 
     async fn store(
         &self,
-        content: Vec<&str>,
+        content: Vec<String>,
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> Result<(), ChonkitError> {

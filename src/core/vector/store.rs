@@ -57,7 +57,7 @@ pub trait VectorStore {
     /// * `collection`: The vector collection to store in.
     fn store(
         &self,
-        content: Vec<&str>,
+        content: Vec<String>,
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> impl Future<Output = Result<(), ChonkitError>>;

@@ -16,15 +16,6 @@ pub enum Chunker {
     Snapping(SnappingWindow),
 }
 
-impl DocumentChunker for Chunker {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
-        match self {
-            Self::Sliding(chunker) => Ok(chunker.chunk(input)?),
-            Self::Snapping(chunker) => Ok(chunker.chunk(input)?),
-        }
-    }
-}
-
 impl Chunker {
     /// Create a `SlidingWindow` chunker.
     ///
@@ -32,6 +23,11 @@ impl Chunker {
     /// * `overlap`: Chunk overlap.
     pub fn sliding(size: usize, overlap: usize) -> Self {
         Self::Sliding(SlidingWindow::new(size, overlap))
+    }
+
+    /// Create a default `SlidingWindow` chunker.
+    pub fn sliding_default() -> Self {
+        Self::Sliding(SlidingWindow::default())
     }
 
     /// Create a `SnappingWindow` chunker.
@@ -46,6 +42,11 @@ impl Chunker {
                 .skip_forward(skip_f)
                 .skip_back(skip_b),
         )
+    }
+
+    /// Create a default `SnappingWindow` chunker.
+    pub fn snapping_default() -> Self {
+        Self::Snapping(SnappingWindow::default())
     }
 
     pub fn size(&self) -> usize {
@@ -107,6 +108,21 @@ pub fn prepare_chunks<T: DocumentChunker>(
     }
 
     Ok(())
+}
+
+impl DocumentChunker for Chunker {
+    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+        match self {
+            Self::Sliding(chunker) => Ok(chunker.chunk(input)?),
+            Self::Snapping(chunker) => Ok(chunker.chunk(input)?),
+        }
+    }
+}
+
+impl Default for Chunker {
+    fn default() -> Self {
+        Self::snapping_default()
+    }
 }
 
 pub trait DocumentChunker {

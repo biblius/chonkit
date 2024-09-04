@@ -21,17 +21,17 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE documents (
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
 
-    -- File name with extension.
+    -- File name.
     name TEXT NOT NULL,
 
     -- Absolute path to the file depending on type of file storage.
-    path TEXT NOT NULL,
+    path TEXT UNIQUE NOT NULL,
 
     -- The extension of the document used for parsing.
     ext TEXT NOT NULL,
 
     -- The content hash of the document.
-    hash TEXT NOT NULL,
+    hash TEXT UNIQUE NOT NULL,
 
     -- A label for grouping together files with the same label.
     -- Documents can have only a single label.
@@ -48,7 +48,7 @@ CREATE TABLE documents (
 -- Stores chunking configurations for documents.
 CREATE TABLE chunkers(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
+    document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
     config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -57,7 +57,7 @@ CREATE TABLE chunkers(
 -- Stores parsing configurations for documents.
 CREATE TABLE parsers(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
+    document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
     config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -72,7 +72,17 @@ CREATE TABLE collections(
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Stores 
+-- CREATE TABLE embeddings(
+--     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+--     document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
+--     collection_id UUID NOT NULL REFERENCES collections ON DELETE CASCADE,
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+
 SELECT manage_updated_at('documents');
 SELECT manage_updated_at('chunkers');
 SELECT manage_updated_at('parsers');
 SELECT manage_updated_at('collections');
+-- SELECT manage_updated_at('embeddings');

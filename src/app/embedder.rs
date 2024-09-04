@@ -12,7 +12,11 @@ impl Embedder for FastEmbedder {
             .collect()
     }
 
-    async fn embed(&self, content: Vec<&str>, model: &str) -> Result<Vec<Vec<f32>>, ChonkitError> {
+    async fn embed(
+        &self,
+        content: Vec<String>,
+        model: &str,
+    ) -> Result<Vec<Vec<f32>>, ChonkitError> {
         let model = self.model_for_str(model).ok_or_else(|| {
             ChonkitError::UnsupportedEmbeddingModel(format!(
                 "{model} is not a valid fastembed model",

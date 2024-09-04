@@ -11,7 +11,7 @@ pub trait VectorRepo {
     ///
     /// * `name`: Collection name.
     /// * `model`: Collection embedding model.
-    fn create_collection(
+    fn insert_collection(
         &self,
         collection: CollectionInsert<'_>,
     ) -> impl Future<Output = Result<Collection, ChonkitError>> + Send;

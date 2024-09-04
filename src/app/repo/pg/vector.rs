@@ -20,7 +20,7 @@ impl PgVectorRepo {
 }
 
 impl VectorRepo for PgVectorRepo {
-    async fn create_collection(
+    async fn insert_collection(
         &self,
         collection: CollectionInsert<'_>,
     ) -> Result<Collection, ChonkitError> {
@@ -31,11 +31,15 @@ impl VectorRepo for PgVectorRepo {
                 (id, name, model)
              VALUES
                 ($1, $2, $3)
+             ON CONFLICT(id) DO UPDATE
+             SET id = $4
              RETURNING 
-                id, name, model, created_at, updated_at",
+                id, name, model, created_at, updated_at
+             ",
             id,
             name,
-            model
+            model,
+            id
         )
         .fetch_one(&self.pool)
         .await?)
@@ -64,6 +68,7 @@ impl VectorRepo for PgVectorRepo {
             .await
             .map(|row| row.count.map(|count| count as usize))?;
 
+        let (limit, offset) = p.to_limit_offset();
         let collections = sqlx::query_as!(
             Collection,
             r#"SELECT id, name, model, created_at, updated_at
@@ -71,8 +76,8 @@ impl VectorRepo for PgVectorRepo {
                    LIMIT $1
                    OFFSET $2
                 "#,
-            p.per_page as i64,
-            p.page as i64,
+            limit,
+            offset,
         )
         .fetch_all(&self.pool)
         .await?;

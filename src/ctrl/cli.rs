@@ -71,7 +71,7 @@ pub async fn run(services: ServiceState) {
     match args.command {
         Execute::Doc(doc) => match doc {
             DocumentExec::Meta(IdArg { id }) => {
-                let doc = services.document.get_metadata(id).await.unwrap();
+                let doc = services.document.get_config(id).await.unwrap();
                 println!("{:#?}", doc);
             }
             DocumentExec::Sync => services.document.sync().await.unwrap(),
@@ -87,7 +87,7 @@ pub async fn run(services: ServiceState) {
                 ChunkMode::Sw(IdArg { id }) => {
                     let preview = services
                         .document
-                        .chunk_preview(id, Chunker::sliding(500, 100))
+                        .chunk_preview(id, Some(Chunker::sliding(500, 100)))
                         .await
                         .unwrap();
                     println!("{:#?}", preview);
@@ -106,7 +106,7 @@ pub async fn run(services: ServiceState) {
                         .document
                         .chunk_preview(
                             id,
-                            Chunker::snapping(
+                            Some(Chunker::snapping(
                                 1000,
                                 10,
                                 vec![
@@ -123,6 +123,13 @@ pub async fn run(services: ServiceState) {
                                     "7".to_string(),
                                     "8".to_string(),
                                     "9".to_string(),
+                                    "com".to_string(),
+                                    "org".to_string(),
+                                    "net".to_string(),
+                                    "g.".to_string(),
+                                    "e.".to_string(),
+                                    "rs".to_string(),
+                                    "js".to_string(),
                                 ],
                                 vec![
                                     "com".to_string(),
@@ -131,7 +138,7 @@ pub async fn run(services: ServiceState) {
                                     "o.o.".to_string(),
                                     "d.".to_string(),
                                 ],
-                            ),
+                            )),
                         )
                         .await
                         .unwrap();
@@ -143,6 +150,7 @@ pub async fn run(services: ServiceState) {
                         if i > end {
                             break;
                         }
+                        let i = i + 1;
                         println!("Chunk {i} {:=>60}", "v");
                         println!();
                         println!("{preview}");

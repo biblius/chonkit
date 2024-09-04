@@ -1,9 +1,25 @@
-use crate::error::ChonkitError;
+use crate::{
+    core::{chunk::Chunker, document::parser::ParseConfig},
+    error::ChonkitError,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 pub mod config;
 
+/// Holds relevant data for parsing and chunking.
+#[derive(Debug, Serialize)]
+pub struct DocumentConfig {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub path: String,
+    pub ext: String,
+    pub hash: String,
+    pub chunk_config: Option<Chunker>,
+    pub parse_config: Option<ParseConfig>,
+}
+
+/// Holds document metadata.
 /// Main document model for the `documents` table.
 #[derive(Debug, Serialize, Default)]
 pub struct Document {
@@ -35,11 +51,11 @@ pub struct Document {
 /// All possible file types chonkit can process.
 #[derive(Debug, Clone, Copy)]
 pub enum DocumentType {
-    /// This encapsulates any files that can be read as strings.
+    /// Encapsulates any files that can be read as strings.
     /// Does not necessarily have to be `.txt`, could be `.json`, `.csv`, etc.
     Text,
 
-    /// Microschlong steaming pile of garabage document.
+    /// Microschlong steaming pile of garbage document.
     Docx,
 
     /// PDF document.

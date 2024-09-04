@@ -55,7 +55,7 @@ async fn run_server() {
 async fn run_cli() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new(
-            "debug,sqlx=off,h2=off,lopdf=off,chonkit=debug",
+            "debug,sqlx=off,h2=off,lopdf=off,chonkit=trace",
         ))
         .init();
 

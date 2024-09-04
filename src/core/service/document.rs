@@ -7,7 +7,7 @@ use crate::{
             store::DocumentStore,
         },
         model::{
-            document::{Document, DocumentInsert, DocumentType},
+            document::{Document, DocumentConfig, DocumentInsert, DocumentType},
             List, Pagination,
         },
         repo::document::DocumentRepo,
@@ -17,6 +17,8 @@ use crate::{
 use tracing::info;
 use uuid::Uuid;
 use validify::Validify;
+
+pub mod dto;
 
 /// High level operations for document management.
 #[derive(Debug, Clone)]
@@ -38,11 +40,11 @@ where
         self.repo.list(p).await
     }
 
-    /// Get the metadata for a document.
+    /// Get the full config for a document.
     ///
     /// * `id`: The Document ID.
-    pub async fn get_metadata(&self, id: Uuid) -> Result<Document, ChonkitError> {
-        let file = self.repo.get_by_id(id).await?;
+    pub async fn get_config(&self, id: Uuid) -> Result<DocumentConfig, ChonkitError> {
+        let file = self.repo.get_config_by_id(id).await?;
 
         let Some(file) = file else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
@@ -70,12 +72,18 @@ where
 
     pub async fn get_chunks(&self, id: uuid::Uuid) -> Result<Vec<String>, ChonkitError> {
         let content = self.get_content(id).await?;
-        // let chunker = self
-        //     .repo
-        //     .get_chunk_config(id)
-        //     .await?
-        //     .unwrap_or_else(|| );
-        todo!()
+        let chunker = self
+            .repo
+            .get_chunk_config(id)
+            .await?
+            .map(|config| config.config)
+            .unwrap_or_else(Chunker::snapping_default);
+
+        Ok(chunker
+            .chunk(&content)?
+            .into_iter()
+            .map(String::from)
+            .collect())
     }
 
     /// Insert the document metadata to the repository and persist it
@@ -134,20 +142,38 @@ where
         self.storage.read(&document, parser).await
     }
 
+    /// Chunk the document without saving any embeddings. Useful for previewing.
+    /// If a chunker is given, it will be used. If no chunker is given, searches
+    /// for the repo for a configured one. If it still doesn't exist, uses the default
+    /// snapping window chunker.
+    ///
+    /// * `id`: Document ID.
+    /// * `chunker`: Optional chunker to use.
     pub async fn chunk_preview(
         &self,
         id: uuid::Uuid,
-        chunker: Chunker,
+        chunker: Option<Chunker>,
     ) -> Result<Vec<String>, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
         let Some(document) = document else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
+
         let ext = document.ext.as_str();
         let parser = self.get_parser(id, ext.try_into()?).await?;
         let content = self.storage.read(&document, parser).await?;
+        let chunker = if let Some(chunker) = chunker {
+            chunker
+        } else {
+            self.repo
+                .get_chunk_config(id)
+                .await?
+                .map(|config| config.config)
+                .unwrap_or_default()
+        };
 
         info!("Chunking {} with {chunker}", document.name);
+
         Ok(chunker
             .chunk(&content)?
             .into_iter()
@@ -155,8 +181,19 @@ where
             .collect())
     }
 
-    pub async fn update_parser(&self, id: uuid::Uuid, parser: Parser) -> Result<(), ChonkitError> {
-        self.repo.update_parse_config(id, parser).await?;
+    pub async fn update_parser(
+        &self,
+        id: uuid::Uuid,
+        config: ParseConfig,
+    ) -> Result<(), ChonkitError> {
+        let document = self.repo.get_by_id(id).await?;
+
+        if document.is_none() {
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+        }
+
+        self.repo.upsert_parse_config(id, config).await?;
+
         Ok(())
     }
 
@@ -165,7 +202,14 @@ where
         id: uuid::Uuid,
         config: Chunker,
     ) -> Result<(), ChonkitError> {
-        self.repo.update_chunk_config(id, config).await?;
+        let document = self.repo.get_by_id(id).await?;
+
+        if document.is_none() {
+            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+        }
+
+        self.repo.upsert_chunk_config(id, config).await?;
+
         Ok(())
     }
 

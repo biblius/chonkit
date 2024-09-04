@@ -7,6 +7,11 @@ use crate::error::ChonkitError;
 use crate::DEFAULT_COLLECTION_MODEL;
 use std::fmt::Debug;
 use tracing::info;
+use validify::Validify;
+
+use super::document::dto::CreateCollectionPayload;
+
+pub mod dto;
 
 /// High level operations related to embeddings and vector storage.
 #[derive(Debug, Clone)]
@@ -41,7 +46,21 @@ where
             .embedder
             .size(DEFAULT_COLLECTION_MODEL)
             .expect("invalid default model");
+
         self.vectors.create_default_collection(size).await;
+
+        // Default collection will always have a nil UUID
+        let collection = CollectionInsert::default();
+
+        self.repo
+            .insert_collection(collection)
+            .await
+            .expect("error while inserting default collection");
+    }
+
+    pub async fn get_collection(&self, id: uuid::Uuid) -> Result<Collection, ChonkitError> {
+        let collection = self.repo.get_collection(id).await?;
+        collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID {id}")))
     }
 
     /// Create a collection in the vector DB and store its info in the repository.
@@ -50,19 +69,22 @@ where
     /// * `model`: Will be used to determine the collection dimensions.
     pub async fn create_collection(
         &self,
-        name: &str,
-        model: &str,
+        mut payload: CreateCollectionPayload,
     ) -> Result<Collection, ChonkitError> {
+        payload.validify()?;
+
+        let CreateCollectionPayload { name, model } = payload;
+
         info!("Creating collection '{name}' with embedding model '{model}'",);
 
-        let size = self.embedder.size(model).ok_or_else(|| {
+        let size = self.embedder.size(&model).ok_or_else(|| {
             ChonkitError::UnsupportedEmbeddingModel(format!("Cannot determine size for {model}"))
         })?;
 
-        self.vectors.create_collection(name, size).await?;
+        self.vectors.create_collection(&name, size).await?;
 
-        let collection = CollectionInsert::new(name, model);
-        let collection = self.repo.create_collection(collection).await?;
+        let collection = CollectionInsert::new(&name, &model);
+        let collection = self.repo.insert_collection(collection).await?;
 
         Ok(collection)
     }
@@ -97,12 +119,17 @@ where
     /// * `collection`: The collection to store the vectors in.
     pub async fn create_embeddings(
         &self,
-        content: Vec<&str>,
-        model: &str,
-        collection: &str,
+        id: uuid::Uuid,
+        content: Vec<String>,
+        collection: &Collection,
     ) -> Result<(), ChonkitError> {
-        let embeddings = self.embedder.embed(content.clone(), model).await?;
-        self.vectors.store(content, embeddings, collection).await
+        let embeddings = self
+            .embedder
+            .embed(content.clone(), &collection.model)
+            .await?;
+        self.vectors
+            .store(content, embeddings, &collection.name)
+            .await
     }
 
     /// Query the vector database (semantic search).
@@ -119,7 +146,7 @@ where
         collection: &str,
         limit: u64,
     ) -> Result<Vec<String>, ChonkitError> {
-        let mut embeddings = self.embedder.embed(vec![query], model).await?;
+        let mut embeddings = self.embedder.embed(vec![query.to_string()], model).await?;
         debug_assert!(!embeddings.is_empty());
         debug_assert_eq!(1, embeddings.len());
         self.vectors

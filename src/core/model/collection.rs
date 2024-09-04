@@ -1,3 +1,4 @@
+use crate::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -25,6 +26,16 @@ impl<'a> CollectionInsert<'a> {
             id: uuid::Uuid::new_v4(),
             name,
             model,
+        }
+    }
+}
+
+impl<'a> Default for CollectionInsert<'a> {
+    fn default() -> Self {
+        Self {
+            id: uuid::Uuid::default(),
+            name: DEFAULT_COLLECTION_NAME,
+            model: DEFAULT_COLLECTION_MODEL,
         }
     }
 }

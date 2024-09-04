@@ -1,15 +1,14 @@
 use crate::{
     core::{
         chunk::Chunker,
-        document::parser::Parser,
-        model::document::{
-            config::{
-                DocumentChunkConfig, DocumentChunkConfigInsert, DocumentParseConfig,
-                DocumentParseConfigInsert,
+        document::parser::ParseConfig,
+        model::{
+            document::{
+                config::{DocumentChunkConfig, DocumentParseConfig},
+                Document, DocumentConfig, DocumentInsert, DocumentUpdate,
             },
-            Document, DocumentInsert, DocumentUpdate,
+            List, Pagination,
         },
-        model::{List, Pagination},
     },
     error::ChonkitError,
 };
@@ -25,6 +24,14 @@ pub trait DocumentRepo {
         &self,
         id: uuid::Uuid,
     ) -> impl Future<Output = Result<Option<Document>, ChonkitError>> + Send;
+
+    /// Get full document configuration based on ID (including chunker and parser).
+    ///
+    /// * `id`: Document ID.
+    fn get_config_by_id(
+        &self,
+        id: uuid::Uuid,
+    ) -> impl Future<Output = Result<Option<DocumentConfig>, ChonkitError>> + Send;
 
     /// Get document metadata by path.
     ///
@@ -107,25 +114,15 @@ pub trait DocumentRepo {
         id: uuid::Uuid,
     ) -> impl Future<Output = Result<Option<DocumentParseConfig>, ChonkitError>> + Send;
 
-    fn insert_chunk_config(
+    fn upsert_chunk_config(
         &self,
-        config: DocumentChunkConfigInsert,
+        document_id: uuid::Uuid,
+        chunker: Chunker,
     ) -> impl Future<Output = Result<DocumentChunkConfig, ChonkitError>> + Send;
 
-    fn insert_parse_config(
+    fn upsert_parse_config(
         &self,
-        config: DocumentParseConfigInsert,
+        document_id: uuid::Uuid,
+        config: ParseConfig,
     ) -> impl Future<Output = Result<DocumentParseConfig, ChonkitError>> + Send;
-
-    fn update_chunk_config(
-        &self,
-        id: uuid::Uuid,
-        chunker: Chunker,
-    ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
-
-    fn update_parse_config(
-        &self,
-        id: uuid::Uuid,
-        parser: Parser,
-    ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 }
