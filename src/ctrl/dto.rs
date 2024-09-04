@@ -17,8 +17,15 @@ pub(super) struct SearchPayload {
 }
 
 #[derive(Debug, Serialize)]
-pub struct UploadResult {
+pub(super) struct UploadResult {
     pub documents: Vec<Document>,
     /// Map form keys to errors
     pub errors: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct EmbedPayload {
+    pub id: uuid::Uuid,
+    pub model: String,
+    pub collection: String,
 }

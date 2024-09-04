@@ -12,7 +12,7 @@ impl ChonkitError {
             E::IO(_) => todo!(),
             E::Fmt(_) => todo!(),
             E::Utf8(_) => todo!(),
-            E::ParseInt(_) | E::FileAlreadyExists(_) => SC::BAD_REQUEST,
+            E::ParseInt(_) | E::AlreadyExists(_) => SC::BAD_REQUEST,
             E::DoesNotExist(_) => SC::NOT_FOUND,
             E::Validation(_)
             | E::Chunk(_)
@@ -104,7 +104,7 @@ impl IntoResponse for ChonkitError {
             | CE::Http(_) => (status, self.to_string()).into_response(),
             CE::ParsePdf(_) => todo!(),
             CE::DocxRead(_) => todo!(),
-            CE::FileAlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
+            CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
         }
     }
 }

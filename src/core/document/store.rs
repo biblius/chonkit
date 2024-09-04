@@ -1,5 +1,3 @@
-use sha2::{Digest, Sha256};
-
 use super::parser::DocumentParser;
 use crate::{
     core::{model::document::Document, repo::document::DocumentRepo},
@@ -34,7 +32,7 @@ pub trait DocumentStore {
         &self,
         name: &str,
         content: &[u8],
-    ) -> impl Future<Output = Result<(String, String), ChonkitError>> + Send;
+    ) -> impl Future<Output = Result<String, ChonkitError>> + Send;
 
     /// Sync the storage client's contents with the repository.
     ///
@@ -43,14 +41,4 @@ pub trait DocumentStore {
         &self,
         repo: &(impl DocumentRepo + Sync),
     ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
-}
-
-/// Return a SHA256 hash of the input.
-///
-/// * `input`: Input bytes.
-pub fn sha256(input: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    Digest::update(&mut hasher, input);
-    let out = hasher.finalize();
-    hex::encode(out)
 }

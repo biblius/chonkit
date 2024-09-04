@@ -1,5 +1,6 @@
-use super::{Chunker, ChunkerError};
+use super::{ChunkerError, DocumentChunker};
 use crate::core::chunk::ChunkBaseConfig;
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 /// The most basic of chunkers.
@@ -7,9 +8,9 @@ use tracing::debug;
 /// `size` determines the base amount for every chunk and
 /// `overlap` determines how much back and front characters
 /// to extend the base with.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlidingWindow {
-    config: ChunkBaseConfig,
+    pub config: ChunkBaseConfig,
 }
 
 impl SlidingWindow {
@@ -24,7 +25,18 @@ impl SlidingWindow {
     }
 }
 
-impl Chunker for SlidingWindow {
+impl Default for SlidingWindow {
+    fn default() -> Self {
+        Self {
+            config: ChunkBaseConfig {
+                size: 1000,
+                overlap: 200,
+            },
+        }
+    }
+}
+
+impl DocumentChunker for SlidingWindow {
     fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let SlidingWindow {
             config: ChunkBaseConfig { size, overlap },

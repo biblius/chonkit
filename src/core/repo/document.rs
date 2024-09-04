@@ -1,6 +1,6 @@
 use crate::{
     core::{
-        chunk::ChunkConfig,
+        chunk::Chunker,
         document::parser::Parser,
         model::document::{
             config::{
@@ -42,6 +42,14 @@ pub trait DocumentRepo {
         &self,
         id: uuid::Uuid,
     ) -> impl Future<Output = Result<Option<String>, ChonkitError>> + Send;
+
+    /// Get a document by its content hash.
+    ///
+    /// * `hash`: Document content hash.
+    fn get_by_hash(
+        &self,
+        hash: &str,
+    ) -> impl Future<Output = Result<Option<Document>, ChonkitError>> + Send;
 
     /// List documents with limit and offset
     ///
@@ -112,12 +120,12 @@ pub trait DocumentRepo {
     fn update_chunk_config(
         &self,
         id: uuid::Uuid,
-        config: ChunkConfig,
+        chunker: Chunker,
     ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 
     fn update_parse_config(
         &self,
         id: uuid::Uuid,
-        config: Parser,
+        parser: Parser,
     ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 }

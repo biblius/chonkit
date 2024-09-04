@@ -32,7 +32,7 @@ pub enum ChonkitError {
     InvalidFileName(String),
 
     #[error("File exists: {0}")]
-    FileAlreadyExists(String),
+    AlreadyExists(String),
 
     #[error("JSON error: {0}")]
     SerdeJson(#[from] serde_json::Error),

@@ -1,4 +1,5 @@
-use super::{concat, ChunkBaseConfig, Chunker, ChunkerError};
+use super::{concat, ChunkBaseConfig, ChunkerError, DocumentChunker};
+use serde::{Deserialize, Serialize};
 use tracing::trace;
 
 /// Heuristic chunker for texts intended for humans, e.g. documentation, books, blogs, etc.
@@ -16,26 +17,26 @@ use tracing::trace;
 /// Keep in mind the configuration for this chunker is different; The `size` will
 /// represent the amount of sentences in the chunk and the `overlap` will represent
 /// how many back/forward sentences will be included.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnappingWindow {
     /// Here `size` represents the amount of bytes in the base chunk
     /// while `overlap` will represent the amount of leading/trailing sentences.
-    config: ChunkBaseConfig,
+    pub config: ChunkBaseConfig,
 
     /// The delimiter to use to split sentences. At time of writing the most common one is ".".
-    delimiter: char,
+    pub delimiter: char,
 
     /// Whenever a delimiter is found, the chunker will look ahead for these sequences
     /// and will skip the delimiter if found, treating it as a regular char.
     ///
     /// Useful for common abbreviations and urls.
-    skip_forward: Vec<String>,
+    pub skip_forward: Vec<String>,
 
     /// Whenever a delimiter is found, the chunker will look back for these sequences
     /// and will skip the delimiter if found, treating it as a regular char.
     ///
     /// Useful for common abbreviations and urls.
-    skip_back: Vec<String>,
+    pub skip_back: Vec<String>,
 }
 
 impl SnappingWindow {
@@ -62,7 +63,7 @@ impl SnappingWindow {
     }
 }
 
-impl Chunker for SnappingWindow {
+impl DocumentChunker for SnappingWindow {
     fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let Self {
             config: ChunkBaseConfig { size, overlap },

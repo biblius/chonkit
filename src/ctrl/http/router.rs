@@ -1,12 +1,12 @@
 use crate::{
     app::service::ServiceState,
     core::{
-        chunk::ChunkConfig,
+        chunk::Chunker,
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
         service::document::DocumentUpload,
     },
-    ctrl::dto::{CreateCollectionPayload, SearchPayload, UploadResult},
+    ctrl::dto::{CreateCollectionPayload, EmbedPayload, SearchPayload, UploadResult},
     error::ChonkitError,
 };
 use axum::{
@@ -51,6 +51,7 @@ fn public_router(state: ServiceState) -> Router {
         .route("/vectors", get(list_collections))
         .route("/vectors", post(create_collection))
         .route("/vectors/models", get(list_embedding_models))
+        .route("/embeddings/:id", post(embed))
         .route("/embeddings", post(search))
         .with_state(state)
 }
@@ -146,9 +147,9 @@ async fn upload_documents(
 async fn chunk_preview(
     service: axum::extract::State<ServiceState>,
     id: axum::extract::Path<uuid::Uuid>,
-    config: axum::extract::Json<ChunkConfig>,
+    chunker: axum::extract::Json<Chunker>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let parsed = service.document.chunk_preview(id.0, config.0).await?;
+    let parsed = service.document.chunk_preview(id.0, chunker.0).await?;
     Ok(Json(parsed))
 }
 
@@ -167,6 +168,8 @@ async fn sync(
     service.document.sync().await?;
     Ok("Successfully synced")
 }
+
+// VECTORS
 
 async fn list_collections(
     service: axum::extract::State<ServiceState>,
@@ -194,4 +197,15 @@ async fn list_embedding_models(
         .into_iter()
         .collect::<Vec<_>>();
     Ok(Json(models))
+}
+
+async fn embed(
+    service: axum::extract::State<ServiceState>,
+    id: axum::extract::Path<uuid::Uuid>,
+    payload: axum::extract::Json<EmbedPayload>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let document = service.document.get_metadata(id.0).await?;
+    let content = service.document.get_content(id.0).await?;
+    // service.vector.create_embeddings().await?;
+    Ok("Successfully embedded")
 }

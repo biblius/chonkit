@@ -1,12 +1,15 @@
 use crate::{
     core::{
-        chunk::{chunk, ChunkConfig},
+        chunk::{Chunker, DocumentChunker},
         document::{
             parser::{ParseConfig, Parser},
+            sha256,
             store::DocumentStore,
         },
-        model::document::{Document, DocumentInsert, DocumentType},
-        model::{List, Pagination},
+        model::{
+            document::{Document, DocumentInsert, DocumentType},
+            List, Pagination,
+        },
         repo::document::DocumentRepo,
     },
     error::ChonkitError,
@@ -59,10 +62,20 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let ext = document.ext.as_str();
-        let parser = self.get_parser(id, ext.try_into()?).await?;
+        let ext = document.ext.as_str().try_into()?;
+        let parser = self.get_parser(id, ext).await?;
 
         self.storage.read(&document, parser).await
+    }
+
+    pub async fn get_chunks(&self, id: uuid::Uuid) -> Result<Vec<String>, ChonkitError> {
+        let content = self.get_content(id).await?;
+        // let chunker = self
+        //     .repo
+        //     .get_chunk_config(id)
+        //     .await?
+        //     .unwrap_or_else(|| );
+        todo!()
     }
 
     /// Insert the document metadata to the repository and persist it
@@ -73,8 +86,19 @@ where
     /// * `file`: Document file.
     pub async fn upload(&self, mut params: DocumentUpload<'_>) -> Result<Document, ChonkitError> {
         params.validify()?;
+
         let DocumentUpload { ref name, ty, file } = params;
-        let (path, hash) = self.storage.write(name, file).await?;
+        let hash = sha256(file);
+
+        let existing = self.repo.get_by_hash(&hash).await?;
+
+        if let Some(Document { name: existing, .. }) = existing {
+            return Err(ChonkitError::AlreadyExists(format!(
+                "New document ({name}) has same hash as existing ({existing})"
+            )));
+        };
+
+        let path = self.storage.write(name, file).await?;
         let insert = DocumentInsert::new(name, &path, ty, &hash);
         let document = self.repo.insert(insert).await?;
         Ok(document)
@@ -113,7 +137,7 @@ where
     pub async fn chunk_preview(
         &self,
         id: uuid::Uuid,
-        config: ChunkConfig,
+        chunker: Chunker,
     ) -> Result<Vec<String>, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
         let Some(document) = document else {
@@ -123,8 +147,9 @@ where
         let parser = self.get_parser(id, ext.try_into()?).await?;
         let content = self.storage.read(&document, parser).await?;
 
-        info!("Chunking {} with {config}", document.name);
-        Ok(chunk(config, &content)?
+        info!("Chunking {} with {chunker}", document.name);
+        Ok(chunker
+            .chunk(&content)?
             .into_iter()
             .map(|chunk| chunk.to_owned())
             .collect())
@@ -138,7 +163,7 @@ where
     pub async fn update_chunker(
         &self,
         id: uuid::Uuid,
-        config: ChunkConfig,
+        config: Chunker,
     ) -> Result<(), ChonkitError> {
         self.repo.update_chunk_config(id, config).await?;
         Ok(())

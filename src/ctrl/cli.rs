@@ -1,6 +1,6 @@
 use crate::{
     app::service::ServiceState,
-    core::{chunk::ChunkConfig, model::Pagination},
+    core::{chunk::Chunker, model::Pagination},
 };
 use clap::{Args, Parser, Subcommand};
 
@@ -32,7 +32,6 @@ enum DocumentExec {
 enum ChunkMode {
     Sw(IdArg),
     Ssw(ChunkpArg),
-    Rec(IdArg),
 }
 
 #[derive(Debug, Subcommand)]
@@ -88,7 +87,7 @@ pub async fn run(services: ServiceState) {
                 ChunkMode::Sw(IdArg { id }) => {
                     let preview = services
                         .document
-                        .chunk_preview(id, ChunkConfig::sw(500, 100))
+                        .chunk_preview(id, Chunker::sliding(500, 100))
                         .await
                         .unwrap();
                     println!("{:#?}", preview);
@@ -107,7 +106,7 @@ pub async fn run(services: ServiceState) {
                         .document
                         .chunk_preview(
                             id,
-                            ChunkConfig::ssw(
+                            Chunker::snapping(
                                 1000,
                                 10,
                                 vec![
@@ -151,31 +150,6 @@ pub async fn run(services: ServiceState) {
                     }
 
                     println!("Total chunks: {}", preview.len());
-                }
-
-                ChunkMode::Rec(IdArg { id }) => {
-                    let preview = services
-                        .document
-                        .chunk_preview(
-                            id,
-                            ChunkConfig::rec(
-                                500,
-                                100,
-                                vec![
-                                    "\n\n".to_string(),
-                                    "\n".to_string(),
-                                    " ".to_string(),
-                                    "".to_string(),
-                                ],
-                            ),
-                        )
-                        .await
-                        .unwrap();
-                    for (i, preview) in preview.into_iter().enumerate() {
-                        println!("Chunk {i} {{");
-                        println!("{preview}");
-                        println!("}}");
-                    }
                 }
             },
         },

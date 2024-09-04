@@ -1,9 +1,6 @@
 use crate::{
     core::{
-        document::{
-            parser::DocumentParser,
-            store::{sha256, DocumentStore},
-        },
+        document::{parser::DocumentParser, sha256, store::DocumentStore},
         model::{
             document::{Document, DocumentInsert, DocumentType},
             Pagination,
@@ -69,16 +66,17 @@ impl DocumentStore for FsDocumentStore {
         parser.parse(&file)
     }
 
-    async fn write(&self, name: &str, file: &[u8]) -> Result<(String, String), ChonkitError> {
+    async fn write(&self, name: &str, file: &[u8]) -> Result<String, ChonkitError> {
         let path = format!("{}/{name}", self.base.display());
         debug!("Writing {path}");
         match tokio::fs::read(&path).await {
-            Ok(_) => Err(ChonkitError::FileAlreadyExists(name.to_string())),
+            Ok(_) => Err(ChonkitError::AlreadyExists(format!(
+                "File '{name}' at {path}"
+            ))),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => {
-                    let hash = sha256(file);
                     tokio::fs::write(&path, file).await?;
-                    Ok((path, hash))
+                    Ok(path)
                 }
                 _ => Err(e.into()),
             },
@@ -165,7 +163,7 @@ mod tests {
             ..Default::default()
         };
 
-        let (path, _) = store.write(&d.name, CONTENT.as_bytes()).await.unwrap();
+        let path = store.write(&d.name, CONTENT.as_bytes()).await.unwrap();
 
         let file = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(CONTENT, file);
