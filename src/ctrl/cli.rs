@@ -1,9 +1,8 @@
-use clap::{Args, Parser, Subcommand};
-
 use crate::{
     app::service::ServiceState,
-    core::{chunk::ChunkConfig, repo::Pagination},
+    core::{chunk::ChunkConfig, model::Pagination},
 };
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "chonkit-cli", author = "biblius", version = "0.1", about = "Chunk documents", long_about = None)]

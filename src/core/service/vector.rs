@@ -1,7 +1,7 @@
 use crate::core::embedder::Embedder;
 use crate::core::model::collection::{Collection, CollectionInsert};
+use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
-use crate::core::repo::{List, Pagination};
 use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
 use crate::DEFAULT_COLLECTION_MODEL;

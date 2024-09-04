@@ -1,6 +1,6 @@
 use super::{Chunker, ChunkerError};
 use crate::core::chunk::ChunkBaseConfig;
-use tracing::{debug, trace};
+use tracing::debug;
 
 /// The most basic of chunkers.
 ///

@@ -1,4 +1,3 @@
-use super::{List, Pagination};
 use crate::{
     core::{
         chunk::ChunkConfig,
@@ -10,6 +9,7 @@ use crate::{
             },
             Document, DocumentInsert, DocumentUpdate,
         },
+        model::{List, Pagination},
     },
     error::ChonkitError,
 };

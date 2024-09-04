@@ -115,12 +115,12 @@ impl Chunker for SnappingWindow {
 
             for _ in 0..*overlap {
                 p_cursor.advance();
-                while p_cursor.advance_if_peek(&skip_forward, &skip_back) {
+                while p_cursor.advance_if_peek(skip_forward, skip_back) {
                     p_cursor.advance();
                 }
 
                 n_cursor.advance();
-                while n_cursor.advance_if_peek(&skip_forward, &skip_back) {
+                while n_cursor.advance_if_peek(skip_forward, skip_back) {
                     n_cursor.advance();
                 }
             }

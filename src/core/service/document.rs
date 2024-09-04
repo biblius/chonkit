@@ -6,7 +6,8 @@ use crate::{
             store::DocumentStore,
         },
         model::document::{Document, DocumentInsert, DocumentType},
-        repo::{document::DocumentRepo, List, Pagination},
+        model::{List, Pagination},
+        repo::document::DocumentRepo,
     },
     error::ChonkitError,
 };

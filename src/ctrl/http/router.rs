@@ -4,7 +4,7 @@ use crate::{
         chunk::ChunkConfig,
         document::parser::ParseConfig,
         model::document::{Document, DocumentType},
-        repo::Pagination,
+        model::Pagination,
         service::document::DocumentUpload,
     },
     ctrl::dto::{CreateCollectionPayload, SearchPayload},

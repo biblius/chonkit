@@ -1,15 +1,14 @@
-use std::{path::PathBuf, str::FromStr};
-
-use tracing::{debug, error, info};
-
 use crate::{
     core::{
         document::{parser::DocumentParser, store::DocumentStore},
         model::document::{Document, DocumentInsert, DocumentType},
-        repo::{document::DocumentRepo, Pagination},
+        model::Pagination,
+        repo::document::DocumentRepo,
     },
     error::ChonkitError,
 };
+use std::{path::PathBuf, str::FromStr};
+use tracing::{debug, error, info};
 
 /// Simple FS based implementation of a [DocumentStore](crate::core::document::DocumentStore).
 #[derive(Debug, Clone)]

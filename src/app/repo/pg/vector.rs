@@ -1,7 +1,8 @@
 use crate::{
     core::{
         model::collection::{Collection, CollectionInsert},
-        repo::{vector::VectorRepo, List},
+        model::{List, Pagination},
+        repo::vector::VectorRepo,
     },
     error::ChonkitError,
 };
@@ -57,10 +58,7 @@ impl VectorRepo for PgVectorRepo {
         Ok(result.rows_affected())
     }
 
-    async fn list(
-        &self,
-        p: crate::core::repo::Pagination,
-    ) -> Result<crate::core::repo::List<Collection>, ChonkitError> {
+    async fn list(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(id) FROM collections")
             .fetch_one(&self.pool)
             .await

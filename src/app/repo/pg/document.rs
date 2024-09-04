@@ -8,7 +8,8 @@ use crate::core::{
         },
         Document, DocumentInsert, DocumentUpdate,
     },
-    repo::{document::DocumentRepo, List, Pagination},
+    model::{List, Pagination},
+    repo::document::DocumentRepo,
 };
 use crate::error::ChonkitError;
 use chrono::{DateTime, Utc};

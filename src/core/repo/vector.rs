@@ -1,6 +1,6 @@
-use super::{List, Pagination};
 use crate::{
     core::model::collection::{Collection, CollectionInsert},
+    core::model::{List, Pagination},
     error::ChonkitError,
 };
 use std::future::Future;
