@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM files WHERE name = ANY($1) AND parent = $2",
+  "query": "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE path = $1",
   "describe": {
     "columns": [
       {
@@ -15,51 +15,56 @@
       },
       {
         "ordinal": 2,
-        "name": "parent",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 3,
         "name": "path",
         "type_info": "Text"
       },
       {
+        "ordinal": 3,
+        "name": "ext",
+        "type_info": "Text"
+      },
+      {
         "ordinal": 4,
+        "name": "hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
         "name": "tags",
         "type_info": "TextArray"
       },
       {
-        "ordinal": 5,
-        "name": "is_dir",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "TextArray",
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
       false,
       false,
-      true,
+      false,
+      false,
       false,
       true,
-      false,
+      true,
       false,
       false
     ]
   },
-  "hash": "61f67db3f3eb629c980418091192a526857c5a048547ba778dbbeaf254b44918"
+  "hash": "266f0f263bf480e9a6750eb9d350e8e7c002c38b1f0d9892c1a41ef5a4cff504"
 }

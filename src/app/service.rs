@@ -2,24 +2,23 @@ use super::{
     document::store::FsDocumentStore, embedder::FastEmbedder, repo::pg::vector::PgVectorRepo,
     vector::store::qdrant::QdrantVectorStore,
 };
-use crate::{
-    app::repo::pg::document::PgDocumentRepo,
-    core::service::{document::DocumentService, vector::VectorService},
-};
+use crate::app::repo::pg::document::PgDocumentRepo;
+use document::DocumentService;
 use qdrant_client::Qdrant;
 use sqlx::PgPool;
+use vector::VectorService;
 
-type Document = DocumentService<PgDocumentRepo, FsDocumentStore>;
-type Vector = VectorService<PgVectorRepo, QdrantVectorStore, FastEmbedder>;
+pub mod document;
+pub mod vector;
 
 #[derive(Debug, Clone)]
 pub struct ServiceState {
-    pub document: Document,
-    pub vector: Vector,
+    pub document: DocumentService,
+    pub vector: VectorService,
 }
 
 impl ServiceState {
-    pub fn new(document: Document, vector: Vector) -> Self {
+    pub fn new(document: DocumentService, vector: VectorService) -> Self {
         Self { document, vector }
     }
 
@@ -32,8 +31,8 @@ impl ServiceState {
         let repo_document = PgDocumentRepo::new(pool.clone());
         let repo_vector = PgVectorRepo::new(pool.clone());
 
-        let service_doc = Document::new(repo_document, store_document);
-        let service_vec = Vector::new(repo_vector, store_vector, embedder);
+        let service_doc = DocumentService::new(repo_document, store_document);
+        let service_vec = VectorService::new(repo_vector, store_vector, embedder);
 
         service_vec.create_default_collection().await;
 

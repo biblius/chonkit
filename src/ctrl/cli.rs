@@ -1,10 +1,10 @@
-use std::{collections::HashMap, path::PathBuf};
-
 use crate::{
     app::service::ServiceState,
     core::{document::parser::ParseConfig, model::Pagination},
 };
 use clap::{Args, Parser, Subcommand};
+use std::{collections::HashMap, path::PathBuf};
+use validify::Validate;
 
 #[derive(Debug, Parser)]
 #[command(name = "chonkit-cli", author = "biblius", version = "0.1", about = "Chunk documents", long_about = None)]
@@ -100,7 +100,7 @@ struct ChunkpArg {
 struct ListArgs {
     #[arg(long, short, default_value = "10")]
     limit: usize,
-    #[arg(long, short, default_value = "0")]
+    #[arg(long, short, default_value = "1")]
     offset: usize,
 }
 
@@ -114,11 +114,9 @@ pub async fn run(services: ServiceState) {
             }
             DocumentExec::Sync => services.document.sync().await.unwrap(),
             DocumentExec::List(ListArgs { limit, offset }) => {
-                let docs = services
-                    .document
-                    .list_documents(Pagination::new(limit, offset))
-                    .await
-                    .unwrap();
+                let p = Pagination::new(limit, offset);
+                p.validate().unwrap();
+                let docs = services.document.list_documents(p).await.unwrap();
                 println!("{:#?}", docs);
             }
             DocumentExec::Chunkp(ChunkpArg {

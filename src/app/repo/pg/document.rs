@@ -390,7 +390,7 @@ mod tests {
 
     use super::PgDocumentRepo;
     use crate::{
-        app::repo::pg::init,
+        app::test::{init_postgres, PostgresContainer},
         core::{
             chunk::Chunker,
             model::document::{DocumentInsert, DocumentType},
@@ -400,13 +400,10 @@ mod tests {
     use suitest::before_all;
 
     #[before_all]
-    async fn setup() -> PgDocumentRepo {
-        let url = std::env::var("DATABASE_URL").expect("no database url");
-        let client = init(&url).await;
-
-        let repo = PgDocumentRepo::new(client);
-
-        repo
+    async fn setup() -> (PgDocumentRepo, PostgresContainer) {
+        let (postgres, pg_img) = init_postgres().await;
+        let repo = PgDocumentRepo::new(postgres);
+        (repo, pg_img)
     }
 
     #[test]

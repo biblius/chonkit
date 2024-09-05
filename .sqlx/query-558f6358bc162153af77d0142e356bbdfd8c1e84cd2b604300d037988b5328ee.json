@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM files WHERE path = $1",
+  "query": "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at\n                   FROM documents\n                   LIMIT $1\n                   OFFSET $2\n                ",
   "describe": {
     "columns": [
       {
@@ -15,50 +15,57 @@
       },
       {
         "ordinal": 2,
-        "name": "parent",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 3,
         "name": "path",
         "type_info": "Text"
       },
       {
+        "ordinal": 3,
+        "name": "ext",
+        "type_info": "Text"
+      },
+      {
         "ordinal": 4,
+        "name": "hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
         "name": "tags",
         "type_info": "TextArray"
       },
       {
-        "ordinal": 5,
-        "name": "is_dir",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
       false,
       false,
-      true,
+      false,
+      false,
       false,
       true,
-      false,
+      true,
       false,
       false
     ]
   },
-  "hash": "8a5e8b2374085e57abd5fa0b689e4750512123f16a8830a56b7d7bc9b468ee26"
+  "hash": "558f6358bc162153af77d0142e356bbdfd8c1e84cd2b604300d037988b5328ee"
 }

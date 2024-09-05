@@ -6,23 +6,24 @@ use crate::{DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE};
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions;
 use qdrant_client::qdrant::{
-    CreateCollection, Distance, PointStruct, SearchParams, SearchPoints, UpsertPointsBuilder,
-    VectorParams, VectorsConfig, WithPayloadSelector,
+    CreateCollection, Distance, GetCollectionInfoResponse, PointStruct, SearchParams, SearchPoints,
+    UpsertPointsBuilder, VectorParams, VectorsConfig, WithPayloadSelector,
 };
 use qdrant_client::{Payload, Qdrant, QdrantError};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+pub fn init(url: &str) -> Qdrant {
+    info!("Connecting to qdrant at {url}");
+    Qdrant::from_url(url)
+        .build()
+        .expect("error initialising qdrant")
+}
+
 /// Basic Arc wrapper around Qdrant.
 #[derive(Clone)]
 pub struct QdrantVectorStore {
     q: Arc<Qdrant>,
-}
-
-impl QdrantVectorStore {
-    pub fn new(q: Qdrant) -> Self {
-        Self { q: Arc::new(q) }
-    }
 }
 
 impl VectorStore for QdrantVectorStore {
@@ -149,32 +150,15 @@ impl VectorStore for QdrantVectorStore {
         let mut collections = vec![];
 
         for collection in collection_list {
-            // God have mercy
             let info = self.q.collection_info(&collection).await?;
-            let Some(result) = info.result else { continue };
-            let Some(config) = result.config else {
+            let Some(size) = self.get_collection_size(info) else {
                 continue;
             };
-            let Some(params) = config.params else {
-                continue;
-            };
-            let Some(vectors) = params.vectors_config else {
-                continue;
-            };
-            let Some(config) = vectors.config else {
-                continue;
-            };
-
-            match config {
-                Config::Params(VectorParams { size, .. }) => collections.push((collection, size)),
-                Config::ParamsMap(pm) => {
-                    warn!("Found unexpected params map! {pm:?}");
-                }
-            }
+            collections.push((collection, size));
         }
 
         for (name, size) in collections {
-            let collection = CollectionInsert::new(&name, size as usize);
+            let collection = CollectionInsert::new(&name, size);
             match repo.insert_collection(collection).await {
                 Ok(Collection { id, name, .. }) => {
                     info!("Successfully inserted collection {name} ({id})",)
@@ -184,6 +168,23 @@ impl VectorStore for QdrantVectorStore {
         }
 
         Ok(())
+    }
+}
+
+impl QdrantVectorStore {
+    pub fn new(q: Qdrant) -> Self {
+        Self { q: Arc::new(q) }
+    }
+
+    fn get_collection_size(&self, info: GetCollectionInfoResponse) -> Option<usize> {
+        let config = info.result?.config?.params?.vectors_config?.config?; // ?
+        match config {
+            Config::Params(VectorParams { size, .. }) => Some(size as usize),
+            Config::ParamsMap(pm) => {
+                warn!("Found unexpected params map! {pm:?}");
+                None
+            }
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{core::repo::vector::VectorRepo, error::ChonkitError};
 use std::future::Future;
 
-/// Vector collection operations.
+/// Vector database operations.
 pub trait VectorStore {
     /// List available vector collections.
     fn list_collections(&self) -> impl Future<Output = Result<Vec<String>, ChonkitError>> + Send;
@@ -60,6 +60,9 @@ pub trait VectorStore {
         collection: &str,
     ) -> impl Future<Output = Result<(), ChonkitError>>;
 
+    /// Sync repository contents with the store.
+    ///
+    /// * `repo`: Vector collection repository.
     fn sync(
         &self,
         repo: &(impl VectorRepo + Sync),

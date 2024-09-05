@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM files WHERE id = $1",
+  "query": "SELECT id, name, model, size, created_at, updated_at FROM collections WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -15,31 +15,21 @@
       },
       {
         "ordinal": 2,
-        "name": "parent",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 3,
-        "name": "path",
+        "name": "model",
         "type_info": "Text"
       },
       {
+        "ordinal": 3,
+        "name": "size",
+        "type_info": "Int4"
+      },
+      {
         "ordinal": 4,
-        "name": "tags",
-        "type_info": "TextArray"
-      },
-      {
-        "ordinal": 5,
-        "name": "is_dir",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 5,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -54,11 +44,9 @@
       false,
       true,
       false,
-      true,
-      false,
       false,
       false
     ]
   },
-  "hash": "d169c558df910c04f98627f46d1f0ee4fbbab4c51667ccbcee9cf966ba8db9b1"
+  "hash": "244d341cf89c120dd65ce833658155db91a1e66406885eaf81a38f89933ac89e"
 }

@@ -5,3 +5,6 @@ pub mod embedder;
 pub mod repo;
 pub mod service;
 pub mod vector;
+
+#[cfg(test)]
+pub mod test;

@@ -203,6 +203,10 @@ where
         self.vectors.sync(&self.repo).await
     }
 
+    /// Search for a model with the same embedding size as the given one.
+    ///
+    /// * `id`: Collection ID.
+    /// * `size`: Target model embedding size.
     fn find_compatible_model(&self, id: Uuid, size: usize) -> Result<String, ChonkitError> {
         debug!("Collection {id} does not have a default model specified, searching for compatible ones.");
         let model = self
