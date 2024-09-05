@@ -1,3 +1,4 @@
+use crate::core::model::collection::{Collection, CollectionInsert};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
@@ -141,23 +142,30 @@ impl VectorStore for QdrantVectorStore {
     }
 
     async fn sync(&self, repo: &(impl VectorRepo + Sync)) -> Result<(), ChonkitError> {
-        let collection_list = self.list_collections().await?;
-        let mut collections = vec![];
-        for collection in collection_list {
-            let info = self.q.collection_info(&collection).await?;
-            let info = info
-                .result
-                .unwrap()
-                .config
-                .unwrap()
-                .params
-                .unwrap()
-                .vectors_config
-                .unwrap()
-                .config
-                .unwrap();
+        info!("Starting collection sync");
 
-            match info {
+        let collection_list = self.list_collections().await?;
+
+        let mut collections = vec![];
+
+        for collection in collection_list {
+            // God have mercy
+            let info = self.q.collection_info(&collection).await?;
+            let Some(result) = info.result else { continue };
+            let Some(config) = result.config else {
+                continue;
+            };
+            let Some(params) = config.params else {
+                continue;
+            };
+            let Some(vectors) = params.vectors_config else {
+                continue;
+            };
+            let Some(config) = vectors.config else {
+                continue;
+            };
+
+            match config {
                 Config::Params(VectorParams { size, .. }) => collections.push((collection, size)),
                 Config::ParamsMap(pm) => {
                     warn!("Found unexpected params map! {pm:?}");
@@ -165,7 +173,16 @@ impl VectorStore for QdrantVectorStore {
             }
         }
 
-        dbg!(collections);
+        for (name, size) in collections {
+            let collection = CollectionInsert::new(&name, size as usize);
+            match repo.insert_collection(collection).await {
+                Ok(Collection { id, name, .. }) => {
+                    info!("Successfully inserted collection {name} ({id})",)
+                }
+                Err(_) => todo!(),
+            };
+        }
+
         Ok(())
     }
 }

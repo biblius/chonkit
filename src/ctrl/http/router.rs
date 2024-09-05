@@ -245,6 +245,6 @@ async fn search(
     service: State<ServiceState>,
     Json(search): Json<SearchPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let chunks = service.vector.search(query, collection, limit).await?;
+    let chunks = service.vector.search(search).await?;
     Ok(Json(chunks))
 }
