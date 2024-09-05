@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::str::Utf8Error;
 use thiserror::Error;
 
-mod ssw;
-mod sw;
+mod sliding;
+mod snapping;
 
-pub use ssw::SnappingWindow;
-pub use sw::SlidingWindow;
+pub use sliding::SlidingWindow;
+pub use snapping::SnappingWindow;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

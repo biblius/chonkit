@@ -1,6 +1,6 @@
 use crate::core::{
     chunk::Chunker,
-    document::parser::{ParseConfig, Parser},
+    document::parser::ParseConfig,
     model::{
         document::{
             config::{DocumentChunkConfig, DocumentParseConfig},

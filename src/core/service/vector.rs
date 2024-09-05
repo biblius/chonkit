@@ -10,8 +10,6 @@ use tracing::{debug, info};
 use uuid::Uuid;
 use validify::Validify;
 
-pub mod dto;
-
 /// High level operations related to embeddings and vector storage.
 #[derive(Debug, Clone)]
 pub struct VectorService<R, V, E> {
@@ -122,7 +120,7 @@ where
             )));
         };
 
-        let new_size = self.embedder.size(&model).ok_or_else(|| {
+        let new_size = self.embedder.size(model).ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!("Cannot determine size for {model}"))
         })?;
 
@@ -214,11 +212,52 @@ where
             .map(|(m, _)| m)
             .ok_or_else(|| {
                 ChonkitError::InvalidEmbeddingModel(format!(
-                    "No model found for embedding size {}",
-                    size
+                    "No model found for embedding size {size}",
                 ))
             })?;
         debug!("Defaulted to {model} for collection {id}");
         Ok(model)
+    }
+}
+
+/// Vector service DTOs.
+pub mod dto {
+    use serde::Deserialize;
+    use validify::Validify;
+
+    /// Params for creating collections.
+    #[derive(Debug, Deserialize, Validify)]
+    pub struct CreateCollectionPayload {
+        /// Collection name.
+        #[validate(length(min = 1))]
+        #[modify(trim)]
+        pub name: String,
+
+        /// Default collection model.
+        #[validate(length(min = 1))]
+        #[modify(trim)]
+        pub model: String,
+    }
+
+    /// Params for creating embeddings.
+    #[derive(Debug, Deserialize)]
+    pub struct EmbedPayload {
+        pub document_id: uuid::Uuid,
+        pub collection_id: uuid::Uuid,
+    }
+
+    /// Params for semantic search.
+    #[derive(Debug, Deserialize, Validify)]
+    pub struct SearchPayload {
+        /// The text to search by.
+        pub query: String,
+
+        /// The collection to search in.
+        #[validate(length(min = 1))]
+        #[modify(trim)]
+        pub collection: String,
+
+        /// Amount of results to return.
+        pub limit: Option<u64>,
     }
 }

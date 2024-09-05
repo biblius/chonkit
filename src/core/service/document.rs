@@ -14,12 +14,10 @@ use crate::{
     },
     error::ChonkitError,
 };
-use dto::ChunkPreviewPayload;
+use dto::{ChunkPreviewPayload, DocumentUpload};
 use tracing::info;
 use uuid::Uuid;
 use validify::{Validate, Validify};
-
-pub mod dto;
 
 /// High level operations for document management.
 #[derive(Debug, Clone)]
@@ -96,9 +94,7 @@ where
     /// Insert the document metadata to the repository and persist it
     /// in the underlying storage implementation.
     ///
-    /// * `name`: Document name.
-    /// * `ext`:  Document extension.
-    /// * `file`: Document file.
+    /// * `params`: Upload params.
     pub async fn upload(&self, mut params: DocumentUpload<'_>) -> Result<Document, ChonkitError> {
         params.validify()?;
 
@@ -246,18 +242,39 @@ where
     }
 }
 
-#[derive(Debug, Validify)]
-pub struct DocumentUpload<'a> {
-    #[modify(trim)]
-    #[validate(length(min = 1, message = "Document name cannot be empty."))]
-    pub name: String,
-    pub ty: DocumentType,
-    pub file: &'a [u8],
-}
+/// Document service DTOs.
+pub mod dto {
+    use crate::core::{
+        chunk::Chunker, document::parser::ParseConfig, model::document::DocumentType,
+    };
+    use serde::Deserialize;
+    use validify::Validify;
 
-impl<'a> DocumentUpload<'a> {
-    pub fn new(name: String, ty: DocumentType, file: &'a [u8]) -> Self {
-        Self { name, ty, file }
+    #[derive(Debug, Validify)]
+    pub struct DocumentUpload<'a> {
+        /// Document name.
+        #[modify(trim)]
+        #[validate(length(min = 1, message = "Document name cannot be empty."))]
+        pub name: String,
+
+        /// Document extension.
+        pub ty: DocumentType,
+
+        /// Document file.
+        pub file: &'a [u8],
+    }
+
+    impl<'a> DocumentUpload<'a> {
+        pub fn new(name: String, ty: DocumentType, file: &'a [u8]) -> Self {
+            Self { name, ty, file }
+        }
+    }
+
+    /// DTO used for previewing chunks.
+    #[derive(Debug, Deserialize, Default)]
+    pub struct ChunkPreviewPayload {
+        pub parser: Option<ParseConfig>,
+        pub chunker: Option<Chunker>,
     }
 }
 
@@ -274,7 +291,7 @@ mod document_service_tests {
                 docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser,
             },
             model::document::DocumentType,
-            service::document::{DocumentService, DocumentUpload},
+            service::document::{dto::DocumentUpload, DocumentService},
         },
     };
     use suitest::{after_all, before_all, cleanup};

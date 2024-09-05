@@ -18,7 +18,7 @@ impl ChonkitError {
             | E::Chunk(_)
             | E::InvalidFileName(_)
             | E::UnsupportedFileType(_)
-            | E::UnsupportedEmbeddingModel(_) => SC::UNPROCESSABLE_ENTITY,
+            | E::InvalidEmbeddingModel(_) => SC::UNPROCESSABLE_ENTITY,
             E::ParsePdf(_)
             | E::DocxRead(_)
             | E::Qdrant(_)
@@ -82,7 +82,7 @@ impl IntoResponse for ChonkitError {
 
             CE::Validation(errors) => (status, ResponseError::new(ET::Api, errors)).into_response(),
 
-            CE::UnsupportedEmbeddingModel(e) => {
+            CE::InvalidEmbeddingModel(e) => {
                 (status, ResponseError::new(ET::Api, e)).into_response()
             }
 

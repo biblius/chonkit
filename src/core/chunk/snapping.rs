@@ -4,8 +4,7 @@ use tracing::trace;
 
 /// Heuristic chunker for texts intended for humans, e.g. documentation, books, blogs, etc.
 ///
-/// Basically a sliding window which is aware of sentence stops, currently the only stop
-/// implemented is the '.' character.
+/// A sliding window that is aware of sentence stops,
 ///
 /// It will attempt to chunk the content according to `size`. Keep in mind it cannot
 /// be exact and the chunks will probably be larger, because of the way it searches
@@ -14,9 +13,17 @@ use tracing::trace;
 /// The chunker can also be configured to skip common patterns including the fullstop
 /// such as abbreviations (e.g., i.e., etc.) and urls.
 ///
+/// The default delimiter is `'.'`.
+/// The default `size` and `overlap` are 1000 and 10.
+/// The default forward skips are [SnappingWindow::DEFAULT_SKIP_F].
+/// The default backward skips are [SnappingWindow::DEFAULT_SKIP_B].
+///
 /// Keep in mind the configuration for this chunker is different; The `size` will
-/// represent the amount of sentences in the chunk and the `overlap` will represent
+/// represent the amount of bytes in the chunk and the `overlap` will represent
 /// how many back/forward sentences will be included.
+///
+/// If the input has a lot of unicode with characters more than 1 byte, a larger `size` is
+/// recommended.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnappingWindow {
     /// Here `size` represents the amount of bytes in the base chunk
@@ -39,7 +46,34 @@ pub struct SnappingWindow {
     pub skip_back: Vec<String>,
 }
 
+impl Default for SnappingWindow {
+    fn default() -> Self {
+        Self {
+            config: ChunkBaseConfig::new(1000, 10),
+            delimiter: '.',
+            // Common urls, abbreviations, file extensions
+            skip_forward: Self::DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+            skip_back: Self::DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+        }
+    }
+}
+
 impl SnappingWindow {
+    /// Default patterns to skip in front of delimiters.
+    /// `___. some text`
+    pub const DEFAULT_SKIP_F: &'static [&'static str] = &[
+        "com", "org", "net", // Common URL patterns
+        "g.", "e.", // Common acronyms (e.g., i.e.)
+        "sh", "rs", "js", "json", // Common file extensions
+    ];
+
+    /// Default patterns to skip behind delimiters.
+    /// `Some text.___` <
+    pub const DEFAULT_SKIP_B: &'static [&'static str] = &[
+        "www", // Common URL patterns
+        "etc", "e.g", "i.e", // Common acronyms
+    ];
+
     pub fn new(size: usize, overlap: usize) -> Self {
         Self {
             config: ChunkBaseConfig::new(size, overlap),
@@ -78,6 +112,7 @@ impl DocumentChunker for SnappingWindow {
 
         let mut cursor = Cursor::new(input, *delim);
 
+        // Cursor position
         let mut start = 1;
 
         snap_front(&mut start, input);
@@ -85,7 +120,7 @@ impl DocumentChunker for SnappingWindow {
         let mut chunk = &input[..start];
 
         loop {
-            if start >= input.len() {
+            if start >= total_bytes {
                 if !chunk.is_empty() {
                     chunks.push(chunk)
                 }
@@ -107,15 +142,26 @@ impl DocumentChunker for SnappingWindow {
             chunk = concat(chunk, piece)?;
 
             if byte_count(chunk) < *size {
-                if cursor.finished() {
-                    let prev = &input[..cursor.byte_offset - byte_count(chunk)];
-                    let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
-                    let chunk_full = concat(prev, chunk)?;
-                    chunks.push(chunk_full);
-                    trace!("Added chunk, total: {}", chunks.len());
-                    break;
+                if !cursor.finished() {
+                    continue;
                 }
-                continue;
+
+                let prev = &input[..cursor.byte_offset - byte_count(chunk)];
+                let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
+                let chunk_full = concat(prev, chunk)?;
+                chunks.push(chunk_full);
+
+                #[cfg(debug_assertions)]
+                {
+                    trace!(
+                        "Added last chunk (full:{}|base:{}|prev:{}), total: {}",
+                        chunk_full.len(),
+                        chunk.len(),
+                        prev.len(),
+                        chunks.len()
+                    );
+                }
+                break;
             }
 
             let prev = &input[..cursor.byte_offset - byte_count(chunk)];
@@ -129,7 +175,17 @@ impl DocumentChunker for SnappingWindow {
             // Skip the first chunk since its contents will be in the following one.
             if !prev.is_empty() {
                 chunks.push(chunk_full);
-                trace!("Added chunk, total: {}", chunks.len());
+                #[cfg(debug_assertions)]
+                {
+                    trace!(
+                        "Added chunk (full:{}|base:{}|prev:{}|next:{}), total: {}",
+                        chunk_full.len(),
+                        chunk.len(),
+                        prev.len(),
+                        next.len(),
+                        chunks.len()
+                    );
+                }
             }
 
             start += 1;
@@ -140,7 +196,17 @@ impl DocumentChunker for SnappingWindow {
                 // and there is no previous chunk
                 if chunks.is_empty() {
                     chunks.push(chunk_full);
-                    trace!("Added chunk, total: {}", chunks.len());
+                    #[cfg(debug_assertions)]
+                    {
+                        trace!(
+                            "Added last chunk (full:{}|base:{}|prev:{}|next:{}), total: {}",
+                            chunk_full.len(),
+                            chunk.len(),
+                            prev.len(),
+                            next.len(),
+                            chunks.len()
+                        );
+                    }
                 }
                 break;
             }
@@ -189,32 +255,9 @@ fn next_chunk<'a>(
     (n_cursor.get_slice(), n_cursor.byte_offset)
 }
 
-impl Default for SnappingWindow {
-    fn default() -> Self {
-        Self {
-            config: ChunkBaseConfig::new(500, 10),
-            delimiter: '.',
-            // Common urls, abbreviations, file extensions
-            skip_forward: vec![
-                "com".to_string(),
-                "org".to_string(),
-                "net".to_string(),
-                "g.".to_string(),
-                "e.".to_string(),
-                "sh".to_string(),
-                "rs".to_string(),
-                "js".to_string(),
-                "json".to_string(),
-            ],
-            skip_back: vec![
-                "www".to_string(),
-                "etc".to_string(),
-                "e.g".to_string(),
-                "i.e".to_string(),
-            ],
-        }
-    }
-}
+///
+/// TODO: Maybe check if we can remove skip_b because fullstops are usually followed by spaces.
+/// It would save a lot of work in the long run.
 
 #[derive(Debug)]
 struct Cursor<'a> {
@@ -344,6 +387,9 @@ impl<'a> Cursor<'a> {
         &self.buf[self.byte_offset..end] == pat
     }
 
+    /// TODO: I'm pretty sure that we can only iterate through
+    /// one of the skip vectors in this one if we change the implementation
+    /// to always advance if it doesn't encounter a character behind a delimiter.
     fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
         for s in back {
             if self.peek_back(s) {
@@ -706,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn ssw_works() {
+    fn snapping_works() {
         let input =
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
         let chunker = SnappingWindow {
@@ -727,7 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn ssw_skips_back() {
+    fn snapping_skips_back() {
         let input =
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
         let chunker = SnappingWindow {
@@ -746,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn ssw_skips_forward() {
+    fn snapping_skips_forward() {
         let input =
             "Go to sentences.org for more words. 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.";
 
@@ -767,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn ssw_skips_common_abbreviations() {
+    fn snapping_skips_common_abbreviations() {
         let input =
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
@@ -792,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn ssw_table_of_contents() {
+    fn snapping_table_of_contents() {
         let input =
             "Table of contents:\n1 Super cool stuff\n1.1 Some chonkers in rust\n1.2 Some data for your LLM\n1.3 ??? \n1.4 Profit \n1.4.1 Lambo\nHope you liked the table of contents. See more at content.co.com.";
 
@@ -814,7 +860,6 @@ mod tests {
         let expected = [input];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
-        dbg!(&chunks);
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {

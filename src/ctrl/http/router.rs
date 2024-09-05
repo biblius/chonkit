@@ -5,7 +5,7 @@ use crate::{
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
         service::{
-            document::{dto::ChunkPreviewPayload, DocumentUpload},
+            document::dto::{ChunkPreviewPayload, DocumentUpload},
             vector::dto::{CreateCollectionPayload, SearchPayload},
         },
     },
