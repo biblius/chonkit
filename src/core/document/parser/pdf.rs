@@ -11,8 +11,9 @@ use tracing::debug;
 
 /// Parses PDFs.
 /// Configuration:
-/// * `skip_front`: The amount of PDF pages to skip from the start of the document.
-/// * `skip_back`: The amount of pages to omit from the back of the document.
+/// * `skip_start`: The amount of PDF pages to skip from the start of the document.
+/// * `skip_end`: The amount of pages to omit from the back of the document.
+/// * `range`: Range of pages to use.
 /// * `filters`: Line based, i.e. lines matching a filter will be skipped.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct PdfParser {
@@ -30,15 +31,11 @@ impl DocumentParser for PdfParser {
         let _start = Instant::now();
 
         let ParseConfig {
-            skip_start,
-            skip_end,
+            start,
+            end,
             ref filters,
             range,
         } = self.config;
-
-        if let Some(_range) = range {
-            todo!()
-        }
 
         let mut input = lopdf::Document::load_mem(input)?;
 
@@ -52,15 +49,18 @@ impl DocumentParser for PdfParser {
         // Size hint of pages is the total amount
         let total_pages = pages.size_hint().0;
 
+        let start = if range { start - 1 } else { start };
+        let end_condition: Box<dyn Fn(usize) -> bool> = if range {
+            Box::new(|page_num| page_num == end)
+        } else {
+            Box::new(|page_num| total_pages.saturating_sub(page_num).saturating_sub(end) == 0)
+        };
+
         // For debugging
         let mut page_count = 0;
 
-        for (page_num, page_id) in pages.enumerate().skip(skip_start) {
-            if total_pages
-                .saturating_sub(page_num)
-                .saturating_sub(skip_end)
-                == 0
-            {
+        for (page_num, page_id) in pages.enumerate().skip(start) {
+            if end_condition(page_num) {
                 break;
             }
 

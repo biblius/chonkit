@@ -65,6 +65,9 @@ struct ParseArg {
     #[arg(long, short)]
     end: usize,
 
+    #[arg(long, short, action)]
+    range: bool,
+
     /// Parsing specific text elements filters.
     #[arg(long, short)]
     filter: Option<String>,
@@ -135,9 +138,13 @@ pub async fn run(services: ServiceState) {
                 start,
                 end,
                 filter,
+                range,
             }) => {
                 let filters = filter.map(csv_to_vec).unwrap_or_default();
                 let mut cfg = ParseConfig::new(start, end);
+                if range {
+                    cfg = cfg.use_range();
+                }
                 for filter in filters {
                     cfg = cfg.filter(regex::Regex::new(&filter).unwrap());
                 }

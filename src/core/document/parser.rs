@@ -4,6 +4,7 @@ use pdf::PdfParser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use text::TextParser;
+use validify::{schema_err, schema_validation, Validate, ValidationErrors};
 
 pub mod docx;
 pub mod pdf;
@@ -19,17 +20,19 @@ pub trait DocumentParser {
 /// General parsing configuration for documents.
 /// A text element is parser specific, it could be PDF pages,
 /// DOCX paragraphs, CSV rows, etc.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Validate)]
+#[validate(Self::validate)]
 pub struct ParseConfig {
     /// Skip the first amount of text elements.
-    pub skip_start: usize,
+    pub start: usize,
 
     /// Skip the last amount of text elements.
-    pub skip_end: usize,
+    pub end: usize,
 
-    /// If given, parsers should prioritize over the skips.
-    /// Set the range of text elements to be parsed.
-    pub range: Option<(usize, usize)>,
+    /// If true, parsers should treat the the (start)[Self::start]
+    /// and (end)[Self::end] parameters as a range instead of just
+    /// skipping the elements.
+    pub range: bool,
 
     /// Filter specific patterns in text elements. Parser specific.
     #[serde(with = "serde_regex")]
@@ -37,17 +40,17 @@ pub struct ParseConfig {
 }
 
 impl ParseConfig {
-    pub fn new(skip_start: usize, skip_end: usize) -> Self {
+    pub fn new(start: usize, end: usize) -> Self {
         Self {
-            skip_start,
-            skip_end,
+            start,
+            end,
             ..Default::default()
         }
     }
 
-    /// Set the range of elements to parse to parse.
-    pub fn use_range(mut self, start: usize, end: usize) -> Self {
-        self.range = Some((start, end));
+    /// Set the parser to use a range of elements instead of just skipping.
+    pub fn use_range(mut self) -> Self {
+        self.range = true;
         self
     }
 
@@ -60,6 +63,19 @@ impl ParseConfig {
     pub fn filter(mut self, re: Regex) -> Self {
         self.filters.push(re);
         self
+    }
+
+    #[schema_validation]
+    fn validate(&self) -> Result<(), ValidationErrors> {
+        if self.end <= self.start {
+            schema_err!("start>=end", "`end` must be greater than start");
+        }
+        if self.range && self.start == 0 {
+            schema_err!(
+                "range=true;start=0",
+                "`start` cannot be 0 when using `range`"
+            );
+        }
     }
 }
 
