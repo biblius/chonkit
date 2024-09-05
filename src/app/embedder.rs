@@ -5,10 +5,10 @@ use fastembed::{InitOptions, ModelInfo, TextEmbedding};
 pub struct FastEmbedder;
 
 impl Embedder for FastEmbedder {
-    fn list_embedding_models(&self) -> Vec<String> {
+    fn list_embedding_models(&self) -> Vec<(String, usize)> {
         fastembed::TextEmbedding::list_supported_models()
             .into_iter()
-            .map(|m| m.model_code)
+            .map(|model| (model.model_code, model.dim))
             .collect()
     }
 
@@ -18,9 +18,7 @@ impl Embedder for FastEmbedder {
         model: &str,
     ) -> Result<Vec<Vec<f32>>, ChonkitError> {
         let model = self.model_for_str(model).ok_or_else(|| {
-            ChonkitError::UnsupportedEmbeddingModel(format!(
-                "{model} is not a valid fastembed model",
-            ))
+            ChonkitError::InvalidEmbeddingModel(format!("{model} is not a valid fastembed model",))
         })?;
 
         let embedder = TextEmbedding::try_new(InitOptions {

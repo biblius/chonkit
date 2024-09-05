@@ -14,9 +14,10 @@ use crate::{
     },
     error::ChonkitError,
 };
+use dto::ChunkPreviewPayload;
 use tracing::info;
 use uuid::Uuid;
-use validify::Validify;
+use validify::{Validate, Validify};
 
 pub mod dto;
 
@@ -36,13 +37,16 @@ where
         Self { repo, storage }
     }
 
+    /// Get a paginated list of documents from the repository.
+    ///
+    /// * `p`: Pagination.
     pub async fn list_documents(&self, p: Pagination) -> Result<List<Document>, ChonkitError> {
         self.repo.list(p).await
     }
 
     /// Get the full config for a document.
     ///
-    /// * `id`: The Document ID.
+    /// * `id`: Document ID.
     pub async fn get_config(&self, id: Uuid) -> Result<DocumentConfig, ChonkitError> {
         let file = self.repo.get_config_by_id(id).await?;
 
@@ -53,11 +57,11 @@ where
         Ok(file)
     }
 
-    /// Get document content using its path and parsing configuration,
+    /// Get document text content using its parsing configuration,
     /// or the default parser if it has no configuration.
     ///
-    /// * `id`: The document ID.
-    pub async fn get_content(&self, id: uuid::Uuid) -> Result<String, ChonkitError> {
+    /// * `id`: Document ID.
+    pub async fn get_content(&self, id: Uuid) -> Result<String, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
         let Some(document) = document else {
@@ -70,7 +74,10 @@ where
         self.storage.read(&document, parser).await
     }
 
-    pub async fn get_chunks(&self, id: uuid::Uuid) -> Result<Vec<String>, ChonkitError> {
+    /// Get document chunks using its parsing and chunking configuration.
+    ///
+    /// * `id`: Document ID.
+    pub async fn get_chunks(&self, id: Uuid) -> Result<Vec<String>, ChonkitError> {
         let content = self.get_content(id).await?;
         let chunker = self
             .repo
@@ -112,6 +119,9 @@ where
         Ok(document)
     }
 
+    /// Remove the document from the repo and delete it from the storage.
+    ///
+    /// * `id`: Document ID.
     pub async fn delete(&self, id: Uuid) -> Result<(), ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
         let Some(document) = document else {
@@ -126,10 +136,15 @@ where
         self.storage.sync(&self.repo).await
     }
 
+    /// Preview how the document gets parsed to text.
+    ///
+    /// * `id`: Document ID.
+    /// * `config`: If given, uses the parsing config, otherwise use the default parser for the
+    ///             file type.
     pub async fn parse_preview(
         &self,
-        id: uuid::Uuid,
-        parser: ParseConfig,
+        id: Uuid,
+        config: Option<ParseConfig>,
     ) -> Result<String, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
@@ -137,7 +152,14 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let parser = Parser::new_from(document.ext.as_str().try_into()?, parser);
+        if let Some(ref config) = config {
+            config.validate()?;
+        }
+
+        let parser = Parser::new_from(
+            document.ext.as_str().try_into()?,
+            config.unwrap_or_default(),
+        );
 
         self.storage.read(&document, parser).await
     }
@@ -148,19 +170,27 @@ where
     /// snapping window chunker.
     ///
     /// * `id`: Document ID.
+    /// * `parse_config`: If given, use the config, otherwise use the configured parser or the
+    ///                   default if it does not exist.
     /// * `chunker`: Optional chunker to use.
     pub async fn chunk_preview(
         &self,
-        id: uuid::Uuid,
-        chunker: Option<Chunker>,
+        id: Uuid,
+        payload: Option<ChunkPreviewPayload>,
     ) -> Result<Vec<String>, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
         let Some(document) = document else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let ext = document.ext.as_str();
-        let parser = self.get_parser(id, ext.try_into()?).await?;
+        let ChunkPreviewPayload { parser, chunker } = payload.unwrap_or_default();
+
+        let ext = document.ext.as_str().try_into()?;
+        let parser = if let Some(config) = parser {
+            Parser::new_from(ext, config)
+        } else {
+            self.get_parser(id, ext).await?
+        };
         let content = self.storage.read(&document, parser).await?;
         let chunker = if let Some(chunker) = chunker {
             chunker
@@ -181,11 +211,9 @@ where
             .collect())
     }
 
-    pub async fn update_parser(
-        &self,
-        id: uuid::Uuid,
-        config: ParseConfig,
-    ) -> Result<(), ChonkitError> {
+    pub async fn update_parser(&self, id: Uuid, config: ParseConfig) -> Result<(), ChonkitError> {
+        config.validate()?;
+
         let document = self.repo.get_by_id(id).await?;
 
         if document.is_none() {
@@ -197,11 +225,7 @@ where
         Ok(())
     }
 
-    pub async fn update_chunker(
-        &self,
-        id: uuid::Uuid,
-        config: Chunker,
-    ) -> Result<(), ChonkitError> {
+    pub async fn update_chunker(&self, id: Uuid, config: Chunker) -> Result<(), ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
         if document.is_none() {
@@ -216,7 +240,7 @@ where
     async fn get_parser(&self, id: Uuid, ext: DocumentType) -> Result<Parser, ChonkitError> {
         let config = self.repo.get_parse_config(id).await?;
         match config {
-            Some(cfg) => Ok(cfg.config),
+            Some(cfg) => Ok(Parser::new_from(ext, cfg.config)),
             None => Ok(Parser::new(ext)),
         }
     }

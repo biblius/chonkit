@@ -4,9 +4,12 @@ use crate::{
         chunk::Chunker,
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
-        service::document::{dto::CreateCollectionPayload, DocumentUpload},
+        service::{
+            document::{dto::ChunkPreviewPayload, DocumentUpload},
+            vector::dto::{CreateCollectionPayload, SearchPayload},
+        },
     },
-    ctrl::dto::{SearchPayload, UploadResult},
+    ctrl::http::dto::UploadResult,
     error::ChonkitError,
 };
 use axum::{
@@ -50,12 +53,12 @@ fn public_router(state: ServiceState) -> Router {
         .route("/documents/:id/parse/preview", post(parse_preview))
         .route("/documents/:id/parse", put(update_parse_config))
         .route("/documents/sync", get(sync))
-        .route("/vectors", get(list_collections))
-        .route("/vectors", post(create_collection))
-        .route("/vectors/:id", get(get_collection))
+        .route("/vectors/collections", get(list_collections))
+        .route("/vectors/collections", post(create_collection))
+        .route("/vectors/collections/:id", get(get_collection))
+        .route("/vectors/collections/:id/embed/:doc_id", post(embed))
         .route("/vectors/models", get(list_embedding_models))
-        .route("/documents/:id/embeddings/:id", post(embed))
-        .route("/embeddings", post(search))
+        .route("/vectors/search", post(search))
         .with_state(state)
 }
 
@@ -90,7 +93,7 @@ async fn upload_documents(
     mut form: axum::extract::Multipart,
 ) -> Result<Json<UploadResult>, ChonkitError> {
     let mut documents = vec![];
-    let mut errors = HashMap::new();
+    let mut errors = HashMap::<String, Vec<String>>::new();
 
     while let Ok(Some(field)) = form.next_field().await {
         let Some(name) = field.file_name() else {
@@ -103,7 +106,10 @@ async fn upload_documents(
             Ok(bytes) => bytes,
             Err(e) => {
                 error!("error in form: {e}");
-                errors.insert(name, e.to_string());
+                errors
+                    .entry(name)
+                    .and_modify(|entry| entry.push(e.to_string()))
+                    .or_insert_with(|| vec![e.to_string()]);
                 continue;
             }
         };
@@ -112,7 +118,10 @@ async fn upload_documents(
             Ok(ty) => ty,
             Err(e) => {
                 error!("{e}");
-                errors.insert(name, e.to_string());
+                errors
+                    .entry(name)
+                    .and_modify(|entry| entry.push(e.to_string()))
+                    .or_insert_with(|| vec![e.to_string()]);
                 continue;
             }
         };
@@ -141,11 +150,11 @@ async fn update_chunk_config(
 async fn chunk_preview(
     service: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
-    chunker: Option<Json<Chunker>>,
+    config: Option<Json<ChunkPreviewPayload>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let parsed = service
         .document
-        .chunk_preview(id, chunker.map(|c| c.0))
+        .chunk_preview(id, config.map(|c| c.0))
         .await?;
     Ok(Json(parsed))
 }
@@ -162,9 +171,12 @@ async fn update_parse_config(
 async fn parse_preview(
     service: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
-    Json(parser): Json<ParseConfig>,
+    parser: Option<Json<ParseConfig>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let parsed = service.document.parse_preview(id, parser).await?;
+    let parsed = service
+        .document
+        .parse_preview(id, parser.map(|c| c.0))
+        .await?;
     Ok(Json(parsed))
 }
 
@@ -216,7 +228,7 @@ async fn list_embedding_models(
 
 async fn embed(
     service: axum::extract::State<ServiceState>,
-    Path((document_id, collection_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    Path((collection_id, document_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let document = service.document.get_config(document_id).await?;
     let chunks = service.document.get_chunks(document_id).await?;
@@ -225,24 +237,14 @@ async fn embed(
         .vector
         .create_embeddings(document.id, chunks, &collection)
         .await?;
-    Ok("Successfully embedded")
+
+    Ok("Successfully created embeddings")
 }
 
 async fn search(
     service: State<ServiceState>,
     Json(search): Json<SearchPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let SearchPayload {
-        ref model,
-        ref query,
-        ref collection,
-        limit,
-    } = search;
-
-    let chunks = service
-        .vector
-        .search(model, query, collection, limit)
-        .await?;
-
+    let chunks = service.vector.search(query, collection, limit).await?;
     Ok(Json(chunks))
 }

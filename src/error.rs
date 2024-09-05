@@ -43,8 +43,8 @@ pub enum ChonkitError {
     #[error("Unsupported file type: {0}")]
     UnsupportedFileType(String),
 
-    #[error("Unsupported embedding model: {0}")]
-    UnsupportedEmbeddingModel(String),
+    #[error("Invalid embedding model: {0}")]
+    InvalidEmbeddingModel(String),
 
     #[error("Qdrant: {0}")]
     Qdrant(#[from] QdrantError),

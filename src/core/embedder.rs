@@ -3,8 +3,8 @@ use std::future::Future;
 
 /// Operations related to embeddings and their models.
 pub trait Embedder {
-    /// List all available models in fastembed
-    fn list_embedding_models(&self) -> Vec<String>;
+    /// List all available models in the embedder and their sizes.
+    fn list_embedding_models(&self) -> Vec<(String, usize)>;
 
     /// Get the vectors for the elements in `content`.
     /// The content passed in can be a user's query,

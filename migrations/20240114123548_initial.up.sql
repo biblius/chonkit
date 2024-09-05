@@ -67,7 +67,8 @@ CREATE TABLE parsers(
 CREATE TABLE collections(
     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
     name TEXT UNIQUE NOT NULL,
-    model TEXT NOT NULL,
+    size INT NOT NULL,
+    model TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

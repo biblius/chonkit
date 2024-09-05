@@ -4,12 +4,11 @@ use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
-use crate::DEFAULT_COLLECTION_MODEL;
+use dto::{CreateCollectionPayload, SearchPayload};
 use std::fmt::Debug;
-use tracing::info;
+use tracing::{debug, info};
+use uuid::Uuid;
 use validify::Validify;
-
-use super::document::dto::CreateCollectionPayload;
 
 pub mod dto;
 
@@ -23,7 +22,7 @@ pub struct VectorService<R, V, E> {
 
 impl<R, V, E> VectorService<R, V, E>
 where
-    R: VectorRepo,
+    R: VectorRepo + Sync,
     V: VectorStore,
     E: Embedder,
 {
@@ -35,19 +34,21 @@ where
         }
     }
 
-    /// Return a list of models supported by this instance's embedder.
-    pub fn list_embedding_models(&self) -> Vec<String> {
+    /// List vector collections.
+    ///
+    /// * `p`: Pagination params.
+    pub async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
+        self.repo.list(p).await
+    }
+
+    /// Return a list of models supported by this instance's embedder and their respective sizes.
+    pub fn list_embedding_models(&self) -> Vec<(String, usize)> {
         self.embedder.list_embedding_models()
     }
 
     /// Create the default vector collection if it doesn't already exist.
     pub async fn create_default_collection(&self) {
-        let size = self
-            .embedder
-            .size(DEFAULT_COLLECTION_MODEL)
-            .expect("invalid default model");
-
-        self.vectors.create_default_collection(size).await;
+        self.vectors.create_default_collection().await;
 
         // Default collection will always have a nil UUID
         let collection = CollectionInsert::default();
@@ -58,15 +59,17 @@ where
             .expect("error while inserting default collection");
     }
 
-    pub async fn get_collection(&self, id: uuid::Uuid) -> Result<Collection, ChonkitError> {
+    /// Get the collection for the given ID.
+    ///
+    /// * `id`: Collection ID.
+    pub async fn get_collection(&self, id: Uuid) -> Result<Collection, ChonkitError> {
         let collection = self.repo.get_collection(id).await?;
         collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID {id}")))
     }
 
     /// Create a collection in the vector DB and store its info in the repository.
     ///
-    /// * `name`: Name of the collection.
-    /// * `model`: Will be used to determine the collection dimensions.
+    /// * `payload`: Parser and chunking configuration.
     pub async fn create_collection(
         &self,
         mut payload: CreateCollectionPayload,
@@ -78,28 +81,21 @@ where
         info!("Creating collection '{name}' with embedding model '{model}'",);
 
         let size = self.embedder.size(&model).ok_or_else(|| {
-            ChonkitError::UnsupportedEmbeddingModel(format!("Cannot determine size for {model}"))
+            ChonkitError::InvalidEmbeddingModel(format!("Cannot determine size for {model}"))
         })?;
 
         self.vectors.create_collection(&name, size).await?;
 
-        let collection = CollectionInsert::new(&name, &model);
+        let collection = CollectionInsert::new(&name, size as usize).with_model(&model);
         let collection = self.repo.insert_collection(collection).await?;
 
         Ok(collection)
     }
 
-    /// List vector collections.
-    ///
-    /// * `p`: Pagination params.
-    pub async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
-        self.repo.list(p).await
-    }
-
     /// Delete a vector collection from the repository and the store.
     ///
     /// * `id`: Collection ID.
-    pub async fn delete_collection(&self, id: uuid::Uuid) -> Result<(), ChonkitError> {
+    pub async fn delete_collection(&self, id: Uuid) -> Result<(), ChonkitError> {
         let collection = self.repo.get_collection(id).await?;
 
         let Some(collection) = collection else {
@@ -112,45 +108,117 @@ where
         Ok(())
     }
 
+    /// Update the default model of a collection.
+    /// The model's embedding size must be the same as the existing one's.
+    ///
+    /// * `id`: Collection ID.
+    /// * `model`: New default model to use.
+    pub async fn update_default_model(&self, id: Uuid, model: &str) -> Result<(), ChonkitError> {
+        let collection = self.repo.get_collection(id).await?;
+
+        let Some(collection) = collection else {
+            return Err(ChonkitError::DoesNotExist(format!(
+                "Collection with id {id}"
+            )));
+        };
+
+        let new_size = self.embedder.size(&model).ok_or_else(|| {
+            ChonkitError::InvalidEmbeddingModel(format!("Cannot determine size for {model}"))
+        })?;
+
+        if collection.size != new_size as usize {
+            return Err(ChonkitError::InvalidEmbeddingModel(format!(
+                "Embedding size mismatch, got {new_size} - required {}",
+                collection.size
+            )));
+        }
+
+        self.repo.update_model(id, model).await
+    }
+
     /// Create and store embeddings in the vector database.
     ///
+    /// * `id`: Document ID.
     /// * `content`: The original chunks.
-    /// * `model`: The model to use for embedding.
     /// * `collection`: The collection to store the vectors in.
     pub async fn create_embeddings(
         &self,
-        id: uuid::Uuid,
+        id: Uuid,
         content: Vec<String>,
         collection: &Collection,
     ) -> Result<(), ChonkitError> {
-        let embeddings = self
-            .embedder
-            .embed(content.clone(), &collection.model)
-            .await?;
+        let model = if let Some(model) = collection.model.clone() {
+            model
+        } else {
+            self.find_compatible_model(collection.id, collection.size)?
+        };
+
+        let embeddings = self.embedder.embed(content.clone(), &model).await?;
+
         self.vectors
             .store(content, embeddings, &collection.name)
             .await
     }
 
     /// Query the vector database (semantic search).
+    /// Limit defaults to 5.
     ///
-    /// * `model`: The embedding model. The model's embeddings must be the same size as the ones
-    ///    used in the collection or this will return an error.
-    /// * `query`: The text to search by.
-    /// * `collection`: The collection to search in.
-    /// * `limit`: Amount of results returned.
-    pub async fn search(
-        &self,
-        model: &str,
-        query: &str,
-        collection: &str,
-        limit: u64,
-    ) -> Result<Vec<String>, ChonkitError> {
-        let mut embeddings = self.embedder.embed(vec![query.to_string()], model).await?;
+    /// * `input`: Search params.
+    pub async fn search(&self, mut input: SearchPayload) -> Result<Vec<String>, ChonkitError> {
+        input.validify()?;
+
+        let SearchPayload {
+            query,
+            collection: name,
+            limit,
+        } = input;
+
+        let collection = self.repo.get_collection_by_name(&name).await?;
+
+        let Some(collection) = collection else {
+            return Err(ChonkitError::DoesNotExist(format!(
+                "Collection with name {name}"
+            )));
+        };
+
+        let model = if let Some(model) = collection.model.clone() {
+            model
+        } else {
+            self.find_compatible_model(collection.id, collection.size)?
+        };
+
+        let mut embeddings = self.embedder.embed(vec![query.to_string()], &model).await?;
+
         debug_assert!(!embeddings.is_empty());
         debug_assert_eq!(1, embeddings.len());
+
         self.vectors
-            .query(std::mem::take(&mut embeddings[0]), collection, limit)
+            .query(
+                std::mem::take(&mut embeddings[0]),
+                &collection.name,
+                limit.unwrap_or(5),
+            )
             .await
+    }
+
+    pub async fn sync(&self) -> Result<(), ChonkitError> {
+        self.vectors.sync(&self.repo).await
+    }
+
+    fn find_compatible_model(&self, id: Uuid, size: usize) -> Result<String, ChonkitError> {
+        debug!("Collection {id} does not have a default model specified, searching for compatible ones.");
+        let model = self
+            .list_embedding_models()
+            .into_iter()
+            .find(|(_, s)| *s == size)
+            .map(|(m, _)| m)
+            .ok_or_else(|| {
+                ChonkitError::InvalidEmbeddingModel(format!(
+                    "No model found for embedding size {}",
+                    size
+                ))
+            })?;
+        debug!("Defaulted to {model} for collection {id}");
+        Ok(model)
     }
 }

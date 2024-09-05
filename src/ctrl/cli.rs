@@ -148,7 +148,11 @@ pub async fn run(services: ServiceState) {
                 for filter in filters {
                     cfg = cfg.filter(regex::Regex::new(&filter).unwrap());
                 }
-                let parsed = services.document.parse_preview(id, cfg).await.unwrap();
+                let parsed = services
+                    .document
+                    .parse_preview(id, Some(cfg))
+                    .await
+                    .unwrap();
                 println!("{parsed}");
             }
         },

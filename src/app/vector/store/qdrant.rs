@@ -1,6 +1,7 @@
+use crate::core::repo::vector::VectorRepo;
 use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
-use crate::DEFAULT_COLLECTION_NAME;
+use crate::{DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE};
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions;
 use qdrant_client::qdrant::{
@@ -9,7 +10,7 @@ use qdrant_client::qdrant::{
 };
 use qdrant_client::{Payload, Qdrant, QdrantError};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{debug, info, warn};
 
 /// Basic Arc wrapper around Qdrant.
 #[derive(Clone)]
@@ -58,6 +59,27 @@ impl VectorStore for QdrantVectorStore {
         Ok(())
     }
 
+    async fn delete_collection(&self, name: &str) -> Result<(), ChonkitError> {
+        self.q.delete_collection(name).await?;
+        Ok(())
+    }
+
+    async fn create_default_collection(&self) {
+        let result = self
+            .create_collection(DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE as u64)
+            .await;
+
+        match result {
+            Ok(_) => info!("Created default collection '{DEFAULT_COLLECTION_NAME}'."),
+            Err(ChonkitError::Qdrant(QdrantError::ResponseError { status }))
+                if matches!(status.code(), tonic::Code::AlreadyExists) =>
+            {
+                info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists.");
+            }
+            Err(e) => panic!("{e}"),
+        }
+    }
+
     async fn query(
         &self,
         search: Vec<f32>,
@@ -92,6 +114,8 @@ impl VectorStore for QdrantVectorStore {
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> Result<(), ChonkitError> {
+        debug!("Storing vectors to {collection}");
+
         debug_assert_eq!(
             content.len(),
             vectors.len(),
@@ -116,22 +140,32 @@ impl VectorStore for QdrantVectorStore {
         Ok(())
     }
 
-    async fn create_default_collection(&self, size: u64) {
-        let result = self.create_collection(DEFAULT_COLLECTION_NAME, size).await;
+    async fn sync(&self, repo: &(impl VectorRepo + Sync)) -> Result<(), ChonkitError> {
+        let collection_list = self.list_collections().await?;
+        let mut collections = vec![];
+        for collection in collection_list {
+            let info = self.q.collection_info(&collection).await?;
+            let info = info
+                .result
+                .unwrap()
+                .config
+                .unwrap()
+                .params
+                .unwrap()
+                .vectors_config
+                .unwrap()
+                .config
+                .unwrap();
 
-        match result {
-            Ok(_) => info!("Created default collection '{DEFAULT_COLLECTION_NAME}'."),
-            Err(ChonkitError::Qdrant(QdrantError::ResponseError { status }))
-                if matches!(status.code(), tonic::Code::AlreadyExists) =>
-            {
-                info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists.");
+            match info {
+                Config::Params(VectorParams { size, .. }) => collections.push((collection, size)),
+                Config::ParamsMap(pm) => {
+                    warn!("Found unexpected params map! {pm:?}");
+                }
             }
-            Err(e) => panic!("{e}"),
         }
-    }
 
-    async fn delete_collection(&self, name: &str) -> Result<(), ChonkitError> {
-        self.q.delete_collection(name).await?;
+        dbg!(collections);
         Ok(())
     }
 }

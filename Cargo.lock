@@ -476,7 +476,6 @@ dependencies = [
  "docx-rs",
  "fastembed",
  "hex",
- "lazy_static",
  "lopdf",
  "qdrant-client",
  "regex",

@@ -1,4 +1,4 @@
-use crate::error::ChonkitError;
+use crate::{core::repo::vector::VectorRepo, error::ChonkitError};
 use std::future::Future;
 
 /// Vector collection operations.
@@ -25,15 +25,13 @@ pub trait VectorStore {
     ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
 
     /// Used to create the initial collection.
+    ///
     /// This is part of the interface in order to handle errors more efficiently,
     /// such as the collection already existing.
     ///
     /// As this method is called only on app start, it's fine to panic if something
     /// goes wrong.
-    /// Make sure you obtain the `size` via [crate::DEFAULT_COLLECTION_MODEL].
-    ///
-    /// * `size`: The default collection size. Use [crate::DEFAULT_COLLECTION_MODEL].
-    fn create_default_collection(&self, size: u64) -> impl Future<Output = ()> + Send;
+    fn create_default_collection(&self) -> impl Future<Output = ()> + Send;
 
     /// Perform semantic search.
     ///
@@ -45,7 +43,7 @@ pub trait VectorStore {
         search: Vec<f32>,
         collection: &str,
         limit: u64,
-    ) -> impl Future<Output = Result<Vec<String>, ChonkitError>>;
+    ) -> impl Future<Output = Result<Vec<String>, ChonkitError>> + Send;
 
     /// Store the contents and their vectors to the vector storage.
     /// The `contents` and `vectors` inputs are expected to
@@ -61,4 +59,9 @@ pub trait VectorStore {
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> impl Future<Output = Result<(), ChonkitError>>;
+
+    fn sync(
+        &self,
+        repo: &(impl VectorRepo + Sync),
+    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
 }

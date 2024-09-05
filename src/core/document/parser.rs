@@ -67,14 +67,14 @@ impl ParseConfig {
 
     #[schema_validation]
     fn validate(&self) -> Result<(), ValidationErrors> {
-        if self.end <= self.start {
-            schema_err!("start>=end", "`end` must be greater than start");
+        if self.range && self.end <= self.start {
+            schema_err!(
+                "range=true;start>=end",
+                "end must be greater than start when using range"
+            );
         }
         if self.range && self.start == 0 {
-            schema_err!(
-                "range=true;start=0",
-                "`start` cannot be 0 when using `range`"
-            );
+            schema_err!("range=true;start=0", "start cannot be 0 when using range");
         }
     }
 }

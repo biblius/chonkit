@@ -1,5 +1,6 @@
 use crate::app::service::ServiceState;
 
+pub mod dto;
 pub mod router;
 
 pub async fn server(addr: &str, services: ServiceState) {

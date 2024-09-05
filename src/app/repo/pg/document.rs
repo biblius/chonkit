@@ -201,7 +201,7 @@ impl DocumentRepo for PgDocumentRepo {
         id: uuid::Uuid,
     ) -> Result<Option<DocumentParseConfig>, ChonkitError> {
         Ok(sqlx::query_as!(
-            SelectConfig::<Parser>,
+            SelectConfig::<ParseConfig>,
             r#"SELECT 
                 id,
                 document_id,
@@ -264,7 +264,7 @@ impl DocumentRepo for PgDocumentRepo {
         } = config;
 
         let config = sqlx::query_as!(
-            SelectConfig::<Parser>,
+            SelectConfig::<ParseConfig>,
             r#"INSERT INTO parsers
                 (id, document_id, config)
              VALUES
@@ -365,8 +365,8 @@ impl From<SelectConfig<Chunker>> for DocumentChunkConfig {
     }
 }
 
-impl From<SelectConfig<Parser>> for DocumentParseConfig {
-    fn from(value: SelectConfig<Parser>) -> Self {
+impl From<SelectConfig<ParseConfig>> for DocumentParseConfig {
+    fn from(value: SelectConfig<ParseConfig>) -> Self {
         let SelectConfig {
             id,
             document_id,

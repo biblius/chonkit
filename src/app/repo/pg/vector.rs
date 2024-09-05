@@ -6,7 +6,9 @@ use crate::{
     },
     error::ChonkitError,
 };
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct PgVectorRepo {
@@ -24,38 +26,58 @@ impl VectorRepo for PgVectorRepo {
         &self,
         collection: CollectionInsert<'_>,
     ) -> Result<Collection, ChonkitError> {
-        let CollectionInsert { id, name, model } = collection;
-        Ok(sqlx::query_as!(
-            Collection,
+        let CollectionInsert {
+            id,
+            name,
+            size,
+            model,
+        } = collection;
+        let size = size as i32;
+        let col = sqlx::query_as!(
+            CollectionSelect,
             "INSERT INTO collections
-                (id, name, model)
+                (id, name, model, size)
              VALUES
-                ($1, $2, $3)
+                ($1, $2, $3, $4)
              ON CONFLICT(id) DO UPDATE
-             SET id = $4
+             SET id = $1
              RETURNING 
-                id, name, model, created_at, updated_at
+                id, name, model, size, created_at, updated_at
              ",
             id,
             name,
             model,
-            id
+            size
         )
         .fetch_one(&self.pool)
-        .await?)
+        .await?;
+
+        Ok(Collection::from(col))
     }
 
-    async fn get_collection(&self, id: uuid::Uuid) -> Result<Option<Collection>, ChonkitError> {
+    async fn get_collection(&self, id: Uuid) -> Result<Option<Collection>, ChonkitError> {
         Ok(sqlx::query_as!(
-            Collection,
-            "SELECT id, name, model, created_at, updated_at FROM collections WHERE id = $1",
+            CollectionSelect,
+            "SELECT id, name, model, size, created_at, updated_at FROM collections WHERE id = $1",
             id
         )
         .fetch_optional(&self.pool)
-        .await?)
+        .await?
+        .map(Collection::from))
     }
 
-    async fn delete_collection(&self, id: uuid::Uuid) -> Result<u64, ChonkitError> {
+    async fn get_collection_by_name(&self, name: &str) -> Result<Option<Collection>, ChonkitError> {
+        Ok(sqlx::query_as!(
+            CollectionSelect,
+            "SELECT id, name, model, size, created_at, updated_at FROM collections WHERE name = $1",
+            name
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(Collection::from))
+    }
+
+    async fn delete_collection(&self, id: Uuid) -> Result<u64, ChonkitError> {
         let result = sqlx::query!("DELETE FROM collections WHERE id = $1", id)
             .execute(&self.pool)
             .await?;
@@ -70,8 +92,8 @@ impl VectorRepo for PgVectorRepo {
 
         let (limit, offset) = p.to_limit_offset();
         let collections = sqlx::query_as!(
-            Collection,
-            r#"SELECT id, name, model, created_at, updated_at
+            CollectionSelect,
+            r#"SELECT id, name, model, size, created_at, updated_at
                    FROM collections
                    LIMIT $1
                    OFFSET $2
@@ -80,8 +102,49 @@ impl VectorRepo for PgVectorRepo {
             offset,
         )
         .fetch_all(&self.pool)
-        .await?;
+        .await?
+        .into_iter()
+        .map(Collection::from)
+        .collect();
 
         Ok(List::new(total, collections))
+    }
+
+    async fn update_model(&self, id: Uuid, model: &str) -> Result<(), ChonkitError> {
+        sqlx::query!("UPDATE collections SET model = $1 WHERE id = $2", model, id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+}
+
+struct CollectionSelect {
+    pub id: Uuid,
+    pub name: String,
+    pub model: Option<String>,
+    pub size: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<CollectionSelect> for Collection {
+    fn from(
+        CollectionSelect {
+            id,
+            name,
+            model,
+            size,
+            created_at,
+            updated_at,
+        }: CollectionSelect,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            model,
+            size: size as usize,
+            created_at,
+            updated_at,
+        }
     }
 }

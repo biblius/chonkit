@@ -14,6 +14,7 @@ pub const DB_URL: &str = "postgresql://postgres:postgres@localhost:5433/chonkit"
 pub const VEC_DB_URL: &str = "http://localhost:6334";
 pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
+pub const DEFAULT_COLLECTION_SIZE: usize = 384;
 
 pub const DEFAULT_LOG: &str = "info,h2=off,lopdf=off,chonkit=debug";
 
@@ -46,6 +47,8 @@ async fn run_server() {
     let qdrant = Qdrant::from_url(&qd_url).build().unwrap();
 
     let services = ServiceState::init(db_pool, qdrant).await;
+
+    services.vector.sync().await.unwrap();
 
     let addr = format!("{}:{}", args.address, args.port);
     ctrl::http::server(&addr, services).await;

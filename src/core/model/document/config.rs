@@ -1,4 +1,4 @@
-use crate::core::{chunk::Chunker, document::parser::Parser};
+use crate::core::{chunk::Chunker, document::parser::ParseConfig};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -23,7 +23,7 @@ pub struct DocumentParseConfig {
     /// References the document which this config belongs to.
     pub document_id: uuid::Uuid,
     /// JSON string of the parsing configuration.
-    pub config: Parser,
+    pub config: ParseConfig,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
