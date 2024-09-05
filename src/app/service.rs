@@ -22,11 +22,11 @@ impl ServiceState {
         Self { document, vector }
     }
 
-    pub async fn init(pool: PgPool, qdrant: Qdrant) -> Self {
+    pub async fn init(pool: PgPool, qdrant: Qdrant, upload_path: &str) -> Self {
         let embedder = FastEmbedder;
 
         let store_vector = QdrantVectorStore::new(qdrant);
-        let store_document = FsDocumentStore::new("test_docs");
+        let store_document = FsDocumentStore::new(upload_path);
 
         let repo_document = PgDocumentRepo::new(pool.clone());
         let repo_vector = PgVectorRepo::new(pool.clone());

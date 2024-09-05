@@ -1,23 +1,29 @@
 use clap::Parser;
 
-use crate::{DB_URL, VEC_DB_URL};
-
 #[derive(Debug, Clone, Parser)]
 pub struct StartArgs {
+    /// Address to listen on.
     #[arg(short, long, default_value = "0.0.0.0")]
     pub address: String,
 
+    /// Port to listen on.
     #[arg(short, long, default_value = "42069")]
     pub port: u16,
 
     #[arg(short, long, default_value = "INFO")]
     pub log_level: tracing::Level,
 
+    /// Qdrant url.
     #[arg(short, long)]
     pub qdrant_url: Option<String>,
 
+    /// Sets the database URL.
     #[arg(short, long)]
     pub db_url: Option<String>,
+
+    /// If using the `FsDocumentStore`, sets its path.
+    #[arg(short, long, default_value = "DEFAULT_UPLOAD_PATH")]
+    pub upload_path: String,
 }
 
 impl StartArgs {
@@ -26,7 +32,7 @@ impl StartArgs {
             Some(url) => url.to_string(),
             None => match std::env::var("DATABASE_URL") {
                 Ok(url) => url,
-                Err(_) => DB_URL.to_owned(),
+                Err(_) => panic!("Database url not found; Pass --db-url or set DATABASE_URL"),
             },
         }
     }
@@ -36,7 +42,7 @@ impl StartArgs {
             Some(url) => url.to_string(),
             None => match std::env::var("QDRANT_URL") {
                 Ok(url) => url,
-                Err(_) => VEC_DB_URL.to_owned(),
+                Err(_) => panic!("Qdrant url not found; Pass --qdrant-url or set QDRANT_URL"),
             },
         }
     }

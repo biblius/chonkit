@@ -20,12 +20,11 @@ mod document_service_postgres_fs {
             model::document::DocumentType,
             service::document::dto::DocumentUpload,
         },
+        DEFAULT_UPLOAD_PATH, TEST_DOCS_PATH,
     };
-    use suitest::{after_all, before_all, cleanup};
+    use suitest::before_all;
     use testcontainers::ContainerAsync;
     use testcontainers_modules::postgres::Postgres;
-
-    const WORKING_DIR: &str = "__doc_service_tests";
 
     #[before_all]
     async fn setup() -> (
@@ -36,23 +35,11 @@ mod document_service_postgres_fs {
     ) {
         let (client, _pg_img) = init_postgres().await;
 
-        tokio::fs::create_dir(WORKING_DIR).await.unwrap();
-
         let repo = PgDocumentRepo::new(client);
-        let store = FsDocumentStore::new(WORKING_DIR);
+        let store = FsDocumentStore::new(DEFAULT_UPLOAD_PATH);
         let service = DocumentService::new(repo.clone(), store.clone());
 
         (repo, store, service, _pg_img)
-    }
-
-    #[after_all]
-    async fn teardown() {
-        tokio::fs::remove_dir_all(WORKING_DIR).await.unwrap();
-    }
-
-    #[cleanup]
-    async fn cleanup() {
-        tokio::fs::remove_dir_all(WORKING_DIR).await.unwrap();
     }
 
     #[test]
@@ -78,7 +65,9 @@ mod document_service_postgres_fs {
 
     #[test]
     async fn upload_pdf_happy(service: DocumentService) {
-        let content = &tokio::fs::read("test_docs/test.pdf").await.unwrap();
+        let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.pdf"))
+            .await
+            .unwrap();
         let upload = DocumentUpload {
             name: "UPLOAD_TEST_PDF".to_string(),
             ty: DocumentType::Pdf,
@@ -99,7 +88,9 @@ mod document_service_postgres_fs {
 
     #[test]
     async fn upload_docx_happy(service: DocumentService) {
-        let content = &tokio::fs::read("test_docs/test.docx").await.unwrap();
+        let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.docx"))
+            .await
+            .unwrap();
         let upload = DocumentUpload {
             name: "UPLOAD_TEST_DOCX".to_string(),
             ty: DocumentType::Docx,

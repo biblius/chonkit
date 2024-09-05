@@ -10,8 +10,9 @@ pub mod core;
 pub mod ctrl;
 pub mod error;
 
-pub const DB_URL: &str = "postgresql://postgres:postgres@localhost:5433/chonkit";
-pub const VEC_DB_URL: &str = "http://localhost:6334";
+pub const DEFAULT_UPLOAD_PATH: &str = "upload";
+pub const TEST_DOCS_PATH: &str = "test/docs";
+
 pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 pub const DEFAULT_COLLECTION_SIZE: usize = 384;
@@ -46,7 +47,7 @@ async fn run_server() {
     let db_pool = app::repo::pg::init(&db_url).await;
     let qdrant = Qdrant::from_url(&qd_url).build().unwrap();
 
-    let services = ServiceState::init(db_pool, qdrant).await;
+    let services = ServiceState::init(db_pool, qdrant, &args.upload_path).await;
 
     services.vector.sync().await.unwrap();
 
@@ -62,9 +63,13 @@ async fn run_cli() {
         ))
         .init();
 
-    let db_pool = app::repo::pg::init(DB_URL).await;
-    let qdrant = Qdrant::from_url(VEC_DB_URL).build().unwrap();
+    let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+    let qd_url = std::env::var("QDRANT_URL").expect("QDRANT_URL not set");
+    let upload_path = std::env::var("UPLOAD_PATH").unwrap_or(DEFAULT_UPLOAD_PATH.to_string());
 
-    let services = ServiceState::init(db_pool, qdrant).await;
+    let db_pool = app::repo::pg::init(&db_url).await;
+    let qdrant = Qdrant::from_url(&qd_url).build().unwrap();
+
+    let services = ServiceState::init(db_pool, qdrant, &upload_path).await;
     ctrl::cli::run(services).await;
 }

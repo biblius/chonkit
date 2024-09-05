@@ -1,5 +1,8 @@
 /target
-/test_docs
+/test/docs/*
+!/test/docs/test.md
+!/test/docs/test.pdf
+!/test/docs/test.docx
 /chunks
 web/.env
 config.json
