@@ -10,8 +10,10 @@ pub(in crate::app) type DocumentService = Service<PgDocumentRepo, FsDocumentStor
 mod document_service_postgres_fs {
     use crate::{
         app::{
-            document::store::FsDocumentStore, repo::pg::document::PgDocumentRepo,
-            service::document::DocumentService, test::init_postgres,
+            document::store::FsDocumentStore,
+            repo::pg::document::PgDocumentRepo,
+            service::document::DocumentService,
+            test::{init_postgres, PostgresContainer},
         },
         core::{
             document::parser::{
@@ -23,15 +25,13 @@ mod document_service_postgres_fs {
         DEFAULT_UPLOAD_PATH, TEST_DOCS_PATH,
     };
     use suitest::before_all;
-    use testcontainers::ContainerAsync;
-    use testcontainers_modules::postgres::Postgres;
 
     #[before_all]
     async fn setup() -> (
         PgDocumentRepo,
         FsDocumentStore,
         DocumentService,
-        ContainerAsync<Postgres>,
+        PostgresContainer,
     ) {
         let (client, _pg_img) = init_postgres().await;
 

@@ -1,10 +1,14 @@
 use crate::{core::embedder::Embedder, error::ChonkitError};
-use fastembed::{InitOptions, ModelInfo, TextEmbedding};
+use fastembed::{InitOptions, TextEmbedding};
 
 #[derive(Debug, Clone)]
 pub struct FastEmbedder;
 
 impl Embedder for FastEmbedder {
+    fn id(&self) -> &'static str {
+        "fastembed"
+    }
+
     fn list_embedding_models(&self) -> Vec<(String, usize)> {
         fastembed::TextEmbedding::list_supported_models()
             .into_iter()
@@ -12,14 +16,15 @@ impl Embedder for FastEmbedder {
             .collect()
     }
 
-    async fn embed(
-        &self,
-        content: Vec<String>,
-        model: &str,
-    ) -> Result<Vec<Vec<f32>>, ChonkitError> {
-        let model = self.model_for_str(model).ok_or_else(|| {
-            ChonkitError::InvalidEmbeddingModel(format!("{model} is not a valid fastembed model",))
-        })?;
+    async fn embed(&self, content: &[String], model: &str) -> Result<Vec<Vec<f32>>, ChonkitError> {
+        let model = fastembed::TextEmbedding::list_supported_models()
+            .into_iter()
+            .find(|m| m.model_code == model)
+            .ok_or_else(|| {
+                ChonkitError::InvalidEmbeddingModel(format!(
+                    "{model} is not a valid fastembed model",
+                ))
+            })?;
 
         let embedder = TextEmbedding::try_new(InitOptions {
             model_name: model.model,
@@ -29,7 +34,7 @@ impl Embedder for FastEmbedder {
         .map_err(|err| ChonkitError::Fastembed(err.to_string()))?;
 
         let embeddings = embedder
-            .embed(content.clone(), None)
+            .embed(content.to_vec(), None)
             .map_err(|err| ChonkitError::Fastembed(err.to_string()))?;
 
         debug_assert_eq!(
@@ -41,15 +46,10 @@ impl Embedder for FastEmbedder {
         Ok(embeddings)
     }
 
-    fn size(&self, model: &str) -> Option<u64> {
-        self.model_for_str(model).map(|m| m.dim as u64)
-    }
-}
-
-impl FastEmbedder {
-    fn model_for_str(&self, s: &str) -> Option<ModelInfo> {
+    fn size(&self, model: &str) -> Option<usize> {
         fastembed::TextEmbedding::list_supported_models()
             .into_iter()
-            .find(|model| model.model_code == s)
+            .find(|m| m.model_code == model)
+            .map(|m| m.dim)
     }
 }

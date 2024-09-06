@@ -19,7 +19,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TABLE documents (
-    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- File name.
     name TEXT NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE documents (
 
 -- Stores chunking configurations for documents.
 CREATE TABLE chunkers(
-    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
     config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -56,34 +56,34 @@ CREATE TABLE chunkers(
 
 -- Stores parsing configurations for documents.
 CREATE TABLE parsers(
-    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
     config JSONB NOT NULL, -- Only god can judge us.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Stores vector collections. 
+-- Stores vector collection information. 
 CREATE TABLE collections(
-    id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    name TEXT UNIQUE NOT NULL,
-    size INT NOT NULL,
-    model TEXT,
+    name TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    embedder TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Stores 
--- CREATE TABLE embeddings(
---     id UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
---     document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
---     collection_id UUID NOT NULL REFERENCES collections ON DELETE CASCADE,
---     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
---     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
--- );
+-- Stores document embedding information. 
+CREATE TABLE embeddings(
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
+    collection TEXT NOT NULL REFERENCES collections ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 SELECT manage_updated_at('documents');
 SELECT manage_updated_at('chunkers');
 SELECT manage_updated_at('parsers');
 SELECT manage_updated_at('collections');
--- SELECT manage_updated_at('embeddings');
+SELECT manage_updated_at('embeddings');

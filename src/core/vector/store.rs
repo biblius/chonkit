@@ -1,10 +1,12 @@
-use crate::{core::repo::vector::VectorRepo, error::ChonkitError};
+use crate::{core::model::collection::VectorCollection, error::ChonkitError};
 use std::future::Future;
 
 /// Vector database operations.
 pub trait VectorStore {
     /// List available vector collections.
-    fn list_collections(&self) -> impl Future<Output = Result<Vec<String>, ChonkitError>> + Send;
+    fn list_collections(
+        &self,
+    ) -> impl Future<Output = Result<Vec<VectorCollection>, ChonkitError>> + Send;
 
     /// Create a vector collection.
     ///
@@ -15,6 +17,14 @@ pub trait VectorStore {
         name: &str,
         size: u64,
     ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+
+    /// Get collection info.
+    ///
+    /// * `name`: Collection name.
+    fn get_collection(
+        &self,
+        name: &str,
+    ) -> impl Future<Output = Result<VectorCollection, ChonkitError>> + Send;
 
     /// Delete a vector collection.
     ///
@@ -59,12 +69,4 @@ pub trait VectorStore {
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> impl Future<Output = Result<(), ChonkitError>>;
-
-    /// Sync repository contents with the store.
-    ///
-    /// * `repo`: Vector collection repository.
-    fn sync(
-        &self,
-        repo: &(impl VectorRepo + Sync),
-    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
 }

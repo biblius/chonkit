@@ -6,7 +6,7 @@ use crate::{
         model::{document::DocumentType, Pagination},
         service::{
             document::dto::{ChunkPreviewPayload, DocumentUpload},
-            vector::dto::{CreateCollectionPayload, SearchPayload},
+            vector::dto::{CreateCollection, SearchPayload},
         },
     },
     ctrl::http::dto::UploadResult,
@@ -191,17 +191,15 @@ async fn sync(
 
 async fn list_collections(
     service: State<ServiceState>,
-    pagination: Option<Query<Pagination>>,
+    Query(p): Query<Pagination>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let Query(pagination) = pagination.unwrap_or_default();
-    pagination.validate()?;
-    let collections = service.vector.list_collections(pagination).await?;
+    let collections = service.vector.list_collections(p).await?;
     Ok(Json(collections))
 }
 
 async fn create_collection(
     service: State<ServiceState>,
-    Json(payload): Json<CreateCollectionPayload>,
+    Json(payload): Json<CreateCollection>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     service.vector.create_collection(payload).await?;
     Ok("Successfully created collection")
@@ -209,9 +207,9 @@ async fn create_collection(
 
 async fn get_collection(
     service: State<ServiceState>,
-    Path(id): Path<uuid::Uuid>,
+    Path(name): Path<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collection = service.vector.get_collection(id).await?;
+    let collection = service.vector.get_collection(&name).await?;
     Ok(Json(collection))
 }
 
@@ -222,20 +220,19 @@ async fn list_embedding_models(
         .vector
         .list_embedding_models()
         .into_iter()
-        .collect::<Vec<_>>();
+        .collect::<HashMap<String, usize>>();
     Ok(Json(models))
 }
 
 async fn embed(
     service: axum::extract::State<ServiceState>,
-    Path((collection_id, document_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    Path((collection_name, document_id)): Path<(String, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let document = service.document.get_config(document_id).await?;
+    let collection = service.vector.get_collection(&collection_name).await?;
     let chunks = service.document.get_chunks(document_id).await?;
-    let collection = service.vector.get_collection(collection_id).await?;
     service
         .vector
-        .create_embeddings(document.id, chunks, &collection)
+        .create_embeddings(document_id, &collection.name, chunks)
         .await?;
 
     Ok("Successfully created embeddings")

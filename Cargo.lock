@@ -3562,9 +3562,9 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "suitest"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b37c390419ba621162e2bfb0474567aafbb40d100ea594578de67710786033"
+checksum = "610a312c7c1947cb1b346dc2759d5e85446dade541365521e49176c075b150af"
 dependencies = [
  "futures-util",
  "once_cell",
@@ -3574,9 +3574,9 @@ dependencies = [
 
 [[package]]
 name = "suitest_macros"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "456e01ff0739f0d727834b194361e75eb92edf16faa37d3a160a9e34b99c4c59"
+checksum = "407b3a39d847030ffa163a3454ed043463760890a45cadc8e32645c73965c19e"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",

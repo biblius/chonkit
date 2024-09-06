@@ -49,8 +49,6 @@ async fn run_server() {
 
     let services = ServiceState::init(db_pool, qdrant, &args.upload_path).await;
 
-    services.vector.sync().await.unwrap();
-
     let addr = format!("{}:{}", args.address, args.port);
     ctrl::http::server(&addr, services).await;
 }

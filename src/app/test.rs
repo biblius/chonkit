@@ -13,7 +13,7 @@ pub type PostgresContainer = ContainerAsync<Postgres>;
 /// Runs the migrations in the container.
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
-pub async fn init_postgres() -> (sqlx::PgPool, ContainerAsync<Postgres>) {
+pub async fn init_postgres() -> (sqlx::PgPool, PostgresContainer) {
     let pg_image = Postgres::default()
         .start()
         .await

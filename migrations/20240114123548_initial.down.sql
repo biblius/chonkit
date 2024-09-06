@@ -1,3 +1,4 @@
+DROP TABLE embeddings;
 DROP TABLE collections;
 DROP TABLE parsers;
 DROP TABLE chunkers;

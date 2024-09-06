@@ -1,5 +1,4 @@
-use crate::core::model::collection::{Collection, CollectionInsert};
-use crate::core::repo::vector::VectorRepo;
+use crate::core::model::collection::VectorCollection;
 use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
 use crate::{DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE};
@@ -27,15 +26,27 @@ pub struct QdrantVectorStore {
 }
 
 impl VectorStore for QdrantVectorStore {
-    async fn list_collections(&self) -> Result<Vec<String>, ChonkitError> {
-        Ok(self
+    async fn list_collections(&self) -> Result<Vec<VectorCollection>, ChonkitError> {
+        let collection_names = self
             .q
             .list_collections()
             .await?
             .collections
             .into_iter()
             .map(|col| col.name)
-            .collect())
+            .collect::<Vec<_>>();
+
+        let mut collections = vec![];
+
+        for name in collection_names {
+            let info = self.q.collection_info(&name).await?;
+            let size = self.get_collection_size(&info);
+            if let Some(size) = size {
+                collections.push(VectorCollection::new(name, size));
+            }
+        }
+
+        Ok(collections)
     }
 
     async fn create_collection(&self, name: &str, size: u64) -> Result<(), ChonkitError> {
@@ -59,6 +70,20 @@ impl VectorStore for QdrantVectorStore {
         debug_assert!(res.result);
 
         Ok(())
+    }
+
+    async fn get_collection(&self, name: &str) -> Result<VectorCollection, ChonkitError> {
+        let info = self.q.collection_info(name).await?;
+        let Some(size) = self.get_collection_size(&info) else {
+            #[cfg(debug_assertions)]
+            {
+                debug!("{info:?}")
+            }
+            return Err(ChonkitError::DoesNotExist(format!(
+                "Size information for vector collection '{name}'"
+            )));
+        };
+        Ok(VectorCollection::new(name.to_string(), size))
     }
 
     async fn delete_collection(&self, name: &str) -> Result<(), ChonkitError> {
@@ -141,34 +166,6 @@ impl VectorStore for QdrantVectorStore {
 
         Ok(())
     }
-
-    async fn sync(&self, repo: &(impl VectorRepo + Sync)) -> Result<(), ChonkitError> {
-        info!("Starting collection sync");
-
-        let collection_list = self.list_collections().await?;
-
-        let mut collections = vec![];
-
-        for collection in collection_list {
-            let info = self.q.collection_info(&collection).await?;
-            let Some(size) = self.get_collection_size(info) else {
-                continue;
-            };
-            collections.push((collection, size));
-        }
-
-        for (name, size) in collections {
-            let collection = CollectionInsert::new(&name, size);
-            match repo.insert_collection(collection).await {
-                Ok(Collection { id, name, .. }) => {
-                    info!("Successfully inserted collection {name} ({id})",)
-                }
-                Err(_) => todo!(),
-            };
-        }
-
-        Ok(())
-    }
 }
 
 impl QdrantVectorStore {
@@ -176,10 +173,20 @@ impl QdrantVectorStore {
         Self { q: Arc::new(q) }
     }
 
-    fn get_collection_size(&self, info: GetCollectionInfoResponse) -> Option<usize> {
-        let config = info.result?.config?.params?.vectors_config?.config?; // ?
+    fn get_collection_size(&self, info: &GetCollectionInfoResponse) -> Option<usize> {
+        let config = info
+            .result
+            .as_ref()?
+            .config
+            .as_ref()?
+            .params
+            .as_ref()?
+            .vectors_config
+            .as_ref()?
+            .config
+            .as_ref()?;
         match config {
-            Config::Params(VectorParams { size, .. }) => Some(size as usize),
+            Config::Params(VectorParams { size, .. }) => Some(*size as usize),
             Config::ParamsMap(pm) => {
                 warn!("Found unexpected params map! {pm:?}");
                 None
