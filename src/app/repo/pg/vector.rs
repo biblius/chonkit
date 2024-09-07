@@ -8,13 +8,10 @@ use crate::{
     },
     error::ChonkitError,
 };
-use sqlx::PgExecutor;
+use sqlx::PgPool;
 use uuid::Uuid;
 
-impl<T> VectorRepo for T
-where
-    for<'e> &'e T: PgExecutor<'e>,
-{
+impl VectorRepo for PgPool {
     async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(name) FROM collections")
             .fetch_one(self)
@@ -35,7 +32,6 @@ where
         .fetch_all(self)
         .await?
         .into_iter()
-        .map(Collection::from)
         .collect();
 
         Ok(List::new(total, collections))

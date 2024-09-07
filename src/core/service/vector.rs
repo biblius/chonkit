@@ -4,6 +4,7 @@ use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::vector::store::VectorStore;
 use crate::error::ChonkitError;
+use crate::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME};
 use dto::{CreateCollection, SearchPayload};
 use std::fmt::Debug;
 use tracing::info;
@@ -56,6 +57,18 @@ where
     /// Create the default vector collection if it doesn't already exist.
     pub async fn create_default_collection(&self) {
         self.store.create_default_collection().await;
+
+        let insert = CollectionInsert::new(
+            DEFAULT_COLLECTION_NAME,
+            DEFAULT_COLLECTION_MODEL,
+            self.embedder.id(),
+            self.store.id(),
+        );
+
+        self.repo
+            .upsert_collection(insert)
+            .await
+            .expect("could not upsert default collection");
     }
 
     /// Create a collection in the vector DB and store its info in the repository.

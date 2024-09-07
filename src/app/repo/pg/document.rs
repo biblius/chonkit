@@ -15,8 +15,6 @@ use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{types::Json, PgPool};
 
-// pub fn run_in_tx<F>(f: F) -> Result<(), ChonkitError> {}
-
 impl DocumentRepo for PgPool {
     async fn get_by_id(&self, id: uuid::Uuid) -> Result<Option<Document>, ChonkitError> {
         Ok(sqlx::query_as!(
