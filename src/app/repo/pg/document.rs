@@ -112,7 +112,7 @@ impl DocumentRepo for PgPool {
         Ok(List::new(total, documents))
     }
 
-    async fn insert(&self, file: DocumentInsert<'_>) -> Result<Document, ChonkitError> {
+    async fn insert(&self, params: DocumentInsert<'_>) -> Result<Document, ChonkitError> {
         let DocumentInsert {
             id,
             name,
@@ -122,7 +122,7 @@ impl DocumentRepo for PgPool {
             hash,
             label,
             tags,
-        } = file;
+        } = params;
 
         sqlx::query_as!(
             Document,

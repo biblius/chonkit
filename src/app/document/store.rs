@@ -9,7 +9,7 @@ use crate::{
     },
     error::ChonkitError,
 };
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, time::Instant};
 use tracing::{debug, error, info};
 
 /// Simple FS based implementation of a [DocumentStore](crate::core::document::DocumentStore).
@@ -93,7 +93,9 @@ impl DocumentStore for FsDocumentStore {
     }
 
     async fn sync(&self, repo: &(impl DocumentRepo + Sync)) -> Result<(), ChonkitError> {
-        debug!("Starting sync");
+        let __start = Instant::now();
+        info!("Syncing documents with {}", self.id());
+
         // Prune
         let documents = repo.list(Pagination::new(10_000, 1)).await?;
 
@@ -143,6 +145,13 @@ impl DocumentStore for FsDocumentStore {
                 Err(e) => error!("{e}"),
             }
         }
+
+        info!(
+            "Syncing finished for storage '{}', took {}ms",
+            self.id(),
+            Instant::now().duration_since(__start).as_millis()
+        );
+
         Ok(())
     }
 }

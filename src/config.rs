@@ -22,8 +22,8 @@ pub struct StartArgs {
     pub db_url: Option<String>,
 
     /// If using the `FsDocumentStore`, sets its path.
-    #[arg(short, long, default_value = "DEFAULT_UPLOAD_PATH")]
-    pub upload_path: String,
+    #[arg(short, long)]
+    pub upload_path: Option<String>,
 }
 
 impl StartArgs {

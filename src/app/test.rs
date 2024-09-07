@@ -7,6 +7,8 @@ use testcontainers::{
 };
 use testcontainers_modules::postgres::Postgres;
 
+use super::vector::qdrant::QdrantDb;
+
 pub type PostgresContainer = ContainerAsync<Postgres>;
 
 /// Setup a postgres test container and connect to it using PgPool.
@@ -28,7 +30,7 @@ pub async fn init_postgres() -> (sqlx::PgPool, PostgresContainer) {
 /// Setup a qdrant test container and connect to it using Qdrant.
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
-pub async fn init_qdrant() -> (qdrant_client::Qdrant, ContainerAsync<GenericImage>) {
+pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
     let qd_image = GenericImage::new("qdrant/qdrant", "latest")
         .with_exposed_port(6334.tcp())
         .with_wait_for(WaitFor::message_on_stdout("gRPC listening on"))
@@ -39,5 +41,5 @@ pub async fn init_qdrant() -> (qdrant_client::Qdrant, ContainerAsync<GenericImag
     let qd_host = qd_image.get_host().await.unwrap();
     let qd_port = qd_image.get_host_port_ipv4(6334).await.unwrap();
     let qd_url = format!("http://{qd_host}:{qd_port}");
-    (crate::app::vector::store::qdrant::init(&qd_url), qd_image)
+    (crate::app::vector::qdrant::init(&qd_url), qd_image)
 }

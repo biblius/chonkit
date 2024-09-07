@@ -2,12 +2,12 @@ use crate::core::embedder::Embedder;
 use crate::core::model::collection::{Collection, CollectionInsert, EmbeddingInsert};
 use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
-use crate::core::vector::store::VectorStore;
+use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
 use crate::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME};
 use dto::{CreateCollection, SearchPayload};
 use std::fmt::Debug;
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 use validify::{Validate, Validify};
 
@@ -15,20 +15,20 @@ use validify::{Validate, Validify};
 #[derive(Debug, Clone)]
 pub struct VectorService<R, V, E> {
     repo: R,
-    store: V,
+    vectors: V,
     embedder: E,
 }
 
 impl<R, V, E> VectorService<R, V, E>
 where
     R: VectorRepo + Sync,
-    V: VectorStore,
+    V: VectorDb,
     E: Embedder,
 {
-    pub fn new(repo: R, store: V, embedder: E) -> Self {
+    pub fn new(repo: R, vectors: V, embedder: E) -> Self {
         Self {
             repo,
-            store,
+            vectors,
             embedder,
         }
     }
@@ -56,19 +56,22 @@ where
 
     /// Create the default vector collection if it doesn't already exist.
     pub async fn create_default_collection(&self) {
-        self.store.create_default_collection().await;
+        self.vectors.create_default_collection().await;
 
         let insert = CollectionInsert::new(
             DEFAULT_COLLECTION_NAME,
             DEFAULT_COLLECTION_MODEL,
             self.embedder.id(),
-            self.store.id(),
+            self.vectors.id(),
         );
 
-        self.repo
-            .upsert_collection(insert)
-            .await
-            .expect("could not upsert default collection");
+        match self.repo.insert_collection(insert).await {
+            Ok(_) => info!("Created default collection '{DEFAULT_COLLECTION_NAME}'"),
+            Err(ChonkitError::AlreadyExists(_)) => {
+                info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists")
+            }
+            Err(e) => error!("Failed to create default collection: {e}"),
+        }
     }
 
     /// Create a collection in the vector DB and store its info in the repository.
@@ -91,10 +94,12 @@ where
 
         info!("Creating collection '{name}' of size '{size}'",);
 
-        self.store.create_collection(&name, size as u64).await?;
+        self.vectors
+            .create_vector_collection(&name, size as u64)
+            .await?;
 
-        let insert = CollectionInsert::new(&name, &model, self.embedder.id(), self.store.id());
-        let collection = self.repo.upsert_collection(insert).await?;
+        let insert = CollectionInsert::new(&name, &model, self.embedder.id(), self.vectors.id());
+        let collection = self.repo.insert_collection(insert).await?;
 
         Ok(collection)
     }
@@ -105,7 +110,7 @@ where
     ///
     /// * `name`: Collection name.
     pub async fn delete_collection(&self, name: &str) -> Result<u64, ChonkitError> {
-        self.store.delete_collection(name).await?;
+        self.vectors.delete_vector_collection(name).await?;
         let count = self.repo.delete_all_embeddings(name).await?;
         Ok(count)
     }
@@ -116,8 +121,8 @@ where
     /// for the document to prevent duplication in semantic search.
     ///
     /// * `id`: Document ID.
-    /// * `content`: The chunked document.
     /// * `collection`: The collection to store the vectors in.
+    /// * `content`: The chunked document.
     pub async fn create_embeddings(
         &self,
         id: Uuid,
@@ -131,7 +136,7 @@ where
             )));
         };
 
-        let v_collection = self.store.get_collection(&collection.name).await?;
+        let v_collection = self.vectors.get_collection(&collection.name).await?;
 
         let size = self.embedder.size(&collection.model).ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
@@ -149,7 +154,7 @@ where
 
         let embeddings = self.embedder.embed(&content, &collection.model).await?;
 
-        self.store
+        self.vectors
             .store(content, embeddings, &collection.name)
             .await?;
 
@@ -186,7 +191,7 @@ where
         debug_assert!(!embeddings.is_empty());
         debug_assert_eq!(1, embeddings.len());
 
-        self.store
+        self.vectors
             .query(
                 std::mem::take(&mut embeddings[0]),
                 &collection.name,
@@ -205,15 +210,13 @@ pub mod dto {
     #[derive(Debug, Deserialize, Validify)]
     pub struct CreateCollection {
         /// Collection name.
+        #[validate(contains_not("/"))]
+        #[validate(contains_not("."))]
         #[validate(length(min = 1))]
         #[modify(trim)]
         pub name: String,
 
         /// Collection model.
-        #[validate(contains_not("/"))]
-        #[validate(contains_not("."))]
-        #[validate(length(min = 1))]
-        #[modify(trim)]
         pub model: String,
     }
 

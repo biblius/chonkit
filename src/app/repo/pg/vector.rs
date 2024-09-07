@@ -37,7 +37,7 @@ impl VectorRepo for PgPool {
         Ok(List::new(total, collections))
     }
 
-    async fn upsert_collection(
+    async fn insert_collection(
         &self,
         insert: CollectionInsert<'_>,
     ) -> Result<Collection, ChonkitError> {
@@ -48,14 +48,12 @@ impl VectorRepo for PgPool {
             src,
         } = insert;
 
-        Ok(sqlx::query_as!(
+        sqlx::query_as!(
             Collection,
             "INSERT INTO collections
                 (name, model, embedder, src)
              VALUES
                 ($1, $2, $3, $4)
-             ON CONFLICT(name) DO UPDATE
-             SET name = $1
              RETURNING 
                 name, model, embedder, src, created_at, updated_at
              ",
@@ -65,7 +63,13 @@ impl VectorRepo for PgPool {
             src
         )
         .fetch_one(self)
-        .await?)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(err) if err.code().is_some_and(|code| code == "23505") => {
+                ChonkitError::AlreadyExists(format!("Collection '{name}' already exists"))
+            }
+            _ => ChonkitError::from(e),
+        })
     }
 
     async fn delete_collection(&self, name: &str) -> Result<u64, ChonkitError> {

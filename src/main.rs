@@ -1,7 +1,6 @@
 use crate::config::StartArgs;
 use app::service::ServiceState;
 use cfg_if::cfg_if;
-use qdrant_client::Qdrant;
 use tracing_subscriber::EnvFilter;
 
 pub mod app;
@@ -16,8 +15,6 @@ pub const TEST_DOCS_PATH: &str = "test/docs";
 pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 pub const DEFAULT_COLLECTION_SIZE: usize = 384;
-
-pub const DEFAULT_LOG: &str = "info,h2=off,lopdf=off,chonkit=debug";
 
 cfg_if!(
     if #[cfg(feature = "http")] {
@@ -45,9 +42,14 @@ async fn run_server() {
     let qd_url = args.qdrant_url();
 
     let db_pool = app::repo::pg::init(&db_url).await;
-    let qdrant = Qdrant::from_url(&qd_url).build().unwrap();
+    let qdrant = app::vector::qdrant::init(&qd_url);
 
-    let services = ServiceState::init(db_pool, qdrant, &args.upload_path).await;
+    let services = ServiceState::init(
+        db_pool,
+        qdrant,
+        &args.upload_path.unwrap_or(DEFAULT_UPLOAD_PATH.to_string()),
+    )
+    .await;
 
     let addr = format!("{}:{}", args.address, args.port);
     ctrl::http::server(&addr, services).await;
@@ -66,7 +68,7 @@ async fn run_cli() {
     let upload_path = std::env::var("UPLOAD_PATH").unwrap_or(DEFAULT_UPLOAD_PATH.to_string());
 
     let db_pool = app::repo::pg::init(&db_url).await;
-    let qdrant = Qdrant::from_url(&qd_url).build().unwrap();
+    let qdrant = app::vector::qdrant::init(&qd_url);
 
     let services = ServiceState::init(db_pool, qdrant, &upload_path).await;
     ctrl::cli::run(services).await;
