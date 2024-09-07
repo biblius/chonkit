@@ -27,8 +27,28 @@ pub struct Collection {
     pub model: String,
     /// Embedder ID.
     pub embedder: String,
+    /// Vector database source.
+    pub src: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+pub struct CollectionInsert<'a> {
+    pub name: &'a str,
+    pub model: &'a str,
+    pub embedder: &'a str,
+    pub src: &'a str,
+}
+
+impl<'a> CollectionInsert<'a> {
+    pub fn new(name: &'a str, model: &'a str, embedder: &'a str, src: &'a str) -> Self {
+        Self {
+            name,
+            model,
+            embedder,
+            src,
+        }
+    }
 }
 
 /// Embedding information model.

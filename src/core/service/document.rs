@@ -23,7 +23,7 @@ use validify::{Validate, Validify};
 #[derive(Debug, Clone)]
 pub struct DocumentService<R, S> {
     pub repo: R,
-    pub storage: S,
+    pub store: S,
 }
 
 impl<R, S> DocumentService<R, S>
@@ -31,8 +31,8 @@ where
     R: DocumentRepo + Sync,
     S: DocumentStore,
 {
-    pub fn new(repo: R, storage: S) -> Self {
-        Self { repo, storage }
+    pub fn new(repo: R, store: S) -> Self {
+        Self { repo, store }
     }
 
     /// Get a paginated list of documents from the repository.
@@ -69,10 +69,11 @@ where
         let ext = document.ext.as_str().try_into()?;
         let parser = self.get_parser(id, ext).await?;
 
-        self.storage.read(&document, parser).await
+        self.store.read(&document, parser).await
     }
 
-    /// Get document chunks using its parsing and chunking configuration.
+    /// Get document chunks using its parsing and chunking configuration,
+    /// or the default configurations if they have no configuration.
     ///
     /// * `id`: Document ID.
     pub async fn get_chunks(&self, id: Uuid) -> Result<Vec<String>, ChonkitError> {
@@ -109,8 +110,8 @@ where
             )));
         };
 
-        let path = self.storage.write(name, file).await?;
-        let insert = DocumentInsert::new(name, &path, ty, &hash);
+        let path = self.store.write(name, file).await?;
+        let insert = DocumentInsert::new(name, &path, ty, &hash, self.store.id());
         let document = self.repo.insert(insert).await?;
         Ok(document)
     }
@@ -124,12 +125,12 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
         self.repo.remove_by_id(document.id).await?;
-        self.storage.delete(&document.path).await
+        self.store.delete(&document.path).await
     }
 
     /// Sync storage contents with the repo.
     pub async fn sync(&self) -> Result<(), ChonkitError> {
-        self.storage.sync(&self.repo).await
+        self.store.sync(&self.repo).await
     }
 
     /// Preview how the document gets parsed to text.
@@ -157,7 +158,7 @@ where
             config.unwrap_or_default(),
         );
 
-        self.storage.read(&document, parser).await
+        self.store.read(&document, parser).await
     }
 
     /// Chunk the document without saving any embeddings. Useful for previewing.
@@ -187,7 +188,7 @@ where
         } else {
             self.get_parser(id, ext).await?
         };
-        let content = self.storage.read(&document, parser).await?;
+        let content = self.store.read(&document, parser).await?;
         let chunker = if let Some(chunker) = chunker {
             chunker
         } else {

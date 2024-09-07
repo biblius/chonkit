@@ -15,6 +15,7 @@ pub struct DocumentConfig {
     pub path: String,
     pub ext: String,
     pub hash: String,
+    pub src: String,
     pub chunk_config: Option<Chunker>,
     pub parse_config: Option<ParseConfig>,
 }
@@ -37,6 +38,9 @@ pub struct Document {
 
     /// Content hash.
     pub hash: String,
+
+    /// Content source.
+    pub src: String,
 
     /// Label used to group the file.
     pub label: Option<String>,
@@ -112,18 +116,26 @@ pub struct DocumentInsert<'a> {
     pub path: &'a str,
     pub hash: &'a str,
     pub ext: DocumentType,
+    pub src: &'a str,
     pub label: Option<&'a str>,
     pub tags: Option<Vec<String>>,
 }
 
 impl<'a> DocumentInsert<'a> {
-    pub fn new(name: &'a str, path: &'a str, ext: DocumentType, hash: &'a str) -> Self {
+    pub fn new(
+        name: &'a str,
+        path: &'a str,
+        ext: DocumentType,
+        hash: &'a str,
+        src: &'a str,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4(),
             name,
             path,
             ext,
             hash,
+            src,
             label: None,
             tags: None,
         }

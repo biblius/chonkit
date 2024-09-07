@@ -26,6 +26,10 @@ pub struct QdrantVectorStore {
 }
 
 impl VectorStore for QdrantVectorStore {
+    fn id(&self) -> &'static str {
+        "qdrant"
+    }
+
     async fn list_collections(&self) -> Result<Vec<VectorCollection>, ChonkitError> {
         let collection_names = self
             .q

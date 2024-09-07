@@ -1,38 +1,30 @@
 use crate::{
     core::{
         model::{
-            collection::{Collection, Embedding, EmbeddingInsert},
+            collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert},
             List, Pagination,
         },
         repo::vector::VectorRepo,
     },
     error::ChonkitError,
 };
-use sqlx::PgPool;
+use sqlx::PgExecutor;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
-pub struct PgVectorRepo {
-    pool: sqlx::PgPool,
-}
-
-impl PgVectorRepo {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
-    }
-}
-
-impl VectorRepo for PgVectorRepo {
+impl<T> VectorRepo for T
+where
+    for<'e> &'e T: PgExecutor<'e>,
+{
     async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(name) FROM collections")
-            .fetch_one(&self.pool)
+            .fetch_one(self)
             .await
             .map(|row| row.count.map(|count| count as usize))?;
 
         let (limit, offset) = p.to_limit_offset();
         let collections = sqlx::query_as!(
             Collection,
-            r#"SELECT name, model, embedder, created_at, updated_at
+            r#"SELECT name, model, embedder, src, created_at, updated_at
                    FROM collections
                    LIMIT $1
                    OFFSET $2
@@ -40,7 +32,7 @@ impl VectorRepo for PgVectorRepo {
             limit,
             offset,
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self)
         .await?
         .into_iter()
         .map(Collection::from)
@@ -48,34 +40,41 @@ impl VectorRepo for PgVectorRepo {
 
         Ok(List::new(total, collections))
     }
+
     async fn upsert_collection(
         &self,
-        name: &str,
-        model: &str,
-        embedder: &str,
-    ) -> Result<crate::core::model::collection::Collection, ChonkitError> {
+        insert: CollectionInsert<'_>,
+    ) -> Result<Collection, ChonkitError> {
+        let CollectionInsert {
+            name,
+            model,
+            embedder,
+            src,
+        } = insert;
+
         Ok(sqlx::query_as!(
             Collection,
             "INSERT INTO collections
-                (name, model, embedder)
+                (name, model, embedder, src)
              VALUES
-                ($1, $2, $3)
+                ($1, $2, $3, $4)
              ON CONFLICT(name) DO UPDATE
              SET name = $1
              RETURNING 
-                name, model, embedder, created_at, updated_at
+                name, model, embedder, src, created_at, updated_at
              ",
             name,
             model,
-            embedder
+            embedder,
+            src
         )
-        .fetch_one(&self.pool)
+        .fetch_one(self)
         .await?)
     }
 
     async fn delete_collection(&self, name: &str) -> Result<u64, ChonkitError> {
         let result = sqlx::query!("DELETE FROM collections WHERE name = $1", name)
-            .execute(&self.pool)
+            .execute(self)
             .await?;
         Ok(result.rows_affected())
     }
@@ -83,10 +82,10 @@ impl VectorRepo for PgVectorRepo {
     async fn get_collection(&self, name: &str) -> Result<Option<Collection>, ChonkitError> {
         Ok(sqlx::query_as!(
             Collection,
-            "SELECT name, model, embedder, created_at, updated_at FROM collections WHERE name = $1",
+            "SELECT name, model, embedder, src, created_at, updated_at FROM collections WHERE name = $1",
             name
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?)
     }
 
@@ -115,7 +114,7 @@ impl VectorRepo for PgVectorRepo {
             document_id,
             collection,
         )
-        .fetch_one(&self.pool)
+        .fetch_one(self)
         .await?)
     }
 
@@ -127,7 +126,7 @@ impl VectorRepo for PgVectorRepo {
              WHERE document_id = $1",
             id
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self)
         .await?)
     }
 
@@ -144,7 +143,7 @@ impl VectorRepo for PgVectorRepo {
             id,
             collection
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?)
     }
 
@@ -154,7 +153,7 @@ impl VectorRepo for PgVectorRepo {
             id,
             collection
         )
-        .execute(&self.pool)
+        .execute(self)
         .await?
         .rows_affected())
     }
@@ -162,7 +161,7 @@ impl VectorRepo for PgVectorRepo {
     async fn delete_all_embeddings(&self, collection: &str) -> Result<u64, ChonkitError> {
         Ok(
             sqlx::query!("DELETE FROM embeddings WHERE collection = $1", collection)
-                .execute(&self.pool)
+                .execute(self)
                 .await?
                 .rows_affected(),
         )

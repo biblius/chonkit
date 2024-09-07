@@ -1,9 +1,10 @@
+use sqlx::PgPool;
+
 use crate::{
-    app::{document::store::FsDocumentStore, repo::pg::document::PgDocumentRepo},
-    core::service::document::DocumentService as Service,
+    app::document::store::FsDocumentStore, core::service::document::DocumentService as Service,
 };
 
-pub(in crate::app) type DocumentService = Service<PgDocumentRepo, FsDocumentStore>;
+pub(in crate::app) type DocumentService = Service<PgPool, FsDocumentStore>;
 
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
@@ -11,7 +12,6 @@ mod document_service_postgres_fs {
     use crate::{
         app::{
             document::store::FsDocumentStore,
-            repo::pg::document::PgDocumentRepo,
             service::document::DocumentService,
             test::{init_postgres, PostgresContainer},
         },
@@ -24,22 +24,17 @@ mod document_service_postgres_fs {
         },
         DEFAULT_UPLOAD_PATH, TEST_DOCS_PATH,
     };
+    use sqlx::PgPool;
     use suitest::before_all;
 
     #[before_all]
-    async fn setup() -> (
-        PgDocumentRepo,
-        FsDocumentStore,
-        DocumentService,
-        PostgresContainer,
-    ) {
+    async fn setup() -> (PgPool, FsDocumentStore, DocumentService, PostgresContainer) {
         let (client, _pg_img) = init_postgres().await;
 
-        let repo = PgDocumentRepo::new(client);
         let store = FsDocumentStore::new(DEFAULT_UPLOAD_PATH);
-        let service = DocumentService::new(repo.clone(), store.clone());
+        let service = DocumentService::new(client.clone(), store.clone());
 
-        (repo, store, service, _pg_img)
+        (client, store, service, _pg_img)
     }
 
     #[test]

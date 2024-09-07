@@ -33,6 +33,9 @@ CREATE TABLE documents (
     -- The content hash of the document.
     hash TEXT UNIQUE NOT NULL,
 
+    -- Document source, e.g. local, minio, etc.
+    src TEXT NOT NULL,
+
     -- A label for grouping together files with the same label.
     -- Documents can have only a single label.
     label TEXT,
@@ -66,8 +69,12 @@ CREATE TABLE parsers(
 -- Stores vector collection information. 
 CREATE TABLE collections(
     name TEXT PRIMARY KEY,
+    -- The model used to generate the vectors.
     model TEXT NOT NULL,
+    -- The embedder whose model is used.
     embedder TEXT NOT NULL,
+    -- The vector DB used to store the vectors.
+    src TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

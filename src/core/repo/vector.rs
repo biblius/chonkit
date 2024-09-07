@@ -1,6 +1,6 @@
 use crate::{
     core::model::{
-        collection::{Collection, Embedding, EmbeddingInsert},
+        collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert},
         List, Pagination,
     },
     error::ChonkitError,
@@ -24,9 +24,7 @@ pub trait VectorRepo {
     /// * `model`: Collection embedding model.
     fn upsert_collection(
         &self,
-        name: &str,
-        model: &str,
-        embedder: &str,
+        insert: CollectionInsert<'_>,
     ) -> impl Future<Output = Result<Collection, ChonkitError>> + Send;
 
     /// Delete a vector collection.

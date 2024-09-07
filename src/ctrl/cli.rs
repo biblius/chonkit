@@ -37,8 +37,10 @@ enum DocumentExec {
 
 #[derive(Debug, Subcommand)]
 enum ChunkMode {
-    Sw(IdArg),
-    Ssw(ChunkpArg),
+    /// Sliding window
+    Sl(IdArg),
+    /// Snapping window
+    Sn(ChunkpArg),
 }
 
 #[derive(Debug, Subcommand)]

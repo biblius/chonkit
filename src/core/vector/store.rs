@@ -3,6 +3,8 @@ use std::future::Future;
 
 /// Vector database operations.
 pub trait VectorStore {
+    fn id(&self) -> &'static str;
+
     /// List available vector collections.
     fn list_collections(
         &self,

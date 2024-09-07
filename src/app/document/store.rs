@@ -56,6 +56,10 @@ impl FsDocumentStore {
 }
 
 impl DocumentStore for FsDocumentStore {
+    fn id(&self) -> &'static str {
+        "fs"
+    }
+
     async fn read(
         &self,
         document: &Document,
@@ -132,7 +136,7 @@ impl DocumentStore for FsDocumentStore {
                 continue;
             }
 
-            let insert = DocumentInsert::new(&name, &path, ext, &hash);
+            let insert = DocumentInsert::new(&name, &path, ext, &hash, self.id());
 
             match repo.insert(insert).await {
                 Ok(Document { id, name, .. }) => info!("Successfully inserted '{name}' ({id})"),

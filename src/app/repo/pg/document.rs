@@ -15,24 +15,19 @@ use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{types::Json, PgPool};
 
-#[derive(Debug, Clone)]
-pub struct PgDocumentRepo {
-    pool: sqlx::PgPool,
-}
+// pub fn run_in_tx<F>(f: F) -> Result<(), ChonkitError> {}
 
-impl PgDocumentRepo {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
-    }
-}
-
-impl DocumentRepo for PgDocumentRepo {
+impl DocumentRepo for PgPool {
     async fn get_by_id(&self, id: uuid::Uuid) -> Result<Option<Document>, ChonkitError> {
-        Ok(
-            sqlx::query_as!(Document, "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE id = $1", id)
-                .fetch_optional(&self.pool)
-                .await?,
+        Ok(sqlx::query_as!(
+            Document,
+            "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at
+             FROM documents 
+             WHERE id = $1",
+            id
         )
+        .fetch_optional(self)
+        .await?)
     }
 
     async fn get_config_by_id(
@@ -48,6 +43,7 @@ impl DocumentRepo for PgDocumentRepo {
                 d.path,
                 d.ext,
                 d.hash,
+                d.src,
                 c.config AS "chunk_config: Option<Json<Chunker>>",
                 p.config AS "parse_config: _"
             FROM documents d 
@@ -56,35 +52,47 @@ impl DocumentRepo for PgDocumentRepo {
             WHERE d.id = $1"#,
             id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?
         .map(DocumentConfig::from))
     }
 
     async fn get_by_path(&self, path: &str) -> Result<Option<Document>, ChonkitError> {
-        sqlx::query_as!(Document, "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE path = $1", path)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(ChonkitError::from)
+        sqlx::query_as!(
+            Document,
+            "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at 
+             FROM documents 
+             WHERE path = $1",
+            path
+        )
+        .fetch_optional(self)
+        .await
+        .map_err(ChonkitError::from)
     }
 
     async fn get_path(&self, id: uuid::Uuid) -> Result<Option<String>, ChonkitError> {
         Ok(sqlx::query!("SELECT path FROM documents WHERE id = $1", id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(self)
             .await?
             .map(|el| el.path))
     }
 
     async fn get_by_hash(&self, hash: &str) -> Result<Option<Document>, ChonkitError> {
-        sqlx::query_as!(Document, "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE hash = $1", hash)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(ChonkitError::from)
+        sqlx::query_as!(
+            Document,
+            "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at 
+             FROM documents 
+             WHERE hash = $1",
+            hash
+        )
+        .fetch_optional(self)
+        .await
+        .map_err(ChonkitError::from)
     }
 
     async fn list(&self, p: Pagination) -> Result<List<Document>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(id) FROM documents")
-            .fetch_one(&self.pool)
+            .fetch_one(self)
             .await
             .map(|row| row.count.map(|count| count as usize))?;
 
@@ -92,7 +100,7 @@ impl DocumentRepo for PgDocumentRepo {
 
         let documents = sqlx::query_as!(
             Document,
-            r#"SELECT id, name, path, ext, hash, label, tags, created_at, updated_at
+            r#"SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at
                    FROM documents
                    LIMIT $1
                    OFFSET $2
@@ -100,7 +108,7 @@ impl DocumentRepo for PgDocumentRepo {
             limit,
             offset
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self)
         .await?;
 
         Ok(List::new(total, documents))
@@ -112,6 +120,7 @@ impl DocumentRepo for PgDocumentRepo {
             name,
             path,
             ext,
+            src,
             hash,
             label,
             tags,
@@ -119,18 +128,19 @@ impl DocumentRepo for PgDocumentRepo {
 
         sqlx::query_as!(
             Document,
-            "INSERT INTO documents(id, name, path, ext, hash, label, tags)
-             VALUES($1, $2, $3, $4, $5, $6, $7)
-             RETURNING id, name, path, ext, hash, label, tags, created_at, updated_at",
+            "INSERT INTO documents(id, name, path, ext, hash, src, label, tags)
+             VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, name, path, ext, hash, src, label, tags, created_at, updated_at",
             id,
             name,
             path,
             ext.to_string(),
             hash,
+            src,
             label,
             tags.as_deref(),
         )
-        .fetch_one(&self.pool)
+        .fetch_one(self)
         .await
         .map_err(ChonkitError::from)
     }
@@ -155,7 +165,7 @@ impl DocumentRepo for PgDocumentRepo {
             tags.as_deref(),
             id
         )
-        .execute(&self.pool)
+        .execute(self)
         .await?;
 
         Ok(result.rows_affected())
@@ -163,14 +173,14 @@ impl DocumentRepo for PgDocumentRepo {
 
     async fn remove_by_id(&self, id: uuid::Uuid) -> Result<u64, ChonkitError> {
         let result = sqlx::query!("DELETE FROM documents WHERE id = $1", id)
-            .execute(&self.pool)
+            .execute(self)
             .await?;
         Ok(result.rows_affected())
     }
 
     async fn remove_by_path(&self, path: &str) -> Result<u64, ChonkitError> {
         let result = sqlx::query!("DELETE FROM documents WHERE path = $1", path)
-            .execute(&self.pool)
+            .execute(self)
             .await?;
         Ok(result.rows_affected())
     }
@@ -191,7 +201,7 @@ impl DocumentRepo for PgDocumentRepo {
              WHERE document_id = $1"#,
             id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?
         .map(DocumentChunkConfig::from))
     }
@@ -212,7 +222,7 @@ impl DocumentRepo for PgDocumentRepo {
              WHERE document_id = $1"#,
             id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?
         .map(DocumentParseConfig::from))
     }
@@ -244,7 +254,7 @@ impl DocumentRepo for PgDocumentRepo {
             document_id,
             config as Json<Chunker>,
         )
-        .fetch_one(&self.pool)
+        .fetch_one(self)
         .await?;
 
         Ok(DocumentChunkConfig::from(config))
@@ -276,7 +286,7 @@ impl DocumentRepo for PgDocumentRepo {
             document_id,
             config as Json<ParseConfig>,
         )
-        .fetch_one(&self.pool)
+        .fetch_one(self)
         .await?;
 
         Ok(DocumentParseConfig::from(config))
@@ -310,6 +320,7 @@ struct SelectDocumentConfig {
     path: String,
     ext: String,
     hash: String,
+    src: String,
     chunk_config: Option<Json<Chunker>>,
     parse_config: Option<Json<ParseConfig>>,
 }
@@ -322,6 +333,7 @@ impl From<SelectDocumentConfig> for DocumentConfig {
             path,
             ext,
             hash,
+            src,
             chunk_config,
             parse_config,
         }: SelectDocumentConfig,
@@ -332,6 +344,7 @@ impl From<SelectDocumentConfig> for DocumentConfig {
             path,
             ext,
             hash,
+            src,
             chunk_config: chunk_config.map(|c| c.0),
             parse_config: parse_config.map(|c| c.0),
         }
@@ -388,7 +401,6 @@ impl From<SelectConfig<ParseConfig>> for DocumentParseConfig {
 #[suitest::suite(pg_document_repo_int)]
 mod tests {
 
-    use super::PgDocumentRepo;
     use crate::{
         app::test::{init_postgres, PostgresContainer},
         core::{
@@ -397,18 +409,24 @@ mod tests {
             repo::document::DocumentRepo,
         },
     };
+    use sqlx::PgPool;
     use suitest::before_all;
 
     #[before_all]
-    async fn setup() -> (PgDocumentRepo, PostgresContainer) {
+    async fn setup() -> (PgPool, PostgresContainer) {
         let (postgres, pg_img) = init_postgres().await;
-        let repo = PgDocumentRepo::new(postgres);
-        (repo, pg_img)
+        (postgres, pg_img)
     }
 
     #[test]
-    async fn inserting_document_works(repo: PgDocumentRepo) {
-        let doc = DocumentInsert::new("My file", "path/to/file", DocumentType::Text, "SHA256");
+    async fn inserting_document_works(repo: PgPool) {
+        let doc = DocumentInsert::new(
+            "My file",
+            "path/to/file",
+            DocumentType::Text,
+            "SHA256",
+            "fs",
+        );
         let doc = repo.insert(doc).await.unwrap();
         let doc = repo.get_by_id(doc.id).await.unwrap().unwrap();
 
@@ -424,12 +442,13 @@ mod tests {
     }
 
     #[test]
-    async fn inserting_chunk_config_works(repo: PgDocumentRepo) {
+    async fn inserting_chunk_config_works(repo: PgPool) {
         let doc = DocumentInsert::new(
             "My file",
             "path/to/file/2",
             DocumentType::Text,
             "Other hash",
+            "fs",
         );
         let doc = repo.insert(doc).await.unwrap();
         let chunker = Chunker::sliding(420, 69);

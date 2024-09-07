@@ -1,5 +1,5 @@
 use crate::core::embedder::Embedder;
-use crate::core::model::collection::{Collection, EmbeddingInsert};
+use crate::core::model::collection::{Collection, CollectionInsert, EmbeddingInsert};
 use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::vector::store::VectorStore;
@@ -14,7 +14,7 @@ use validify::{Validate, Validify};
 #[derive(Debug, Clone)]
 pub struct VectorService<R, V, E> {
     repo: R,
-    vectors: V,
+    store: V,
     embedder: E,
 }
 
@@ -24,10 +24,10 @@ where
     V: VectorStore,
     E: Embedder,
 {
-    pub fn new(repo: R, vectors: V, embedder: E) -> Self {
+    pub fn new(repo: R, store: V, embedder: E) -> Self {
         Self {
             repo,
-            vectors,
+            store,
             embedder,
         }
     }
@@ -55,13 +55,16 @@ where
 
     /// Create the default vector collection if it doesn't already exist.
     pub async fn create_default_collection(&self) {
-        self.vectors.create_default_collection().await;
+        self.store.create_default_collection().await;
     }
 
     /// Create a collection in the vector DB and store its info in the repository.
     ///
     /// * `data`: Creation data.
-    pub async fn create_collection(&self, mut data: CreateCollection) -> Result<(), ChonkitError> {
+    pub async fn create_collection(
+        &self,
+        mut data: CreateCollection,
+    ) -> Result<Collection, ChonkitError> {
         data.validify()?;
 
         let CreateCollection { name, model } = data;
@@ -75,9 +78,12 @@ where
 
         info!("Creating collection '{name}' of size '{size}'",);
 
-        self.vectors.create_collection(&name, size as u64).await?;
+        self.store.create_collection(&name, size as u64).await?;
 
-        Ok(())
+        let insert = CollectionInsert::new(&name, &model, self.embedder.id(), self.store.id());
+        let collection = self.repo.upsert_collection(insert).await?;
+
+        Ok(collection)
     }
 
     /// Delete a vector collection and all its corresponding embedding entries.
@@ -86,7 +92,7 @@ where
     ///
     /// * `name`: Collection name.
     pub async fn delete_collection(&self, name: &str) -> Result<u64, ChonkitError> {
-        self.vectors.delete_collection(name).await?;
+        self.store.delete_collection(name).await?;
         let count = self.repo.delete_all_embeddings(name).await?;
         Ok(count)
     }
@@ -112,7 +118,7 @@ where
             )));
         };
 
-        let v_collection = self.vectors.get_collection(&collection.name).await?;
+        let v_collection = self.store.get_collection(&collection.name).await?;
 
         let size = self.embedder.size(&collection.model).ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
@@ -130,7 +136,7 @@ where
 
         let embeddings = self.embedder.embed(&content, &collection.model).await?;
 
-        self.vectors
+        self.store
             .store(content, embeddings, &collection.name)
             .await?;
 
@@ -167,7 +173,7 @@ where
         debug_assert!(!embeddings.is_empty());
         debug_assert_eq!(1, embeddings.len());
 
-        self.vectors
+        self.store
             .query(
                 std::mem::take(&mut embeddings[0]),
                 &collection.name,
