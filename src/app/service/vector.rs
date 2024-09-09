@@ -8,7 +8,6 @@ pub(in crate::app) type VectorService = Service<PgPool, QdrantDb, FastEmbedder>;
 
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
-#[suitest::suite_cfg(verbose = true)]
 mod vector_service_postgres_qdrant_fastembed {
     use super::VectorService;
     use crate::{
@@ -17,7 +16,14 @@ mod vector_service_postgres_qdrant_fastembed {
             test::{init_postgres, init_qdrant, PostgresContainer},
             vector::qdrant::QdrantDb,
         },
-        core::{embedder::Embedder, service::vector::dto::CreateCollection, vector::VectorDb},
+        core::{
+            embedder::Embedder,
+            model::document::{DocumentInsert, DocumentType},
+            repo::{document::DocumentRepo, vector::VectorRepo},
+            service::vector::dto::{CreateCollection, SearchPayload},
+            vector::VectorDb,
+        },
+        error::ChonkitError,
         DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME,
     };
     use sqlx::PgPool;
@@ -40,6 +46,8 @@ mod vector_service_postgres_qdrant_fastembed {
 
         let service = VectorService::new(postgres.clone(), qdrant.clone(), embedder.clone());
 
+        service.create_default_collection().await;
+
         (postgres, qdrant, service, embedder, pg, qd)
     }
 
@@ -49,8 +57,6 @@ mod vector_service_postgres_qdrant_fastembed {
         embedder: FastEmbedder,
         qdrant: QdrantDb,
     ) {
-        service.create_default_collection().await;
-
         let collection = service
             .get_collection(DEFAULT_COLLECTION_NAME)
             .await
@@ -68,8 +74,6 @@ mod vector_service_postgres_qdrant_fastembed {
         embedder: FastEmbedder,
         qdrant: QdrantDb,
     ) {
-        service.create_default_collection().await;
-
         let collection = service
             .get_collection(DEFAULT_COLLECTION_NAME)
             .await
@@ -139,15 +143,104 @@ mod vector_service_postgres_qdrant_fastembed {
         assert!(result.is_err());
     }
 
-    // #[test]
-    // async fn inserting_embeddings_works(service: VectorService, postgres: PgPool) {
-    //     let create = DocumentInsert::new("test_document", "test_path");
-    //     let document = postgres.insert(document).await.unwrap();
-    //
-    //     let content = "Hello World!";
-    //     service
-    //         .create_embeddings(id, collection, content)
-    //         .await
-    //         .unwrap();
-    // }
+    #[test]
+    async fn inserting_embeddings_works(service: VectorService, postgres: PgPool) {
+        let create = DocumentInsert::new(
+            "test_document",
+            "test_path_1",
+            DocumentType::Text,
+            "SHA256_1",
+            "fs",
+        );
+
+        let document = postgres.insert(create).await.unwrap();
+
+        let content = r#"Hello World!"#;
+        service
+            .create_embeddings(document.id, DEFAULT_COLLECTION_NAME, [content].to_vec())
+            .await
+            .unwrap();
+
+        let search = SearchPayload {
+            query: content.to_string(),
+            collection: DEFAULT_COLLECTION_NAME.to_string(),
+            limit: Some(1),
+        };
+
+        let results = service.search(search).await.unwrap();
+
+        assert_eq!(1, results.len());
+        assert_eq!(format!(r#""{content}""#), results[0]);
+
+        let embeddings = postgres
+            .get_embeddings(document.id, DEFAULT_COLLECTION_NAME)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(DEFAULT_COLLECTION_NAME, embeddings.collection);
+        assert_eq!(document.id, embeddings.document_id);
+    }
+
+    #[test]
+    async fn deleting_collection_removes_all_embeddings(service: VectorService, postgres: PgPool) {
+        let collection_name = "test_collection_delete_embeddings";
+
+        let create = CreateCollection {
+            name: collection_name.to_string(),
+            model: DEFAULT_COLLECTION_MODEL.to_string(),
+        };
+
+        service.create_collection(create).await.unwrap();
+
+        let create = DocumentInsert::new(
+            "test_document",
+            "test_path_2",
+            DocumentType::Text,
+            "SHA256_2",
+            "fs",
+        );
+
+        let document = postgres.insert(create).await.unwrap();
+
+        let content = r#"Hello World!"#;
+        service
+            .create_embeddings(document.id, collection_name, [content].to_vec())
+            .await
+            .unwrap();
+
+        service.delete_collection(collection_name).await.unwrap();
+
+        let embeddings = postgres
+            .get_embeddings(document.id, collection_name)
+            .await
+            .unwrap();
+
+        assert!(embeddings.is_none())
+    }
+
+    #[test]
+    async fn prevents_duplicate_embeddings(service: VectorService, postgres: PgPool) {
+        let create = DocumentInsert::new(
+            "test_document",
+            "test_path_3",
+            DocumentType::Text,
+            "SHA256_3",
+            "fs",
+        );
+
+        let document = postgres.insert(create).await.unwrap();
+
+        let content = r#"Hello World!"#;
+        service
+            .create_embeddings(document.id, DEFAULT_COLLECTION_NAME, [content].to_vec())
+            .await
+            .unwrap();
+
+        let duplicate = service
+            .create_embeddings(document.id, DEFAULT_COLLECTION_NAME, [content].to_vec())
+            .await;
+
+        assert!(matches!(duplicate, Err(ChonkitError::AlreadyExists(_))))
+    }
 }

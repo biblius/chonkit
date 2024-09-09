@@ -135,7 +135,7 @@ impl VectorDb for Arc<Qdrant> {
 
     async fn store(
         &self,
-        content: Vec<String>,
+        content: &[&str],
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> Result<(), ChonkitError> {

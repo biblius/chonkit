@@ -17,7 +17,7 @@ pub trait Embedder {
     /// * `model`: The embedding model to use.
     fn embed(
         &self,
-        content: &[String],
+        content: &[&str],
         model: &str,
     ) -> impl Future<Output = Result<Vec<Vec<f32>>, ChonkitError>> + Send;
 

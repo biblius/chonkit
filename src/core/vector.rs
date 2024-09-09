@@ -67,7 +67,7 @@ pub trait VectorDb {
     /// * `collection`: The vector collection to store in.
     fn store(
         &self,
-        content: Vec<String>,
+        content: &[&str],
         vectors: Vec<Vec<f32>>,
         collection: &str,
     ) -> impl Future<Output = Result<(), ChonkitError>>;

@@ -76,8 +76,12 @@ where
     /// or the default configurations if they have no configuration.
     ///
     /// * `id`: Document ID.
-    pub async fn get_chunks(&self, id: Uuid) -> Result<Vec<String>, ChonkitError> {
-        let content = self.get_content(id).await?;
+    /// * `content`: The document's content.
+    pub async fn get_chunks<'content>(
+        &self,
+        id: Uuid,
+        content: &'content str,
+    ) -> Result<Vec<&'content str>, ChonkitError> {
         let chunker = self
             .repo
             .get_chunk_config(id)
@@ -85,11 +89,7 @@ where
             .map(|config| config.config)
             .unwrap_or_else(Chunker::snapping_default);
 
-        Ok(chunker
-            .chunk(&content)?
-            .into_iter()
-            .map(String::from)
-            .collect())
+        Ok(chunker.chunk(content)?.into_iter().collect())
     }
 
     /// Insert the document metadata to the repository and persist it

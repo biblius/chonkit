@@ -16,7 +16,7 @@ impl Embedder for FastEmbedder {
             .collect()
     }
 
-    async fn embed(&self, content: &[String], model: &str) -> Result<Vec<Vec<f32>>, ChonkitError> {
+    async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f32>>, ChonkitError> {
         let model = fastembed::TextEmbedding::list_supported_models()
             .into_iter()
             .find(|m| m.model_code == model)

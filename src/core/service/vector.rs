@@ -134,12 +134,12 @@ where
     ///
     /// * `id`: Document ID.
     /// * `collection`: The collection to store the vectors in.
-    /// * `content`: The chunked document.
+    /// * `chunks`: The chunked document.
     pub async fn create_embeddings(
         &self,
         id: Uuid,
         collection: &str,
-        content: Vec<String>,
+        chunks: Vec<&str>,
     ) -> Result<(), ChonkitError> {
         // Make sure the collection exists.
         let Some(collection) = self.repo.get_collection(collection).await? else {
@@ -147,6 +147,14 @@ where
                 "Collection '{collection}'"
             )));
         };
+
+        let existing = self.repo.get_embeddings(id, &collection.name).await?;
+        if existing.is_some() {
+            return Err(ChonkitError::AlreadyExists(format!(
+                "Embeddings for document '{id}' in collection '{}'",
+                collection.name
+            )));
+        }
 
         let v_collection = self.vectors.get_collection(&collection.name).await?;
 
@@ -164,10 +172,10 @@ where
             )));
         }
 
-        let embeddings = self.embedder.embed(&content, &collection.model).await?;
+        let embeddings = self.embedder.embed(&chunks, &collection.model).await?;
 
         self.vectors
-            .store(content, embeddings, &collection.name)
+            .store(&chunks, embeddings, &collection.name)
             .await?;
 
         let insert = EmbeddingInsert::new(id, &collection.name);
@@ -198,7 +206,7 @@ where
             )));
         };
 
-        let mut embeddings = self.embedder.embed(&[query], &collection.model).await?;
+        let mut embeddings = self.embedder.embed(&[&query], &collection.model).await?;
 
         debug_assert!(!embeddings.is_empty());
         debug_assert_eq!(1, embeddings.len());

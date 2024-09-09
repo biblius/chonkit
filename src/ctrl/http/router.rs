@@ -229,7 +229,10 @@ async fn embed(
     Path((collection_name, document_id)): Path<(String, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let collection = service.vector.get_collection(&collection_name).await?;
-    let chunks = service.document.get_chunks(document_id).await?;
+
+    let content = service.document.get_content(document_id).await?;
+    let chunks = service.document.get_chunks(document_id, &content).await?;
+
     service
         .vector
         .create_embeddings(document_id, &collection.name, chunks)
