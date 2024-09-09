@@ -2,9 +2,10 @@ use crate::core::embedder::Embedder;
 use crate::core::model::collection::{Collection, CollectionInsert, EmbeddingInsert};
 use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
+use crate::core::repo::Atomic;
 use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
-use crate::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME};
+use crate::{transaction, DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME};
 use dto::{CreateCollection, SearchPayload};
 use std::fmt::Debug;
 use tracing::{error, info};
@@ -21,9 +22,10 @@ pub struct VectorService<R, V, E> {
 
 impl<R, V, E> VectorService<R, V, E>
 where
-    R: VectorRepo + Sync,
-    V: VectorDb,
-    E: Embedder,
+    R: VectorRepo<R::Tx> + Atomic + Send + Sync + Clone,
+    R::Tx: Send + Sync,
+    V: VectorDb + Sync,
+    E: Embedder + Sync,
 {
     pub fn new(repo: R, vectors: V, embedder: E) -> Self {
         Self {
@@ -65,7 +67,7 @@ where
             self.vectors.id(),
         );
 
-        match self.repo.insert_collection(insert).await {
+        match self.repo.insert_collection(insert, None).await {
             Ok(_) => info!("Created default collection '{DEFAULT_COLLECTION_NAME}'"),
             Err(ChonkitError::AlreadyExists(_)) => {
                 info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists")
@@ -83,7 +85,7 @@ where
     ) -> Result<Collection, ChonkitError> {
         data.validify()?;
 
-        let CreateCollection { name, model } = data;
+        let CreateCollection { name, model } = data.clone();
 
         let size = self.embedder.size(&model).ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
@@ -94,12 +96,22 @@ where
 
         info!("Creating collection '{name}' of size '{size}'",);
 
-        self.vectors
-            .create_vector_collection(&name, size as u64)
-            .await?;
+        let CreateCollection { name, model } = data;
 
-        let insert = CollectionInsert::new(&name, &model, self.embedder.id(), self.vectors.id());
-        let collection = self.repo.insert_collection(insert).await?;
+        let mut tx = self.repo.start_tx().await?;
+        let collection: Collection = transaction!(self, tx, async {
+            self.vectors
+                .create_vector_collection(&name, size as u64)
+                .await?;
+
+            let insert =
+                CollectionInsert::new(&name, &model, self.embedder.id(), self.vectors.id());
+
+            let collection = self.repo.insert_collection(insert, Some(&mut tx)).await?;
+
+            Result::<Collection, ChonkitError>::Ok(collection)
+        })
+        .await?;
 
         Ok(collection)
     }
@@ -207,7 +219,7 @@ pub mod dto {
     use validify::Validify;
 
     /// Params for creating collections.
-    #[derive(Debug, Deserialize, Validify)]
+    #[derive(Debug, Clone, Deserialize, Validify)]
     pub struct CreateCollection {
         /// Collection name.
         #[validate(contains_not("/"))]

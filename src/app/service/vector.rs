@@ -17,10 +17,7 @@ mod vector_service_postgres_qdrant_fastembed {
             test::{init_postgres, init_qdrant, PostgresContainer},
             vector::qdrant::QdrantDb,
         },
-        core::{
-            embedder::Embedder, model::document::DocumentInsert, repo::document::DocumentRepo,
-            service::vector::dto::CreateCollection, vector::VectorDb,
-        },
+        core::{embedder::Embedder, service::vector::dto::CreateCollection, vector::VectorDb},
         DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME,
     };
     use sqlx::PgPool;

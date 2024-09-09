@@ -4,14 +4,14 @@ use crate::{
             collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert},
             List, Pagination,
         },
-        repo::vector::VectorRepo,
+        repo::{vector::VectorRepo, Atomic},
     },
     error::ChonkitError,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
-impl VectorRepo for PgPool {
+impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
     async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(name) FROM collections")
             .fetch_one(self)
@@ -40,6 +40,7 @@ impl VectorRepo for PgPool {
     async fn insert_collection(
         &self,
         insert: CollectionInsert<'_>,
+        tx: Option<&mut <PgPool as Atomic>::Tx>,
     ) -> Result<Collection, ChonkitError> {
         let CollectionInsert {
             name,
@@ -47,6 +48,31 @@ impl VectorRepo for PgPool {
             embedder,
             src,
         } = insert;
+
+        if let Some(tx) = tx {
+            return sqlx::query_as!(
+                Collection,
+                "INSERT INTO collections
+                (name, model, embedder, src)
+             VALUES
+                ($1, $2, $3, $4)
+             RETURNING 
+                name, model, embedder, src, created_at, updated_at
+             ",
+                name,
+                model,
+                embedder,
+                src
+            )
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::Database(err) if err.code().is_some_and(|code| code == "23505") => {
+                    ChonkitError::AlreadyExists(format!("Collection '{name}' already exists"))
+                }
+                _ => ChonkitError::from(e),
+            });
+        }
 
         sqlx::query_as!(
             Collection,

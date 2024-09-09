@@ -9,7 +9,7 @@ use std::future::Future;
 use uuid::Uuid;
 
 /// Keeps track of vector collections and vector related metadata.
-pub trait VectorRepo {
+pub trait VectorRepo<T> {
     /// List collections with limit and offset
     ///
     /// * `p`: Pagination params.
@@ -25,6 +25,7 @@ pub trait VectorRepo {
     fn insert_collection(
         &self,
         insert: CollectionInsert<'_>,
+        tx: Option<&mut T>,
     ) -> impl Future<Output = Result<Collection, ChonkitError>> + Send;
 
     /// Delete a vector collection.
