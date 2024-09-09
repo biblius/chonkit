@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 /// Alias for an arced Qdrant instance.
 pub type QdrantDb = Arc<Qdrant>;
 
-pub fn init(url: &str) -> Arc<Qdrant> {
+pub fn init(url: &str) -> QdrantDb {
     info!("Connecting to qdrant at {url}");
     Arc::new(
         Qdrant::from_url(url)
@@ -109,13 +109,13 @@ impl VectorDb for Arc<Qdrant> {
         &self,
         search: Vec<f32>,
         collection: &str,
-        limit: u64,
+        limit: u32,
     ) -> Result<Vec<String>, ChonkitError> {
         let search_points = SearchPoints {
             collection_name: collection.to_string(),
             vector: search,
             filter: None,
-            limit,
+            limit: limit as u64,
             with_payload: Some(WithPayloadSelector {
                 selector_options: Some(SelectorOptions::Enable(true)),
             }),
@@ -135,9 +135,9 @@ impl VectorDb for Arc<Qdrant> {
 
     async fn store(
         &self,
+        collection: &str,
         content: &[&str],
         vectors: Vec<Vec<f32>>,
-        collection: &str,
     ) -> Result<(), ChonkitError> {
         debug!("Storing vectors to {collection}");
 

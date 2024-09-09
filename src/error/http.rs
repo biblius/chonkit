@@ -25,6 +25,7 @@ impl ChonkitError {
             | E::Fastembed(_)
             | E::Sqlx(_)
             | E::Http(_)
+            | E::Weaviate(_)
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
         }
     }
@@ -105,6 +106,7 @@ impl IntoResponse for ChonkitError {
             CE::ParsePdf(_) => todo!(),
             CE::DocxRead(_) => todo!(),
             CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
+            CE::Weaviate(e) => (status, ResponseError::new(ET::Internal, e)).into_response(),
         }
     }
 }

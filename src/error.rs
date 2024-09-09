@@ -10,6 +10,21 @@ pub mod http;
 
 #[derive(Debug, Error)]
 pub enum ChonkitError {
+    #[error("Does not exist: {0}")]
+    DoesNotExist(String),
+
+    #[error("Invalid file name: {0}")]
+    InvalidFileName(String),
+
+    #[error("File exists: {0}")]
+    AlreadyExists(String),
+
+    #[error("Unsupported file type: {0}")]
+    UnsupportedFileType(String),
+
+    #[error("Invalid embedding model: {0}")]
+    InvalidEmbeddingModel(String),
+
     #[error("IO: {0}")]
     IO(#[from] std::io::Error),
 
@@ -25,29 +40,17 @@ pub enum ChonkitError {
     #[error("SQL: {0}")]
     Sqlx(#[from] sqlx::Error),
 
-    #[error("Does not exist: {0}")]
-    DoesNotExist(String),
-
-    #[error("Invalid file name: {0}")]
-    InvalidFileName(String),
-
-    #[error("File exists: {0}")]
-    AlreadyExists(String),
-
     #[error("JSON error: {0}")]
     SerdeJson(#[from] serde_json::Error),
 
     #[error("Chunking: {0}")]
     Chunk(#[from] ChunkerError),
 
-    #[error("Unsupported file type: {0}")]
-    UnsupportedFileType(String),
-
-    #[error("Invalid embedding model: {0}")]
-    InvalidEmbeddingModel(String),
-
     #[error("Qdrant: {0}")]
     Qdrant(#[from] QdrantError),
+
+    #[error("Weaviate: {0}")]
+    Weaviate(String),
 
     #[error("Parse pdf: {0}")]
     ParsePdf(#[from] lopdf::Error),

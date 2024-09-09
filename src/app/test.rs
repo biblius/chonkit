@@ -1,5 +1,6 @@
 //! Test container utilites.
 
+use super::vector::{qdrant::QdrantDb, weaviate::WeaviateDb};
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
@@ -7,9 +8,8 @@ use testcontainers::{
 };
 use testcontainers_modules::postgres::Postgres;
 
-use super::vector::qdrant::QdrantDb;
-
 pub type PostgresContainer = ContainerAsync<Postgres>;
+pub type AsyncContainer = ContainerAsync<GenericImage>;
 
 /// Setup a postgres test container and connect to it using PgPool.
 /// Runs the migrations in the container.
@@ -27,7 +27,7 @@ pub async fn init_postgres() -> (sqlx::PgPool, PostgresContainer) {
     (crate::app::repo::pg::init(&pg_url).await, pg_image)
 }
 
-/// Setup a qdrant test container and connect to it using Qdrant.
+/// Setup a qdrant test container and connect to it using QdrantDb.
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
 pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
@@ -42,4 +42,22 @@ pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
     let qd_port = qd_image.get_host_port_ipv4(6334).await.unwrap();
     let qd_url = format!("http://{qd_host}:{qd_port}");
     (crate::app::vector::qdrant::init(&qd_url), qd_image)
+}
+
+/// Setup a weaviate test container and connect to it using WeaviateDb.
+/// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
+/// container will get dropped and cleaned up.
+pub async fn init_weaviate() -> (WeaviateDb, ContainerAsync<GenericImage>) {
+    let wv_image = GenericImage::new("semitechnologies/weaviate", "latest")
+        .with_exposed_port(8080.tcp())
+        .with_exposed_port(50051.tcp())
+        .with_wait_for(WaitFor::message_on_stderr("Serving weaviate"))
+        .start()
+        .await
+        .expect("weaviate container error");
+
+    let wv_host = wv_image.get_host().await.unwrap();
+    let wv_port = wv_image.get_host_port_ipv4(8080).await.unwrap();
+    let wv_url = format!("http://{wv_host}:{wv_port}");
+    (crate::app::vector::weaviate::init(&wv_url), wv_image)
 }

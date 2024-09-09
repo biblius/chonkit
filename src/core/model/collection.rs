@@ -3,7 +3,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 /// Used by vector stores.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct VectorCollection {
     /// Unique collection name.
     pub name: String,
@@ -15,6 +15,16 @@ pub struct VectorCollection {
 impl VectorCollection {
     pub fn new(name: String, size: usize) -> Self {
         Self { name, size }
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn with_size(mut self, size: usize) -> Self {
+        self.size = size;
+        self
     }
 }
 

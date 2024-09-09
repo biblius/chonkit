@@ -23,16 +23,16 @@ pub trait Atomic {
 /// Aborts the transaction on error and commits on success.
 #[macro_export]
 macro_rules! transaction {
-    ($self:ident, $tx:ident, $op:expr) => {
+    ($t:ty, $tx:ident, $op:expr) => {
         async {
             let result = { $op }.await;
             match result {
                 Ok(out) => {
-                    <R as Atomic>::commit_tx($tx).await?;
-                    Ok(out)
+                    <$t as Atomic>::commit_tx($tx).await?;
+                    Result::<_, ChonkitError>::Ok(out)
                 }
                 Err(err) => {
-                    <R as Atomic>::abort_tx($tx).await?;
+                    <$t as Atomic>::abort_tx($tx).await?;
                     return Err(err);
                 }
             }

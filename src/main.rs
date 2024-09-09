@@ -12,7 +12,7 @@ pub mod error;
 pub const DEFAULT_UPLOAD_PATH: &str = "upload";
 pub const TEST_DOCS_PATH: &str = "test/docs";
 
-pub const DEFAULT_COLLECTION_NAME: &str = "__default__";
+pub const DEFAULT_COLLECTION_NAME: &str = "chonkit";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 pub const DEFAULT_COLLECTION_SIZE: usize = 384;
 

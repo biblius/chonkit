@@ -1,10 +1,15 @@
 use crate::{
-    app::{embedder::FastEmbedder, vector::qdrant::QdrantDb},
+    app::{
+        embedder::FastEmbedder,
+        vector::{qdrant::QdrantDb, weaviate::WeaviateDb},
+    },
     core::service::vector::VectorService as Service,
 };
 use sqlx::PgPool;
 
 pub(in crate::app) type VectorService = Service<PgPool, QdrantDb, FastEmbedder>;
+
+pub(in crate::app) type VectorServiceW = Service<PgPool, WeaviateDb, FastEmbedder>;
 
 #[cfg(test)]
 #[suitest::suite(integration_tests)]

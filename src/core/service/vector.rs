@@ -14,20 +14,20 @@ use validify::{Validate, Validify};
 
 /// High level operations related to embeddings and vector storage.
 #[derive(Debug, Clone)]
-pub struct VectorService<R, V, E> {
-    repo: R,
+pub struct VectorService<Repo, V, E> {
+    repo: Repo,
     vectors: V,
     embedder: E,
 }
 
-impl<R, V, E> VectorService<R, V, E>
+impl<Repo, V, E> VectorService<Repo, V, E>
 where
-    R: VectorRepo<R::Tx> + Atomic + Send + Sync + Clone,
-    R::Tx: Send + Sync,
+    Repo: VectorRepo<Repo::Tx> + Atomic + Send + Sync,
+    Repo::Tx: Send + Sync,
     V: VectorDb + Sync,
     E: Embedder + Sync,
 {
-    pub fn new(repo: R, vectors: V, embedder: E) -> Self {
+    pub fn new(repo: Repo, vectors: V, embedder: E) -> Self {
         Self {
             repo,
             vectors,
@@ -99,7 +99,7 @@ where
         let CreateCollection { name, model } = data;
 
         let mut tx = self.repo.start_tx().await?;
-        let collection: Collection = transaction!(self, tx, async {
+        let collection: Collection = transaction!(Repo, tx, async {
             self.vectors
                 .create_vector_collection(&name, size as u64)
                 .await?;
@@ -109,7 +109,7 @@ where
 
             let collection = self.repo.insert_collection(insert, Some(&mut tx)).await?;
 
-            Result::<Collection, ChonkitError>::Ok(collection)
+            Ok(collection)
         })
         .await?;
 
@@ -175,7 +175,7 @@ where
         let embeddings = self.embedder.embed(&chunks, &collection.model).await?;
 
         self.vectors
-            .store(&chunks, embeddings, &collection.name)
+            .store(&collection.name, &chunks, embeddings)
             .await?;
 
         let insert = EmbeddingInsert::new(id, &collection.name);
@@ -253,6 +253,6 @@ pub mod dto {
         pub collection: String,
 
         /// Amount of results to return.
-        pub limit: Option<u64>,
+        pub limit: Option<u32>,
     }
 }

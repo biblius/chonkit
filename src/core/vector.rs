@@ -54,7 +54,7 @@ pub trait VectorDb {
         &self,
         search: Vec<f32>,
         collection: &str,
-        limit: u64,
+        limit: u32,
     ) -> impl Future<Output = Result<Vec<String>, ChonkitError>> + Send;
 
     /// Store the contents and their vectors to the vector storage.
@@ -67,8 +67,8 @@ pub trait VectorDb {
     /// * `collection`: The vector collection to store in.
     fn store(
         &self,
+        collection: &str,
         content: &[&str],
         vectors: Vec<Vec<f32>>,
-        collection: &str,
     ) -> impl Future<Output = Result<(), ChonkitError>>;
 }
