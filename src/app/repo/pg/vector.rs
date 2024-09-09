@@ -49,32 +49,7 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
             src,
         } = insert;
 
-        if let Some(tx) = tx {
-            return sqlx::query_as!(
-                Collection,
-                "INSERT INTO collections
-                (name, model, embedder, src)
-             VALUES
-                ($1, $2, $3, $4)
-             RETURNING 
-                name, model, embedder, src, created_at, updated_at
-             ",
-                name,
-                model,
-                embedder,
-                src
-            )
-            .fetch_one(&mut **tx)
-            .await
-            .map_err(|e| match e {
-                sqlx::Error::Database(err) if err.code().is_some_and(|code| code == "23505") => {
-                    ChonkitError::AlreadyExists(format!("Collection '{name}' already exists"))
-                }
-                _ => ChonkitError::from(e),
-            });
-        }
-
-        sqlx::query_as!(
+        let query = sqlx::query_as!(
             Collection,
             "INSERT INTO collections
                 (name, model, embedder, src)
@@ -87,10 +62,15 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
             model,
             embedder,
             src
-        )
-        .fetch_one(self)
-        .await
-        .map_err(|e| match e {
+        );
+
+        let collection = if let Some(tx) = tx {
+            query.fetch_one(&mut **tx).await
+        } else {
+            query.fetch_one(self).await
+        };
+
+        collection.map_err(|e| match e {
             sqlx::Error::Database(err) if err.code().is_some_and(|code| code == "23505") => {
                 ChonkitError::AlreadyExists(format!("Collection '{name}' already exists"))
             }

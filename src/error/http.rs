@@ -9,10 +9,8 @@ impl ChonkitError {
         use ChonkitError as E;
         use StatusCode as SC;
         match self {
-            E::IO(_) => todo!(),
-            E::Fmt(_) => todo!(),
-            E::Utf8(_) => todo!(),
-            E::ParseInt(_) | E::AlreadyExists(_) => SC::BAD_REQUEST,
+            E::ParseInt(_) => SC::BAD_REQUEST,
+            E::AlreadyExists(_) => SC::CONFLICT,
             E::DoesNotExist(_) => SC::NOT_FOUND,
             E::Validation(_)
             | E::Chunk(_)
@@ -26,6 +24,9 @@ impl ChonkitError {
             | E::Sqlx(_)
             | E::Http(_)
             | E::Weaviate(_)
+            | E::IO(_)
+            | E::Fmt(_)
+            | E::Utf8(_)
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
         }
     }

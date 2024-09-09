@@ -12,7 +12,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 use validify::{Validate, Validify};
 
-/// High level operations related to embeddings and vector storage.
+/// High level operations related to embeddings (vectors) and their storage.
 #[derive(Debug, Clone)]
 pub struct VectorService<Repo, V, E> {
     repo: Repo,
@@ -99,6 +99,7 @@ where
         let CreateCollection { name, model } = data;
 
         let mut tx = self.repo.start_tx().await?;
+
         let collection: Collection = transaction!(Repo, tx, async {
             self.vectors
                 .create_vector_collection(&name, size as u64)
@@ -160,7 +161,8 @@ where
 
         let size = self.embedder.size(&collection.model).ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
-                "Model not supported for embedder {}",
+                "Model '{}' not supported for embedder {}",
+                collection.model,
                 self.embedder.id()
             ))
         })?;
@@ -224,14 +226,23 @@ where
 /// Vector service DTOs.
 pub mod dto {
     use serde::Deserialize;
-    use validify::Validify;
+    use validify::{field_err, ValidationError, Validify};
+
+    fn ascii_alphanumeric(s: &str) -> Result<(), ValidationError> {
+        if !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(field_err!(
+                "ascii_alphanumeric",
+                "must be alphanumeric [a-z A-Z 0-9]"
+            ));
+        }
+        Ok(())
+    }
 
     /// Params for creating collections.
     #[derive(Debug, Clone, Deserialize, Validify)]
     pub struct CreateCollection {
-        /// Collection name.
-        #[validate(contains_not("/"))]
-        #[validate(contains_not("."))]
+        /// Collection name. Cannot contain special characters.
+        #[validate(custom(ascii_alphanumeric))]
         #[validate(length(min = 1))]
         #[modify(trim)]
         pub name: String,
