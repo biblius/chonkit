@@ -28,7 +28,7 @@ mod vector_service_tests {
             vector::VectorDb,
         },
         error::ChonkitError,
-        DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME,
+        DEFAULT_COLLECTION_NAME,
     };
     use sqlx::PgPool;
     use suitest::before_all;
@@ -82,7 +82,7 @@ mod vector_service_tests {
             .unwrap();
 
         assert_eq!(collection.name, DEFAULT_COLLECTION_NAME);
-        assert_eq!(collection.model, DEFAULT_COLLECTION_MODEL);
+        assert_eq!(collection.model, embedder.default_model().0);
         assert_eq!(collection.embedder, embedder.id());
         assert_eq!(collection.src, vector_db.id());
     }
@@ -154,9 +154,12 @@ mod vector_service_tests {
     }
 
     #[test]
-    async fn create_collection_fails_with_existing_collection(service: VectorService) {
+    async fn create_collection_fails_with_existing_collection(
+        embedder: FastEmbedder,
+        service: VectorService,
+    ) {
         let params = CreateCollection {
-            model: DEFAULT_COLLECTION_MODEL.to_string(),
+            model: embedder.default_model().0,
             name: DEFAULT_COLLECTION_NAME.to_string(),
         };
 
@@ -205,12 +208,16 @@ mod vector_service_tests {
     }
 
     #[test]
-    async fn deleting_collection_removes_all_embeddings(service: VectorService, postgres: PgPool) {
+    async fn deleting_collection_removes_all_embeddings(
+        service: VectorService,
+        postgres: PgPool,
+        embedder: FastEmbedder,
+    ) {
         let collection_name = "test_collection_delete_embeddings";
 
         let create = CreateCollection {
             name: collection_name.to_string(),
-            model: DEFAULT_COLLECTION_MODEL.to_string(),
+            model: embedder.default_model().0,
         };
 
         service.create_collection(create).await.unwrap();

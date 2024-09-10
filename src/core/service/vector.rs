@@ -5,7 +5,7 @@ use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
 use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
-use crate::{transaction, DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_NAME};
+use crate::{transaction, DEFAULT_COLLECTION_NAME};
 use dto::{CreateCollection, SearchPayload};
 use std::fmt::Debug;
 use tracing::{error, info};
@@ -60,11 +60,13 @@ where
 
     /// Create the default vector collection if it doesn't already exist.
     pub async fn create_default_collection(&self) {
-        self.vectors.create_default_collection().await;
+        let size = self.embedder.default_model().1;
+        self.vectors.create_default_collection(size).await;
 
+        let model = self.embedder.default_model().0;
         let insert = CollectionInsert::new(
             DEFAULT_COLLECTION_NAME,
-            DEFAULT_COLLECTION_MODEL,
+            &model,
             self.embedder.id(),
             self.vectors.id(),
         );

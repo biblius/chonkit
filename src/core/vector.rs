@@ -43,7 +43,9 @@ pub trait VectorDb {
     ///
     /// As this method is called only on app start, it's fine to panic if something
     /// goes wrong.
-    fn create_default_collection(&self) -> impl Future<Output = ()> + Send;
+    ///
+    /// * `size`: The vector size of the collection.
+    fn create_default_collection(&self, size: usize) -> impl Future<Output = ()> + Send;
 
     /// Perform semantic search.
     ///

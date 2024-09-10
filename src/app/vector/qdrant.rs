@@ -1,7 +1,7 @@
 use crate::core::model::collection::VectorCollection;
 use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
-use crate::{DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE};
+use crate::DEFAULT_COLLECTION_NAME;
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions;
 use qdrant_client::qdrant::{
@@ -94,9 +94,9 @@ impl VectorDb for Arc<Qdrant> {
         Ok(())
     }
 
-    async fn create_default_collection(&self) {
+    async fn create_default_collection(&self, size: usize) {
         let result = self
-            .create_vector_collection(DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE)
+            .create_vector_collection(DEFAULT_COLLECTION_NAME, size)
             .await;
 
         match result {
@@ -205,14 +205,14 @@ mod qdrant_tests {
             vector::qdrant::QdrantDb,
         },
         core::vector::VectorDb,
-        DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE,
+        DEFAULT_COLLECTION_NAME,
     };
     use suitest::before_all;
 
     #[before_all]
     async fn setup() -> (QdrantDb, AsyncContainer) {
         let (weaver, img) = init_qdrant().await;
-        weaver.create_default_collection().await;
+        weaver.create_default_collection(420).await;
         (weaver, img)
     }
 
@@ -224,20 +224,18 @@ mod qdrant_tests {
             .unwrap();
 
         assert_eq!(DEFAULT_COLLECTION_NAME, default.name);
-        assert_eq!(DEFAULT_COLLECTION_SIZE, default.size);
+        assert_eq!(420, default.size);
     }
 
     #[test]
     async fn creates_collection(qdrant: QdrantDb) {
-        let collection = "my_collection_0";
+        let name = "my_collection_0";
 
-        qdrant
-            .create_vector_collection(collection, DEFAULT_COLLECTION_SIZE)
-            .await
-            .unwrap();
+        qdrant.create_vector_collection(name, 420).await.unwrap();
 
-        let default = qdrant.get_collection(collection).await.unwrap();
+        let collection = qdrant.get_collection(name).await.unwrap();
 
-        assert_eq!(collection, default.name);
+        assert_eq!(name, collection.name,);
+        assert_eq!(420, collection.size);
     }
 }
