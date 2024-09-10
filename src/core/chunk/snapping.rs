@@ -1,5 +1,7 @@
 use super::{concat, ChunkBaseConfig, ChunkerError, DocumentChunker};
 use serde::{Deserialize, Serialize};
+
+#[cfg(debug_assertions)]
 use tracing::trace;
 
 /// Heuristic chunker for texts intended for humans, e.g. documentation, books, blogs, etc.

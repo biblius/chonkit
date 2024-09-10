@@ -29,16 +29,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VEC_DB: qdrant
     container_name: api
-    ports:
-      - "42069:42069"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/chonkit
-      QDRANT_URL: http://qdrant:6334
+      VEC_DATABASE_URL: http://qdrant:6334
     depends_on:
       - postgres
       - qdrant
+    ports:
+      - "42069:42069"
+    volumes:
+      - chonkit_data:/var/lib/docker/chonkit/data
 
 volumes:
   postgres_data:
   qdrant_data:
+  chonkit_data:

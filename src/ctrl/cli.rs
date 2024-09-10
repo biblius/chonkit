@@ -2,41 +2,41 @@ use crate::{
     app::service::ServiceState,
     core::{document::parser::ParseConfig, model::Pagination},
 };
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Subcommand};
 use std::{collections::HashMap, path::PathBuf};
 use validify::Validate;
 
-#[derive(Debug, Parser)]
-#[command(name = "chonkit-cli", author = "biblius", version = "0.1", about = "Chunk documents", long_about = None)]
-struct CliArgs {
-    #[clap(subcommand)]
-    command: Execute,
-}
-
 #[derive(Debug, Subcommand)]
-enum Execute {
+pub enum Execute {
+    /// Invoke document service functions.
     #[clap(subcommand)]
     Doc(DocumentExec),
+
+    /// Invoke vector service functions.
     #[clap(subcommand)]
     Vec(VectorExec),
 }
 
 #[derive(Debug, Subcommand)]
-enum DocumentExec {
+pub enum DocumentExec {
     /// Get full config details for a single document.
     Meta(IdArg),
+
     /// Sync the documents repository with the document storage.
     Sync,
+
     /// List document metadata.
     List(ListArgs),
+
     /// Preview chunks for a document using its parsing and chunking config.
     Chunkp(ChunkpArg),
+
     /// Preview text for a document using the given parsing config.
     Parsep(ParseArg),
 }
 
 #[derive(Debug, Subcommand)]
-enum ChunkMode {
+pub enum ChunkMode {
     /// Sliding window
     Sl(IdArg),
     /// Snapping window
@@ -44,17 +44,17 @@ enum ChunkMode {
 }
 
 #[derive(Debug, Subcommand)]
-enum VectorExec {}
+pub enum VectorExec {}
 
 #[derive(Debug, Args, Default, Clone)]
-struct IdArg {
+pub struct IdArg {
     /// Document ID.
     #[arg(long, short)]
     id: uuid::Uuid,
 }
 
 #[derive(Debug, Args, Default, Clone)]
-struct ParseArg {
+pub struct ParseArg {
     /// Document ID.
     #[arg(long, short)]
     id: uuid::Uuid,
@@ -75,12 +75,8 @@ struct ParseArg {
     filter: Option<String>,
 }
 
-fn csv_to_vec(csv: String) -> Vec<String> {
-    csv.split(',').map(String::from).collect()
-}
-
 #[derive(Debug, Args, Default, Clone)]
-struct ChunkpArg {
+pub struct ChunkpArg {
     /// Document ID.
     #[arg(long, short)]
     id: uuid::Uuid,
@@ -99,16 +95,15 @@ struct ChunkpArg {
 }
 
 #[derive(Debug, Args, Default, Clone)]
-struct ListArgs {
+pub struct ListArgs {
     #[arg(long, short, default_value = "10")]
     limit: usize,
     #[arg(long, short, default_value = "1")]
     offset: usize,
 }
 
-pub async fn run(services: ServiceState) {
-    let args = CliArgs::parse();
-    match args.command {
+pub async fn run(command: Execute, services: ServiceState) {
+    match command {
         Execute::Doc(doc) => match doc {
             DocumentExec::Meta(IdArg { id }) => {
                 let doc = services.document.get_config(id).await.unwrap();
@@ -189,4 +184,8 @@ fn write_chunks(chunks: Vec<String>, start: usize, end: usize, out: PathBuf) {
         .collect::<HashMap<usize, String>>();
 
     std::fs::write(out, serde_json::to_string(&chunks).unwrap()).unwrap();
+}
+
+fn csv_to_vec(csv: String) -> Vec<String> {
+    csv.split(',').map(String::from).collect()
 }

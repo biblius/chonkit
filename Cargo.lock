@@ -519,7 +519,6 @@ dependencies = [
  "axum 0.7.5",
  "axum-extra",
  "axum-macros",
- "cfg-if",
  "chrono",
  "clap",
  "cookie",

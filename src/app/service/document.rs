@@ -8,7 +8,7 @@ pub(in crate::app) type DocumentService = Service<PgPool, FsDocumentStore>;
 
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
-mod document_service_postgres_fs {
+mod document_service_tests {
     use crate::{
         app::{
             document::store::FsDocumentStore,
@@ -22,19 +22,33 @@ mod document_service_postgres_fs {
             model::document::DocumentType,
             service::document::dto::DocumentUpload,
         },
-        DEFAULT_UPLOAD_PATH, TEST_DOCS_PATH,
     };
+
+    const TEST_UPLOAD_PATH: &str = "__document_service_test_upload__";
+    const TEST_DOCS_PATH: &str = "test/docs";
     use sqlx::PgPool;
-    use suitest::before_all;
+    use suitest::{after_all, before_all, cleanup};
 
     #[before_all]
     async fn setup() -> (PgPool, FsDocumentStore, DocumentService, PostgresContainer) {
+        tokio::fs::create_dir(TEST_UPLOAD_PATH).await.unwrap();
+
         let (client, _pg_img) = init_postgres().await;
 
-        let store = FsDocumentStore::new(DEFAULT_UPLOAD_PATH);
+        let store = FsDocumentStore::new(TEST_UPLOAD_PATH);
         let service = DocumentService::new(client.clone(), store.clone());
 
         (client, store, service, _pg_img)
+    }
+
+    #[cleanup]
+    async fn cleanup() {
+        let _ = tokio::fs::remove_dir_all(TEST_UPLOAD_PATH).await;
+    }
+
+    #[after_all]
+    async fn teardown() {
+        let _ = tokio::fs::remove_dir_all(TEST_UPLOAD_PATH).await;
     }
 
     #[test]
