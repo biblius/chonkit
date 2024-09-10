@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at\n                   FROM documents\n                   LIMIT $1\n                   OFFSET $2\n                ",
+  "query": "\n            SELECT \n                d.id,\n                d.name,\n                d.path,\n                d.ext,\n                d.hash,\n                d.src,\n                c.config AS \"chunk_config: Option<Json<Chunker>>\",\n                p.config AS \"parse_config: _\"\n            FROM documents d \n            LEFT JOIN chunkers c ON c.document_id = d.id\n            LEFT JOIN parsers p ON p.document_id = d.id\n            WHERE d.id = $1",
   "describe": {
     "columns": [
       {
@@ -30,29 +30,23 @@
       },
       {
         "ordinal": 5,
-        "name": "label",
+        "name": "src",
         "type_info": "Text"
       },
       {
         "ordinal": 6,
-        "name": "tags",
-        "type_info": "TextArray"
+        "name": "chunk_config: Option<Json<Chunker>>",
+        "type_info": "Jsonb"
       },
       {
         "ordinal": 7,
-        "name": "created_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 8,
-        "name": "updated_at",
-        "type_info": "Timestamptz"
+        "name": "parse_config: _",
+        "type_info": "Jsonb"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -61,11 +55,10 @@
       false,
       false,
       false,
-      true,
-      true,
+      false,
       false,
       false
     ]
   },
-  "hash": "558f6358bc162153af77d0142e356bbdfd8c1e84cd2b604300d037988b5328ee"
+  "hash": "f809ff1d1ad5704f86f0c84feb3909f7c175142cb20e256bf97d69d9857d0282"
 }

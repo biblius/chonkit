@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM collections WHERE name = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "545989a72dbb3be5fb8a8f8459aaed811f9332bc3862cbd267ac079e3680a767"
+}

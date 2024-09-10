@@ -17,7 +17,7 @@ pub trait VectorDb {
     fn create_vector_collection(
         &self,
         name: &str,
-        size: u64,
+        size: usize,
     ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
 
     /// Get collection info.

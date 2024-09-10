@@ -12,9 +12,15 @@ pub mod error;
 pub const DEFAULT_UPLOAD_PATH: &str = "upload";
 pub const TEST_DOCS_PATH: &str = "test/docs";
 
-pub const DEFAULT_COLLECTION_NAME: &str = "chonkit";
+pub const DEFAULT_COLLECTION_NAME: &str = "chonkit_default_0";
 pub const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 pub const DEFAULT_COLLECTION_SIZE: usize = 384;
+
+#[cfg(all(feature = "cli", feature = "http"))]
+compile_error!("cannot run with both cli and http enabled");
+
+#[cfg(all(feature = "qdrant", feature = "weaviate"))]
+compile_error!("only one vector database provider is allowed");
 
 cfg_if!(
     if #[cfg(feature = "http")] {
@@ -39,14 +45,11 @@ async fn run_server() {
         .init();
 
     let db_url = args.db_url();
-    let qd_url = args.qdrant_url();
-
-    let db_pool = app::repo::pg::init(&db_url).await;
-    let qdrant = app::vector::qdrant::init(&qd_url);
+    let vec_db_url = args.vec_db_url();
 
     let services = ServiceState::init(
-        db_pool,
-        qdrant,
+        &db_url,
+        &vec_db_url,
         &args.upload_path.unwrap_or(DEFAULT_UPLOAD_PATH.to_string()),
     )
     .await;
@@ -64,12 +67,10 @@ async fn run_cli() {
         .init();
 
     let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
-    let qd_url = std::env::var("QDRANT_URL").expect("QDRANT_URL not set");
+    let vec_db_url = std::env::var("VEC_DATABASE_URL").expect("VEC_DATABASE_URL not set");
     let upload_path = std::env::var("UPLOAD_PATH").unwrap_or(DEFAULT_UPLOAD_PATH.to_string());
 
-    let db_pool = app::repo::pg::init(&db_url).await;
-    let qdrant = app::vector::qdrant::init(&qd_url);
+    let services = ServiceState::init(&db_url, &vec_db_url, &upload_path).await;
 
-    let services = ServiceState::init(db_pool, qdrant, &upload_path).await;
     ctrl::cli::run(services).await;
 }

@@ -1,12 +1,17 @@
 //! Test container utilites.
 
-use super::vector::{qdrant::QdrantDb, weaviate::WeaviateDb};
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
     ContainerAsync, GenericImage,
 };
 use testcontainers_modules::postgres::Postgres;
+
+#[cfg(feature = "qdrant")]
+use super::vector::qdrant::QdrantDb;
+
+#[cfg(feature = "weaviate")]
+use super::vector::weaviate::WeaviateDb;
 
 pub type PostgresContainer = ContainerAsync<Postgres>;
 pub type AsyncContainer = ContainerAsync<GenericImage>;
@@ -30,6 +35,7 @@ pub async fn init_postgres() -> (sqlx::PgPool, PostgresContainer) {
 /// Setup a qdrant test container and connect to it using QdrantDb.
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
+#[cfg(feature = "qdrant")]
 pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
     let qd_image = GenericImage::new("qdrant/qdrant", "latest")
         .with_exposed_port(6334.tcp())
@@ -47,11 +53,16 @@ pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
 /// Setup a weaviate test container and connect to it using WeaviateDb.
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
+#[cfg(feature = "weaviate")]
 pub async fn init_weaviate() -> (WeaviateDb, ContainerAsync<GenericImage>) {
+    use testcontainers::ImageExt;
+
     let wv_image = GenericImage::new("semitechnologies/weaviate", "latest")
         .with_exposed_port(8080.tcp())
         .with_exposed_port(50051.tcp())
         .with_wait_for(WaitFor::message_on_stderr("Serving weaviate"))
+        .with_env_var("AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED", "true")
+        .with_env_var("PERSISTENCE_DATA_PATH", "/var/lib/weaviate")
         .start()
         .await
         .expect("weaviate container error");

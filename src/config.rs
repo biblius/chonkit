@@ -15,7 +15,7 @@ pub struct StartArgs {
 
     /// Qdrant url.
     #[arg(short, long)]
-    pub qdrant_url: Option<String>,
+    pub vec_db_url: Option<String>,
 
     /// Sets the database URL.
     #[arg(short, long)]
@@ -37,13 +37,17 @@ impl StartArgs {
         }
     }
 
-    pub fn qdrant_url(&self) -> String {
-        match &self.qdrant_url {
+    pub fn vec_db_url(&self) -> String {
+        match &self.vec_db_url {
             Some(url) => url.to_string(),
-            None => match std::env::var("QDRANT_URL") {
-                Ok(url) => url,
-                Err(_) => panic!("Qdrant url not found; Pass --qdrant-url or set QDRANT_URL"),
-            },
+            None => {
+                match std::env::var("VEC_DATABASE_URL") {
+                    Ok(url) => url,
+                    Err(_) => {
+                        panic!("Vector database url not found; Pass --vec-db-url or set VEC_DATABASE_URL")
+                    }
+                }
+            }
         }
     }
 }

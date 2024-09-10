@@ -1,9 +1,11 @@
 use crate::core::chunk::ChunkerError;
-use qdrant_client::QdrantError;
 use std::{num::ParseIntError, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
 use validify::ValidationErrors;
+
+#[cfg(feature = "qdrant")]
+use qdrant_client::QdrantError;
 
 #[cfg(feature = "http")]
 pub mod http;
@@ -46,6 +48,7 @@ pub enum ChonkitError {
     #[error("Chunking: {0}")]
     Chunk(#[from] ChunkerError),
 
+    #[cfg(feature = "qdrant")]
     #[error("Qdrant: {0}")]
     Qdrant(#[from] QdrantError),
 

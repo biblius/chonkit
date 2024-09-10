@@ -20,6 +20,16 @@ pub struct VectorService<Repo, V, E> {
     embedder: E,
 }
 
+impl<R, V, E> VectorService<R, V, E> {
+    pub fn new(repo: R, vectors: V, embedder: E) -> Self {
+        Self {
+            repo,
+            vectors,
+            embedder,
+        }
+    }
+}
+
 impl<Repo, V, E> VectorService<Repo, V, E>
 where
     Repo: VectorRepo<Repo::Tx> + Atomic + Send + Sync,
@@ -27,14 +37,6 @@ where
     V: VectorDb + Sync,
     E: Embedder + Sync,
 {
-    pub fn new(repo: Repo, vectors: V, embedder: E) -> Self {
-        Self {
-            repo,
-            vectors,
-            embedder,
-        }
-    }
-
     /// List vector collections.
     ///
     /// * `p`: Pagination params.
@@ -101,9 +103,7 @@ where
         let mut tx = self.repo.start_tx().await?;
 
         let collection: Collection = transaction!(Repo, tx, async {
-            self.vectors
-                .create_vector_collection(&name, size as u64)
-                .await?;
+            self.vectors.create_vector_collection(&name, size).await?;
 
             let insert =
                 CollectionInsert::new(&name, &model, self.embedder.id(), self.vectors.id());
@@ -228,23 +228,39 @@ pub mod dto {
     use serde::Deserialize;
     use validify::{field_err, ValidationError, Validify};
 
-    fn ascii_alphanumeric(s: &str) -> Result<(), ValidationError> {
-        if !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+    fn ascii_alphanumeric_underscored(s: &str) -> Result<(), ValidationError> {
+        if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return Err(field_err!(
-                "ascii_alphanumeric",
-                "must be alphanumeric [a-z A-Z 0-9]"
+                "ascii_alphanumeric_underscored",
+                "must be alphanumeric with underscores [a-z A-Z 0-9 _]"
             ));
         }
         Ok(())
+    }
+
+    fn begins_with_ascii_char(s: &str) -> Result<(), ValidationError> {
+        if s.starts_with('_') || s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            return Err(field_err!(
+                "begins_with_ascii_char",
+                "field must start with a characer [a-zA-Z]"
+            ));
+        }
+        Ok(())
+    }
+
+    fn underscore_spaces(s: &mut String) {
+        *s = s.replace(' ', "_")
     }
 
     /// Params for creating collections.
     #[derive(Debug, Clone, Deserialize, Validify)]
     pub struct CreateCollection {
         /// Collection name. Cannot contain special characters.
-        #[validate(custom(ascii_alphanumeric))]
+        #[validate(custom(ascii_alphanumeric_underscored))]
+        #[validate(custom(begins_with_ascii_char))]
         #[validate(length(min = 1))]
         #[modify(trim)]
+        #[modify(custom(underscore_spaces))]
         pub name: String,
 
         /// Collection model.

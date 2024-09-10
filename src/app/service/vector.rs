@@ -1,25 +1,27 @@
-use crate::{
-    app::{
-        embedder::FastEmbedder,
-        vector::{qdrant::QdrantDb, weaviate::WeaviateDb},
-    },
-    core::service::vector::VectorService as Service,
-};
+use crate::app::embedder::FastEmbedder;
 use sqlx::PgPool;
 
+use crate::core::service::vector::VectorService as Service;
+
+#[cfg(feature = "qdrant")]
+use crate::app::vector::qdrant::QdrantDb;
+#[cfg(feature = "qdrant")]
 pub(in crate::app) type VectorService = Service<PgPool, QdrantDb, FastEmbedder>;
 
-pub(in crate::app) type VectorServiceW = Service<PgPool, WeaviateDb, FastEmbedder>;
+#[cfg(feature = "weaviate")]
+use crate::app::vector::weaviate::WeaviateDb;
+#[cfg(feature = "weaviate")]
+pub(in crate::app) type VectorService = Service<PgPool, WeaviateDb, FastEmbedder>;
 
+// Tests vector service integration depending on the features used.
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
-mod vector_service_postgres_qdrant_fastembed {
+mod vector_service_tests {
     use super::VectorService;
     use crate::{
         app::{
             embedder::FastEmbedder,
-            test::{init_postgres, init_qdrant, PostgresContainer},
-            vector::qdrant::QdrantDb,
+            test::{init_postgres, PostgresContainer},
         },
         core::{
             embedder::Embedder,
@@ -35,32 +37,47 @@ mod vector_service_postgres_qdrant_fastembed {
     use suitest::before_all;
     use testcontainers::{ContainerAsync, GenericImage};
 
+    #[cfg(feature = "qdrant")]
+    type VectorDatabase = crate::app::vector::qdrant::QdrantDb;
+    #[cfg(feature = "qdrant")]
+    use crate::app::test::init_qdrant;
+
+    #[cfg(feature = "weaviate")]
+    type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
+    #[cfg(feature = "weaviate")]
+    use crate::app::test::init_weaviate;
+
     #[before_all]
     async fn setup() -> (
         PgPool,
-        QdrantDb,
+        VectorDatabase,
         VectorService,
         FastEmbedder,
         PostgresContainer,
         ContainerAsync<GenericImage>,
     ) {
         let (postgres, pg) = init_postgres().await;
-        let (qdrant, qd) = init_qdrant().await;
+
+        #[cfg(feature = "qdrant")]
+        let (vector_client, v_img) = init_qdrant().await;
+
+        #[cfg(feature = "weaviate")]
+        let (vector_client, v_img) = init_weaviate().await;
 
         let embedder = FastEmbedder;
 
-        let service = VectorService::new(postgres.clone(), qdrant.clone(), embedder.clone());
+        let service = VectorService::new(postgres.clone(), vector_client.clone(), embedder.clone());
 
         service.create_default_collection().await;
 
-        (postgres, qdrant, service, embedder, pg, qd)
+        (postgres, vector_client, service, embedder, pg, v_img)
     }
 
     #[test]
     async fn default_collection_is_stored_in_repo(
         service: VectorService,
         embedder: FastEmbedder,
-        qdrant: QdrantDb,
+        vector_db: VectorDatabase,
     ) {
         let collection = service
             .get_collection(DEFAULT_COLLECTION_NAME)
@@ -70,21 +87,21 @@ mod vector_service_postgres_qdrant_fastembed {
         assert_eq!(collection.name, DEFAULT_COLLECTION_NAME);
         assert_eq!(collection.model, DEFAULT_COLLECTION_MODEL);
         assert_eq!(collection.embedder, embedder.id());
-        assert_eq!(collection.src, qdrant.id());
+        assert_eq!(collection.src, vector_db.id());
     }
 
     #[test]
     async fn default_collection_is_stored_vec_db(
         service: VectorService,
         embedder: FastEmbedder,
-        qdrant: QdrantDb,
+        vector_db: VectorDatabase,
     ) {
         let collection = service
             .get_collection(DEFAULT_COLLECTION_NAME)
             .await
             .unwrap();
 
-        let v_collection = qdrant
+        let v_collection = vector_db
             .get_collection(DEFAULT_COLLECTION_NAME)
             .await
             .unwrap();
@@ -101,23 +118,24 @@ mod vector_service_postgres_qdrant_fastembed {
     async fn create_collection_works(
         service: VectorService,
         embedder: FastEmbedder,
-        qdrant: QdrantDb,
+        vector_db: VectorDatabase,
     ) {
+        let name = "test_collection_0";
         let model = embedder.list_embedding_models().first().cloned().unwrap();
 
         let params = CreateCollection {
             model: model.0.clone(),
-            name: "__test_collection__".to_string(),
+            name: name.to_string(),
         };
 
         let collection = service.create_collection(params).await.unwrap();
 
-        assert_eq!(collection.name, "__test_collection__");
+        assert_eq!(collection.name, name);
         assert_eq!(collection.model, model.0);
         assert_eq!(collection.embedder, embedder.id());
-        assert_eq!(collection.src, qdrant.id());
+        assert_eq!(collection.src, vector_db.id());
 
-        let v_collection = qdrant.get_collection("__test_collection__").await.unwrap();
+        let v_collection = vector_db.get_collection(name).await.unwrap();
 
         let size = embedder.size(&collection.model).unwrap();
 
@@ -126,9 +144,11 @@ mod vector_service_postgres_qdrant_fastembed {
 
     #[test]
     async fn create_collection_fails_with_invalid_model(service: VectorService) {
+        let name = "test_collection_0";
+
         let params = CreateCollection {
             model: "invalid_model".to_string(),
-            name: "__test_collection__".to_string(),
+            name: name.to_string(),
         };
 
         let result = service.create_collection(params).await;
@@ -149,7 +169,7 @@ mod vector_service_postgres_qdrant_fastembed {
     }
 
     #[test]
-    async fn inserting_embeddings_works(service: VectorService, postgres: PgPool) {
+    async fn inserting_and_searching_embeddings_works(service: VectorService, postgres: PgPool) {
         let create = DocumentInsert::new(
             "test_document",
             "test_path_1",
@@ -175,7 +195,7 @@ mod vector_service_postgres_qdrant_fastembed {
         let results = service.search(search).await.unwrap();
 
         assert_eq!(1, results.len());
-        assert_eq!(format!(r#""{content}""#), results[0]);
+        assert_eq!(content, results[0]);
 
         let embeddings = postgres
             .get_embeddings(document.id, DEFAULT_COLLECTION_NAME)

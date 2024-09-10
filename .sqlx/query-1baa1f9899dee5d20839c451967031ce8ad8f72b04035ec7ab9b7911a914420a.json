@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT COUNT(id) FROM collections",
+  "query": "SELECT COUNT(name) FROM collections",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       null
     ]
   },
-  "hash": "725e124973497c4fc07361b9571e174841d4c567c33047cd9c3e0580a421a131"
+  "hash": "1baa1f9899dee5d20839c451967031ce8ad8f72b04035ec7ab9b7911a914420a"
 }

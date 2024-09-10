@@ -5,8 +5,8 @@ use crate::{DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE};
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions;
 use qdrant_client::qdrant::{
-    CreateCollection, Distance, GetCollectionInfoResponse, PointStruct, SearchParams, SearchPoints,
-    UpsertPointsBuilder, VectorParams, VectorsConfig, WithPayloadSelector,
+    value, CreateCollection, Distance, GetCollectionInfoResponse, PointStruct, SearchParams,
+    SearchPoints, UpsertPointsBuilder, VectorParams, VectorsConfig, WithPayloadSelector,
 };
 use qdrant_client::{Payload, Qdrant, QdrantError};
 use std::sync::Arc;
@@ -23,6 +23,8 @@ pub fn init(url: &str) -> QdrantDb {
             .expect("error initialising qdrant"),
     )
 }
+
+const CONTENT_PROPERTY: &str = "content";
 
 impl VectorDb for Arc<Qdrant> {
     fn id(&self) -> &'static str {
@@ -51,10 +53,10 @@ impl VectorDb for Arc<Qdrant> {
         Ok(collections)
     }
 
-    async fn create_vector_collection(&self, name: &str, size: u64) -> Result<(), ChonkitError> {
+    async fn create_vector_collection(&self, name: &str, size: usize) -> Result<(), ChonkitError> {
         let config = VectorsConfig {
             config: Some(Config::Params(VectorParams {
-                size,
+                size: size as u64,
                 distance: Distance::Cosine.into(),
                 ..Default::default()
             })),
@@ -94,7 +96,7 @@ impl VectorDb for Arc<Qdrant> {
 
     async fn create_default_collection(&self) {
         let result = self
-            .create_vector_collection(DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE as u64)
+            .create_vector_collection(DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE)
             .await;
 
         match result {
@@ -125,12 +127,20 @@ impl VectorDb for Arc<Qdrant> {
 
         let search_result = self.search_points(search_points).await.unwrap();
 
-        let result = search_result
+        let results = search_result
             .result
             .into_iter()
-            .map(|point| point.payload["content"].to_string());
+            .filter_map(|mut point| point.payload.remove(CONTENT_PROPERTY)?.kind)
+            .filter_map(|value| match value {
+                value::Kind::StringValue(s) => Some(s),
+                v => {
+                    warn!("Found unsupported value kind: {v:?}");
+                    None
+                }
+            })
+            .collect();
 
-        Ok(result.collect())
+        Ok(results)
     }
 
     async fn store(
@@ -183,5 +193,51 @@ fn get_collection_size(info: &GetCollectionInfoResponse) -> Option<usize> {
             warn!("Found unexpected params map! {pm:?}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+#[suitest::suite(qdrant_tests)]
+mod qdrant_tests {
+    use crate::{
+        app::{
+            test::{init_qdrant, AsyncContainer},
+            vector::qdrant::QdrantDb,
+        },
+        core::vector::VectorDb,
+        DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE,
+    };
+    use suitest::before_all;
+
+    #[before_all]
+    async fn setup() -> (QdrantDb, AsyncContainer) {
+        let (weaver, img) = init_qdrant().await;
+        weaver.create_default_collection().await;
+        (weaver, img)
+    }
+
+    #[test]
+    async fn creates_default_collection(qdrant: QdrantDb) {
+        let default = qdrant
+            .get_collection(DEFAULT_COLLECTION_NAME)
+            .await
+            .unwrap();
+
+        assert_eq!(DEFAULT_COLLECTION_NAME, default.name);
+        assert_eq!(DEFAULT_COLLECTION_SIZE, default.size);
+    }
+
+    #[test]
+    async fn creates_collection(qdrant: QdrantDb) {
+        let collection = "my_collection_0";
+
+        qdrant
+            .create_vector_collection(collection, DEFAULT_COLLECTION_SIZE)
+            .await
+            .unwrap();
+
+        let default = qdrant.get_collection(collection).await.unwrap();
+
+        assert_eq!(collection, default.name);
     }
 }

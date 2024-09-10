@@ -1,27 +1,27 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO collections\n                (id, name, model, size)\n             VALUES\n                ($1, $2, $3, $4)\n             ON CONFLICT(id) DO UPDATE\n             SET id = $1\n             RETURNING \n                id, name, model, size, created_at, updated_at\n             ",
+  "query": "SELECT name, model, embedder, src, created_at, updated_at FROM collections WHERE name = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 1,
         "name": "name",
         "type_info": "Text"
       },
       {
-        "ordinal": 2,
+        "ordinal": 1,
         "name": "model",
         "type_info": "Text"
       },
       {
+        "ordinal": 2,
+        "name": "embedder",
+        "type_info": "Text"
+      },
+      {
         "ordinal": 3,
-        "name": "size",
-        "type_info": "Int4"
+        "name": "src",
+        "type_info": "Text"
       },
       {
         "ordinal": 4,
@@ -36,20 +36,17 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Text",
-        "Text",
-        "Int4"
+        "Text"
       ]
     },
     "nullable": [
       false,
       false,
-      true,
+      false,
       false,
       false,
       false
     ]
   },
-  "hash": "88ce9821ab619d1e3bd0778b8ca55452fc9b71dc72559e3848598af073111cfa"
+  "hash": "ffcccf35f8135b390726d601ce32e547b2b87713ab05182118185e8293f2d681"
 }

@@ -1,8 +1,10 @@
 use super::ChonkitError;
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use qdrant_client::QdrantError;
 use serde::Serialize;
 use tracing::error;
+
+#[cfg(feature = "qdrant")]
+use qdrant_client::QdrantError;
 
 impl ChonkitError {
     pub fn status(&self) -> StatusCode {
@@ -19,7 +21,6 @@ impl ChonkitError {
             | E::InvalidEmbeddingModel(_) => SC::UNPROCESSABLE_ENTITY,
             E::ParsePdf(_)
             | E::DocxRead(_)
-            | E::Qdrant(_)
             | E::Fastembed(_)
             | E::Sqlx(_)
             | E::Http(_)
@@ -28,6 +29,9 @@ impl ChonkitError {
             | E::Fmt(_)
             | E::Utf8(_)
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
+
+            #[cfg(feature = "qdrant")]
+            E::Qdrant(_) => SC::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -88,10 +92,6 @@ impl IntoResponse for ChonkitError {
                 (status, ResponseError::new(ET::Api, e)).into_response()
             }
 
-            CE::Qdrant(QdrantError::ResponseError { status: st }) => {
-                (status, ResponseError::new(ET::Internal, st.to_string())).into_response()
-            }
-
             // TODO
             CE::IO(_)
             | CE::Fastembed(_)
@@ -101,13 +101,19 @@ impl IntoResponse for ChonkitError {
             | CE::Utf8(_)
             | CE::Sqlx(_)
             | CE::Chunk(_)
-            | CE::Qdrant(_)
             | CE::InvalidFileName(_)
             | CE::Http(_) => (status, self.to_string()).into_response(),
             CE::ParsePdf(_) => todo!(),
             CE::DocxRead(_) => todo!(),
             CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
             CE::Weaviate(e) => (status, ResponseError::new(ET::Internal, e)).into_response(),
+
+            #[cfg(feature = "qdrant")]
+            CE::Qdrant(QdrantError::ResponseError { status: st }) => {
+                (status, ResponseError::new(ET::Internal, st.to_string())).into_response()
+            }
+            #[cfg(feature = "qdrant")]
+            CE::Qdrant(_) => (status, self.to_string()).into_response(),
         }
     }
 }

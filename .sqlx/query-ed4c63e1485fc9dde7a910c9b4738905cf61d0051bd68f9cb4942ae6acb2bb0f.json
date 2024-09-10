@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE path = $1",
+  "query": "INSERT INTO documents(id, name, path, ext, hash, src, label, tags)\n             VALUES($1, $2, $3, $4, $5, $6, $7, $8)\n             RETURNING id, name, path, ext, hash, src, label, tags, created_at, updated_at",
   "describe": {
     "columns": [
       {
@@ -30,31 +30,44 @@
       },
       {
         "ordinal": 5,
-        "name": "label",
+        "name": "src",
         "type_info": "Text"
       },
       {
         "ordinal": 6,
+        "name": "label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
         "name": "tags",
         "type_info": "TextArray"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -66,5 +79,5 @@
       false
     ]
   },
-  "hash": "266f0f263bf480e9a6750eb9d350e8e7c002c38b1f0d9892c1a41ef5a4cff504"
+  "hash": "ed4c63e1485fc9dde7a910c9b4738905cf61d0051bd68f9cb4942ae6acb2bb0f"
 }

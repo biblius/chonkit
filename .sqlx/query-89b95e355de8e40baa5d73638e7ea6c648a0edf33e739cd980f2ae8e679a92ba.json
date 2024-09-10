@@ -1,56 +1,44 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, path, ext, hash, label, tags, created_at, updated_at FROM documents WHERE hash = $1",
+  "query": "INSERT INTO collections\n                (name, model, embedder, src)\n             VALUES\n                ($1, $2, $3, $4)\n             RETURNING \n                name, model, embedder, src, created_at, updated_at\n             ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 1,
         "name": "name",
         "type_info": "Text"
       },
       {
+        "ordinal": 1,
+        "name": "model",
+        "type_info": "Text"
+      },
+      {
         "ordinal": 2,
-        "name": "path",
+        "name": "embedder",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "ext",
+        "name": "src",
         "type_info": "Text"
       },
       {
         "ordinal": 4,
-        "name": "hash",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 5,
-        "name": "label",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 6,
-        "name": "tags",
-        "type_info": "TextArray"
-      },
-      {
-        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 5,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
+        "Text",
+        "Text",
         "Text"
       ]
     },
@@ -60,11 +48,8 @@
       false,
       false,
       false,
-      true,
-      true,
-      false,
       false
     ]
   },
-  "hash": "e744ba2068aebc1d5c4188928f0644612008dd8545b2612dcaa0a09e0e2765c1"
+  "hash": "89b95e355de8e40baa5d73638e7ea6c648a0edf33e739cd980f2ae8e679a92ba"
 }

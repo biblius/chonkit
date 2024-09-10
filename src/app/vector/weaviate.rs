@@ -3,7 +3,7 @@ use crate::{
     error::ChonkitError,
     DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE,
 };
-use serde::Deserialize;
+use dto::{QueryResult, WeaviateError};
 use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
@@ -24,6 +24,8 @@ pub fn init(url: &str) -> WeaviateDb {
     info!("Connecting to weaviate at {url}");
     Arc::new(WeaviateClient::new(url, None, None).expect("error initialising qdrant"))
 }
+
+const CONTENT_PROPERTY: &str = "content";
 
 impl VectorDb for Arc<WeaviateClient> {
     fn id(&self) -> &'static str {
@@ -49,18 +51,11 @@ impl VectorDb for Arc<WeaviateClient> {
         Ok(collections)
     }
 
-    async fn create_vector_collection(&self, name: &str, size: u64) -> Result<(), ChonkitError> {
-        let size = PropertyBuilder::new("size", vec!["int"])
-            .with_description(&size.to_string())
-            .build();
+    async fn create_vector_collection(&self, name: &str, size: usize) -> Result<(), ChonkitError> {
+        let props = create_properties(name, size);
+        let class_name = to_weaviate_class_name(name);
 
-        let content = PropertyBuilder::new("content", vec!["text"])
-            .with_description("Chunk content")
-            .build();
-
-        let props = Properties::new(vec![content, size]);
-
-        let class = Class::builder(name).with_properties(props).build();
+        let class = Class::builder(&class_name).with_properties(props).build();
 
         self.schema
             .create_class(&class)
@@ -71,33 +66,28 @@ impl VectorDb for Arc<WeaviateClient> {
     }
 
     async fn get_collection(&self, name: &str) -> Result<VectorCollection, ChonkitError> {
+        let name = to_weaviate_class_name(name);
         self.schema
-            .get_class(name)
+            .get_class(&name)
             .await
             .map_err(|e| ChonkitError::Weaviate(e.to_string()))?
             .try_into()
     }
 
     async fn delete_vector_collection(&self, name: &str) -> Result<(), ChonkitError> {
+        let name = to_weaviate_class_name(name);
         self.schema
-            .delete(name)
+            .delete(&name)
             .await
             .map(|_| ())
             .map_err(|e| ChonkitError::Weaviate(e.to_string()))
     }
 
     async fn create_default_collection(&self) {
-        let size = PropertyBuilder::new("size", vec!["int"])
-            .with_description(&DEFAULT_COLLECTION_SIZE.to_string())
-            .build();
+        let props = create_properties(DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE);
+        let class_name = to_weaviate_class_name(DEFAULT_COLLECTION_NAME);
 
-        let content = PropertyBuilder::new("content", vec!["text"])
-            .with_description("Chunk content")
-            .build();
-
-        let props = Properties::new(vec![content, size]);
-
-        let class = Class::builder(DEFAULT_COLLECTION_NAME)
+        let class = Class::builder(&class_name)
             .with_description("Default vector collection")
             .with_properties(props)
             .build();
@@ -112,8 +102,7 @@ impl VectorDb for Arc<WeaviateClient> {
             };
 
             // Capitalize, because Weaviate capitalizes class names
-            let collection = weaviate_class_name(DEFAULT_COLLECTION_NAME);
-            let expected = format!(r#"class name "{collection}" already exists"#);
+            let expected = format!(r#"class name "{class_name}" already exists"#);
 
             if err.error[0].message != expected {
                 panic!("{e}")
@@ -127,19 +116,38 @@ impl VectorDb for Arc<WeaviateClient> {
         collection: &str,
         limit: u32,
     ) -> Result<Vec<String>, ChonkitError> {
-        let query = GetQuery::builder(collection, vec!["content"])
-            .with_near_vector(&json!({ "vector": search }).to_string())
+        let collection = to_weaviate_class_name(collection);
+
+        // God help us all
+        let near_vector = &format!("{{ vector: {search:?} }}");
+        let query = GetQuery::builder(&collection, vec![CONTENT_PROPERTY])
+            .with_near_vector(near_vector)
             .with_limit(limit)
             .build();
 
-        let res = self
+        let response = self
             .query
             .get(query)
             .await
             .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
 
-        dbg!(res);
-        todo!()
+        let result: QueryResult = serde_json::from_value(response)?;
+
+        let Some(results) = result.data.get.get(&collection) else {
+            return Err(ChonkitError::Weaviate(format!(
+                "Response error - cannot index into '{collection}' in {}",
+                result.data.get
+            )));
+        };
+
+        let results = serde_json::from_value::<Vec<serde_json::Value>>(results.clone())?
+            .into_iter()
+            .filter_map(|obj| obj.get(CONTENT_PROPERTY).cloned())
+            .map(serde_json::from_value::<String>)
+            .filter_map(Result::ok)
+            .collect();
+
+        Ok(results)
     }
 
     async fn store(
@@ -150,6 +158,8 @@ impl VectorDb for Arc<WeaviateClient> {
     ) -> Result<(), ChonkitError> {
         debug_assert_eq!(content.len(), vectors.len());
 
+        let collection = to_weaviate_class_name(collection);
+
         let objects = content
             .iter()
             .zip(vectors.iter())
@@ -157,7 +167,7 @@ impl VectorDb for Arc<WeaviateClient> {
                 let properties = json!({
                     "content": content
                 });
-                Object::builder(collection, properties)
+                Object::builder(&collection, properties)
                     .with_vector(vector.iter().map(|f| *f as f64).collect())
                     .with_id(uuid::Uuid::new_v4())
                     .build()
@@ -175,23 +185,31 @@ impl VectorDb for Arc<WeaviateClient> {
     }
 }
 
-fn parse_weaviate_error(s: &str) -> Option<WeaviateError> {
-    let json_err = s.rsplit_once("Response: ")?.1;
-    serde_json::from_str(json_err).ok()
-}
-
-fn weaviate_class_name(s: &str) -> String {
+/// Since Weaviate classes must start with a capital letter and
+/// cannot contain any special characters, we hash the input to
+/// hex values and use that as the class name and
+/// store the original collection name as a property inside the class.
+fn to_weaviate_class_name(s: &str) -> String {
     format!("{}{}", s[0..1].to_uppercase(), &s[1..])
 }
 
-#[derive(Debug, Deserialize)]
-struct WeaviateError {
-    error: Vec<ErrorMessage>,
+/// Create properties for a collection (weaviate class).
+fn create_properties(name: &str, size: usize) -> Properties {
+    let size = PropertyBuilder::new("size", vec!["int"])
+        .with_description(&size.to_string())
+        .build();
+
+    let original_name = PropertyBuilder::new("original_name", vec!["text"])
+        .with_description(name)
+        .build();
+
+    Properties::new(vec![size, original_name])
 }
 
-#[derive(Debug, Deserialize)]
-struct ErrorMessage {
-    message: String,
+/// Attempt to parse Weaviate GraphQL data to a [dto::WeaviateError].
+fn parse_weaviate_error(s: &str) -> Option<WeaviateError> {
+    let json_err = s.rsplit_once("Response: ")?.1;
+    serde_json::from_str(json_err).ok()
 }
 
 impl TryFrom<Class> for VectorCollection {
@@ -219,6 +237,14 @@ impl TryFrom<Class> for VectorCollection {
                     let size = size.parse()?;
                     v_collection = v_collection.with_size(size);
                 }
+                "original_name" => {
+                    let Some(name) = prop.description else {
+                        return Err(ChonkitError::Weaviate(format!(
+                            "Missing 'original_name' property in class {class_name}",
+                        )));
+                    };
+                    v_collection = v_collection.with_name(name);
+                }
                 _ => continue,
             }
         }
@@ -229,7 +255,38 @@ impl TryFrom<Class> for VectorCollection {
             )));
         }
 
+        if v_collection.name.is_empty() {
+            return Err(ChonkitError::Weaviate(format!(
+                "Missing 'original_name' property in class {class_name}",
+            )));
+        }
+
         Ok(v_collection)
+    }
+}
+
+mod dto {
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    pub struct WeaviateError {
+        pub error: Vec<ErrorMessage>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct ErrorMessage {
+        pub message: String,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct QueryResult {
+        pub data: GetResult,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct GetResult {
+        #[serde(rename = "Get")]
+        pub get: serde_json::Value,
     }
 }
 
@@ -239,7 +296,7 @@ mod weaviate_tests {
     use crate::{
         app::{
             test::{init_weaviate, AsyncContainer},
-            vector::weaviate::{weaviate_class_name, WeaviateDb},
+            vector::weaviate::WeaviateDb,
         },
         core::vector::VectorDb,
         DEFAULT_COLLECTION_NAME, DEFAULT_COLLECTION_SIZE,
@@ -255,18 +312,21 @@ mod weaviate_tests {
 
     #[test]
     async fn creates_default_collection(weaver: WeaviateDb) {
-        let collection = weaviate_class_name(DEFAULT_COLLECTION_NAME);
-        let default = weaver.get_collection(&collection).await.unwrap();
+        let default = weaver
+            .get_collection(DEFAULT_COLLECTION_NAME)
+            .await
+            .unwrap();
 
-        assert_eq!(collection, default.name);
+        assert_eq!(DEFAULT_COLLECTION_NAME, default.name);
         assert_eq!(DEFAULT_COLLECTION_SIZE, default.size);
     }
 
     #[test]
     async fn creates_collection(weaver: WeaviateDb) {
-        let collection = "MyCollection";
+        let collection = "my_collection_0";
+
         weaver
-            .create_vector_collection(collection, DEFAULT_COLLECTION_SIZE as u64)
+            .create_vector_collection(collection, DEFAULT_COLLECTION_SIZE)
             .await
             .unwrap();
 

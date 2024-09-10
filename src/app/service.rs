@@ -1,8 +1,7 @@
-use super::{document::store::FsDocumentStore, embedder::FastEmbedder, vector::qdrant::QdrantDb};
-use sqlx::PgPool;
-
 use document::DocumentService;
 use vector::VectorService;
+
+use super::{document::store::FsDocumentStore, embedder::FastEmbedder, repo::pg};
 
 pub mod document;
 pub mod vector;
@@ -18,13 +17,21 @@ impl ServiceState {
         Self { document, vector }
     }
 
-    pub async fn init(postgres: PgPool, qdrant: QdrantDb, upload_path: &str) -> Self {
+    pub async fn init(repo_url: &str, vector_db_url: &str, upload_path: &str) -> Self {
+        let repo = pg::init(repo_url).await;
+
+        #[cfg(feature = "qdrant")]
+        let vec_db = crate::app::vector::qdrant::init(vector_db_url);
+
+        #[cfg(feature = "weaviate")]
+        let vec_db = crate::app::vector::weaviate::init(vector_db_url);
+
         let embedder = FastEmbedder;
 
         let store_document = FsDocumentStore::new(upload_path);
 
-        let service_doc = DocumentService::new(postgres.clone(), store_document);
-        let service_vec = VectorService::new(postgres, qdrant, embedder);
+        let service_doc = DocumentService::new(repo.clone(), store_document);
+        let service_vec = VectorService::new(repo, vec_db, embedder);
 
         service_vec.create_default_collection().await;
         service_doc.sync().await.expect("error in sync");
