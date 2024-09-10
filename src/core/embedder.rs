@@ -6,6 +6,9 @@ pub trait Embedder {
     /// Return the embedder's identifier.
     fn id(&self) -> &'static str;
 
+    /// Used for creating the initial collection.
+    fn default_model(&self) -> (String, usize);
+
     /// List all available models in the embedder and their sizes.
     fn list_embedding_models(&self) -> Vec<(String, usize)>;
 

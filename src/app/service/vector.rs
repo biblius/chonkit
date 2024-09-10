@@ -1,17 +1,14 @@
-use crate::app::embedder::FastEmbedder;
-use sqlx::PgPool;
-
 use crate::core::service::vector::VectorService as Service;
 
+type Embedder = crate::app::embedder::fastembed::FastEmbedder;
+
 #[cfg(feature = "qdrant")]
-use crate::app::vector::qdrant::QdrantDb;
-#[cfg(feature = "qdrant")]
-pub(in crate::app) type VectorService = Service<PgPool, QdrantDb, FastEmbedder>;
+type VectorDatabase = crate::app::vector::qdrant::QdrantDb;
 
 #[cfg(feature = "weaviate")]
-use crate::app::vector::weaviate::WeaviateDb;
-#[cfg(feature = "weaviate")]
-pub(in crate::app) type VectorService = Service<PgPool, WeaviateDb, FastEmbedder>;
+type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
+
+pub(in crate::app) type VectorService = Service<sqlx::PgPool, VectorDatabase, Embedder>;
 
 // Tests vector service integration depending on the features used.
 #[cfg(test)]
@@ -20,7 +17,7 @@ mod vector_service_tests {
     use super::VectorService;
     use crate::{
         app::{
-            embedder::FastEmbedder,
+            embedder::fastembed::FastEmbedder,
             test::{init_postgres, PostgresContainer},
         },
         core::{

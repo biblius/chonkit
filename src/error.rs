@@ -48,13 +48,6 @@ pub enum ChonkitError {
     #[error("Chunking: {0}")]
     Chunk(#[from] ChunkerError),
 
-    #[cfg(feature = "qdrant")]
-    #[error("Qdrant: {0}")]
-    Qdrant(#[from] QdrantError),
-
-    #[error("Weaviate: {0}")]
-    Weaviate(String),
-
     #[error("Parse pdf: {0}")]
     ParsePdf(#[from] lopdf::Error),
 
@@ -64,10 +57,21 @@ pub enum ChonkitError {
     #[error("Fastembed: {0}")]
     Fastembed(String),
 
+    #[error("Openai: {0}")]
+    Reqwest(#[from] reqwest::Error),
+
     #[error("Validation: {0}")]
     Validation(#[from] ValidationErrors),
 
     #[cfg(feature = "http")]
     #[error("Http: {0}")]
     Http(#[from] axum::http::Error),
+
+    #[cfg(feature = "qdrant")]
+    #[error("Qdrant: {0}")]
+    Qdrant(#[from] QdrantError),
+
+    #[cfg(feature = "weaviate")]
+    #[error("Weaviate: {0}")]
+    Weaviate(String),
 }

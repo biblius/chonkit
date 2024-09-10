@@ -57,7 +57,7 @@ pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
 pub async fn init_weaviate() -> (WeaviateDb, ContainerAsync<GenericImage>) {
     use testcontainers::ImageExt;
 
-    let wv_image = GenericImage::new("semitechnologies/weaviate", "latest")
+    let wv_image = GenericImage::new("semitechnologies/weaviate", "1.24.12")
         .with_exposed_port(8080.tcp())
         .with_exposed_port(50051.tcp())
         .with_wait_for(WaitFor::message_on_stderr("Serving weaviate"))

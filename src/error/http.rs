@@ -24,14 +24,17 @@ impl ChonkitError {
             | E::Fastembed(_)
             | E::Sqlx(_)
             | E::Http(_)
-            | E::Weaviate(_)
             | E::IO(_)
             | E::Fmt(_)
             | E::Utf8(_)
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
+            E::Reqwest(e) => e.status().unwrap_or(SC::INTERNAL_SERVER_ERROR),
 
             #[cfg(feature = "qdrant")]
             E::Qdrant(_) => SC::INTERNAL_SERVER_ERROR,
+
+            #[cfg(feature = "weaviate")]
+            E::Weaviate(_) => SC::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -106,6 +109,12 @@ impl IntoResponse for ChonkitError {
             CE::ParsePdf(_) => todo!(),
             CE::DocxRead(_) => todo!(),
             CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
+
+            CE::Reqwest(e) => {
+                (status, ResponseError::new(ET::Internal, e.to_string())).into_response()
+            }
+
+            #[cfg(feature = "weaviate")]
             CE::Weaviate(e) => (status, ResponseError::new(ET::Internal, e)).into_response(),
 
             #[cfg(feature = "qdrant")]

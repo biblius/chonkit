@@ -101,11 +101,8 @@ impl VectorDb for Arc<WeaviateClient> {
                 panic!("{err}")
             };
 
-            // Capitalize, because Weaviate capitalizes class names
-            let expected = format!(r#"class name "{class_name}" already exists"#);
-
-            if err.error[0].message != expected {
-                panic!("{e}")
+            if !err.error[0].message.contains("already exists") {
+                panic!("Error: {e}; parsed: {err:?}")
             }
         };
     }
