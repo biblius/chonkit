@@ -48,11 +48,13 @@ See the [dockerfile](Dockerfile) and [docker-compose file](docker-compose.yml) f
 
 ```bash
 source setup.sh
+cargo run
 ```
 
 Creates the 'chunk' directory for storing chunks for inspection.
-Exports the `DATABASE_URL` and `VEC_DATABASE_URL` environment variables,
-prompting you to pick one vector database provider.
+Starts the infrastructure containers (postgres, qdrant, weaviate).
+Exports the necessary environment variables to run chonkit.
+Starts the app in `http` mode with `qdrant` as the vector database provider.
 
 ## Running
 
