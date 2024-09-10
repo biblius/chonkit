@@ -59,7 +59,7 @@ reqwest = { version = "0.12.7", features = ["json"] }
 http = "1.1.0"
 
 [features]
-default = ["qdrant"]
+default = ["cli", "qdrant"]
 cli = []
 http = ["axum", "axum-extra", "axum-macros", "tower-http"]
 weaviate = ["weaviate-community"]

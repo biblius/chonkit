@@ -1,7 +1,6 @@
+use super::{document::store::FsDocumentStore, embedder::fastembed::FastEmbedder, repo::pg};
 use document::DocumentService;
 use vector::VectorService;
-
-use super::{document::store::FsDocumentStore, embedder::fastembed::FastEmbedder, repo::pg};
 
 pub mod document;
 pub mod vector;

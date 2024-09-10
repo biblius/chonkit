@@ -4,6 +4,7 @@
 !/test/docs/test.pdf
 !/test/docs/test.docx
 /chunks
+/upload
 web/.env
 config.json
 dist

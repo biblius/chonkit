@@ -1,6 +1,10 @@
 use crate::{
     app::service::ServiceState,
-    core::{document::parser::ParseConfig, model::Pagination},
+    core::{
+        document::parser::ParseConfig,
+        model::{document::DocumentType, Pagination},
+        service::document::dto::DocumentUpload,
+    },
 };
 use clap::{Args, Subcommand};
 use std::{collections::HashMap, path::PathBuf};
@@ -33,6 +37,17 @@ pub enum DocumentExec {
 
     /// Preview text for a document using the given parsing config.
     Parsep(ParseArg),
+
+    /// Upload a document from the file system.
+    Upload(UploadArg),
+}
+
+#[derive(Debug, Args, Default, Clone)]
+pub struct UploadArg {
+    #[arg(long, short)]
+    pub name: String,
+    #[arg(long, short)]
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Subcommand)]
@@ -149,6 +164,13 @@ pub async fn run(command: Execute, services: ServiceState) {
                     .await
                     .unwrap();
                 println!("{parsed}");
+            }
+            DocumentExec::Upload(UploadArg { name, path }) => {
+                let file = std::fs::read(path).unwrap();
+                let ty = DocumentType::try_from_file_name(&name).unwrap();
+                let upload = DocumentUpload::new(name, ty, &file);
+                let doc = services.document.upload(upload).await.unwrap();
+                println!("{:#?}", doc);
             }
         },
         Execute::Vec(_) => todo!(),
