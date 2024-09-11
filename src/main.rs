@@ -1,6 +1,7 @@
 use crate::config::StartArgs;
 use app::service::ServiceState;
 use clap::Parser;
+use pdfium_render::prelude::Pdfium;
 use tracing_subscriber::EnvFilter;
 
 pub mod app;
@@ -26,6 +27,9 @@ compile_error!("only one vector database provider is allowed");
 #[tokio::main]
 async fn main() {
     let args = StartArgs::parse();
+
+    // Ensures the dynamic library is loaded and panics if it isn't
+    Pdfium::default();
 
     let db_url = args.db_url();
     let vec_db_url = args.vec_db_url();

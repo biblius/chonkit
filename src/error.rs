@@ -49,7 +49,7 @@ pub enum ChonkitError {
     Chunk(#[from] ChunkerError),
 
     #[error("Parse pdf: {0}")]
-    ParsePdf(#[from] lopdf::Error),
+    ParsePdf(#[from] pdfium_render::prelude::PdfiumError),
 
     #[error("Docx read: {0}")]
     DocxRead(#[from] docx_rs::ReaderError),

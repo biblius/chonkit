@@ -5,10 +5,60 @@ Chunk documents.
 ## Contents
 
 - [Building](#building)
+  - [Prerequisites](#prerequisites)
+    - [Pdfium](#pdfium)
+    - [Fastembed](#fastembed)
+  - [Features](#features)
+  - [Sqlx 'offline' compilation](#sqlx-offline-compilation)
   - [Local quickstart](#local-quickstart)
 - [Running](#running)
 
 ## Building
+
+### Prerequisites
+
+#### Pdfium
+
+Chonkit depends on [pdfium_render](https://github.com/ajrcarey/pdfium-render) to parse PDFs.
+This library in turn depends on [libpdfium.so](https://github.com/bblanchon/pdfium-binaries) library.
+In order for compilation to succeed, the library must be installed on the system.
+To download a version of `libpdfium` compatible with chonkit (6666), run the following (assuming Linux):
+
+```bash
+wget https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F6666/pdfium-linux-x64.tgz -O - | tar -xzvf - -C ./pdfium
+```
+
+The library can be found in `./pdfium/lib/libpdfium.so`.
+In order to let cargo know of its existence, you have 2 options:
+
+- Set the `LD_LIBRARY_PATH` environment variable.
+
+  - By default, the GNU linker is set up to search for libraries in `/usr/lib` and `/usr/local/lib`.
+    If you copy the `libpdfium.so` into one of those directories, you do not need to set this variable.
+    However, if you want to use the library from a different location, you need to tell the linker where it is:
+
+    ```bash
+    export LD_LIBRARY_PATH=/path/to/dir/containing/pdfium:$LD_LIBRARY_PATH
+    ```
+
+    Note: You need to pass the directory that contains the `libpdfium.so` file, not the file itself.
+    This command could also be placed in your `.rc` file.
+
+- Copy the `libpdfium.so` file to `/usr/lib` or `/usr/local/lib`.
+
+The latter is the preferred option as it is the least involved.
+
+Note: The same procedure is applicable on Mac, only the paths and actual library files will be different.
+
+#### Fastembed
+
+Fastembed requires [onnxruntime](https://github.com/microsoft/onnxruntime).
+This library can be downloaded from [here](https://github.com/microsoft/onnxruntime/releases), or via
+the system's native package manager.
+
+### Features
+
+The following is a table of the supported build features.
 
 | Feature    | Configuration     | Description                                         |
 | ---------- | ----------------- | --------------------------------------------------- |
@@ -25,6 +75,8 @@ cargo build -F http -F qdrant --release
 
 Chonkit can be built for 2 execution modes; `cli` and `http` (http is default).
 These are selected via feature flags when invoking `cargo` (via the `-F` flag).
+
+### Sqlx 'offline' compilation
 
 By default, Chonkit uses [sqlx](https://github.com/launchbadge/sqlx) with Postgres.
 During compilation, sqlx will use the `DATABASE_URL` environment variable to connect to the database.

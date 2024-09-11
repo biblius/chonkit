@@ -1,12 +1,8 @@
 use super::{DocumentParser, ParseConfig};
 use crate::{core::model::document::DocumentType, error::ChonkitError};
-use lopdf::Object;
+use pdfium_render::prelude::Pdfium;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt::Write,
-    io::{Error, ErrorKind},
-    time::Instant,
-};
+use std::{fmt::Write, time::Instant};
 use tracing::debug;
 
 /// Parses PDFs.
@@ -37,42 +33,44 @@ impl DocumentParser for PdfParser {
             range,
         } = self.config;
 
-        let mut input = lopdf::Document::load_mem(input)?;
+        // let mut input = lopdf::Document::load_mem(input)?;
 
+        let pdfium = Pdfium::default();
+        let input = pdfium.load_pdf_from_byte_slice(input, None)?;
         // Filter unwanted objects.
-        input.objects.retain(filter_object);
+        // input.objects.retain(filter_object);
 
         let mut out = String::new();
 
-        let pages = input.page_iter();
+        let pages = input.pages();
 
         // Size hint of pages is the total amount
-        let total_pages = pages.size_hint().0;
+        let total_pages = pages.len();
 
         let start = if range { start - 1 } else { start };
         let end_condition: Box<dyn Fn(usize) -> bool> = if range {
             Box::new(|page_num| page_num == end)
         } else {
-            Box::new(|page_num| total_pages.saturating_sub(page_num).saturating_sub(end) == 0)
+            Box::new(|page_num| {
+                total_pages
+                    .saturating_sub(page_num as u16)
+                    .saturating_sub(end as u16)
+                    == 0
+            })
         };
 
         // For debugging
         let mut page_count = 0;
 
-        for (page_num, page_id) in pages.enumerate().skip(start) {
+        for (page_num, page) in pages.iter().enumerate().skip(start) {
             if end_condition(page_num) {
                 break;
             }
 
             // page_num is 0 based
-            let text = input.extract_text(&[page_num as u32 + 1]).map_err(|e| {
-                Error::new(
-                    ErrorKind::Other,
-                    format!("Failed to extract text from page {page_num} id={page_id:?}: {e:?}"),
-                )
-            })?;
+            let text = page.text()?;
 
-            'lines: for line in text.lines() {
+            'lines: for line in text.all().lines() {
                 let line = line.trim();
 
                 // Skip lines numbers in output.
@@ -103,54 +101,4 @@ impl DocumentParser for PdfParser {
     fn dtype(&self) -> DocumentType {
         DocumentType::Pdf
     }
-}
-
-static IGNORE: &[&str] = &[
-    "Length",
-    "BBox",
-    "FormType",
-    "Matrix",
-    "Type",
-    "XObject",
-    "Subtype",
-    "Filter",
-    "ColorSpace",
-    "Width",
-    "Height",
-    "BitsPerComponent",
-    "Length1",
-    "Length2",
-    "Length3",
-    "PTEX.FileName",
-    "PTEX.PageNumber",
-    "PTEX.InfoDict",
-    "FontDescriptor",
-    "ExtGState",
-    "MediaBox",
-    "Annot",
-];
-
-/// Filters unwanted properties in an object and
-/// returns whether to keep it or not.
-///
-/// * `object`: PDF object.
-fn filter_object(_: &(u32, u16), object: &mut Object) -> bool {
-    if IGNORE.contains(&object.type_name().unwrap_or_default()) {
-        return false;
-    }
-
-    if let Ok(d) = object.as_dict_mut() {
-        d.remove(b"Producer");
-        d.remove(b"ModDate");
-        d.remove(b"Creator");
-        d.remove(b"ProcSet");
-        d.remove(b"XObject");
-        d.remove(b"MediaBox");
-        d.remove(b"Annots");
-        if d.is_empty() {
-            return false;
-        }
-    }
-
-    true
 }
