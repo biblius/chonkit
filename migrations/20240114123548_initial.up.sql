@@ -25,13 +25,13 @@ CREATE TABLE documents (
     name TEXT NOT NULL,
 
     -- Absolute path to the file depending on type of file storage.
-    path TEXT UNIQUE NOT NULL,
+    path TEXT NOT NULL,
 
     -- The extension of the document used for parsing.
     ext TEXT NOT NULL,
 
     -- The content hash of the document.
-    hash TEXT UNIQUE NOT NULL,
+    hash TEXT NOT NULL,
 
     -- Document source, e.g. local, minio, etc.
     src TEXT NOT NULL,
@@ -45,46 +45,71 @@ CREATE TABLE documents (
     tags TEXT[],
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT unique_src_path_hash UNIQUE (src, path, hash)
 );
 
 -- Stores chunking configurations for documents.
 CREATE TABLE chunkers(
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
     document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
+
     config JSONB NOT NULL, -- Only god can judge us.
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Stores parsing configurations for documents.
 CREATE TABLE parsers(
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
     document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
+
     config JSONB NOT NULL, -- Only god can judge us.
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Stores vector collection information. 
 CREATE TABLE collections(
-    name TEXT PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    -- The name of the collection. Unique in combination with provider.
+    name TEXT NOT NULL,
+
     -- The model used to generate the vectors.
     model TEXT NOT NULL,
+
     -- The embedder whose model is used.
     embedder TEXT NOT NULL,
+
     -- The vector DB used to store the vectors.
-    src TEXT NOT NULL,
+    provider TEXT NOT NULL,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT unique_name_provider UNIQUE (name, provider)
 );
 
 -- Stores document embedding information. 
 CREATE TABLE embeddings(
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    document_id UUID UNIQUE NOT NULL REFERENCES documents ON DELETE CASCADE,
-    collection TEXT NOT NULL REFERENCES collections ON DELETE CASCADE,
+
+    document_id UUID NOT NULL REFERENCES documents ON DELETE CASCADE,
+
+    collection_id UUID NOT NULL REFERENCES collections ON DELETE CASCADE,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
