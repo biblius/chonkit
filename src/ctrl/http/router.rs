@@ -6,7 +6,7 @@ use crate::{
         model::{document::DocumentType, Pagination},
         service::{
             document::dto::{ChunkPreviewPayload, DocumentUpload},
-            vector::dto::{CreateCollection, SearchPayload},
+            vector::dto::{CreateCollection, CreateEmbeddings, SearchPayload},
         },
     },
     ctrl::http::dto::UploadResult,
@@ -233,10 +233,13 @@ async fn embed(
     let content = service.document.get_content(document_id).await?;
     let chunks = service.document.get_chunks(document_id, &content).await?;
 
-    service
-        .vector
-        .create_embeddings(document_id, &collection.name, chunks)
-        .await?;
+    let embeddings = CreateEmbeddings {
+        id: document_id,
+        collection: &collection.name,
+        chunks,
+    };
+
+    service.vector.create_embeddings(embeddings).await?;
 
     Ok("Successfully created embeddings")
 }

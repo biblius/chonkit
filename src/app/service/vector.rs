@@ -24,7 +24,7 @@ mod vector_service_tests {
             embedder::Embedder,
             model::document::{DocumentInsert, DocumentType},
             repo::{document::DocumentRepo, vector::VectorRepo},
-            service::vector::dto::{CreateCollection, SearchPayload},
+            service::vector::dto::{CreateCollection, CreateEmbeddings, SearchPayload},
             vector::VectorDb,
         },
         error::ChonkitError,
@@ -181,10 +181,13 @@ mod vector_service_tests {
         let document = postgres.insert(create).await.unwrap();
 
         let content = r#"Hello World!"#;
-        service
-            .create_embeddings(document.id, DEFAULT_COLLECTION_NAME, [content].to_vec())
-            .await
-            .unwrap();
+
+        let embeddings = CreateEmbeddings {
+            id: document.id,
+            collection: DEFAULT_COLLECTION_NAME,
+            chunks: vec![content],
+        };
+        service.create_embeddings(embeddings).await.unwrap();
 
         let search = SearchPayload {
             query: content.to_string(),
@@ -233,10 +236,13 @@ mod vector_service_tests {
         let document = postgres.insert(create).await.unwrap();
 
         let content = r#"Hello World!"#;
-        service
-            .create_embeddings(document.id, collection_name, [content].to_vec())
-            .await
-            .unwrap();
+
+        let embeddings = CreateEmbeddings {
+            id: document.id,
+            collection: collection_name,
+            chunks: vec![content],
+        };
+        service.create_embeddings(embeddings).await.unwrap();
 
         service.delete_collection(collection_name).await.unwrap();
 
@@ -261,14 +267,14 @@ mod vector_service_tests {
         let document = postgres.insert(create).await.unwrap();
 
         let content = r#"Hello World!"#;
-        service
-            .create_embeddings(document.id, DEFAULT_COLLECTION_NAME, [content].to_vec())
-            .await
-            .unwrap();
+        let embeddings = CreateEmbeddings {
+            id: document.id,
+            collection: DEFAULT_COLLECTION_NAME,
+            chunks: vec![content],
+        };
+        service.create_embeddings(embeddings.clone()).await.unwrap();
 
-        let duplicate = service
-            .create_embeddings(document.id, DEFAULT_COLLECTION_NAME, [content].to_vec())
-            .await;
+        let duplicate = service.create_embeddings(embeddings).await;
 
         assert!(matches!(duplicate, Err(ChonkitError::AlreadyExists(_))))
     }

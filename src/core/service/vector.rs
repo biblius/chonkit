@@ -6,10 +6,9 @@ use crate::core::repo::Atomic;
 use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
 use crate::{transaction, DEFAULT_COLLECTION_NAME};
-use dto::{CreateCollection, SearchPayload};
+use dto::{CreateCollection, CreateEmbeddings, SearchPayload};
 use std::fmt::Debug;
 use tracing::{error, info};
-use uuid::Uuid;
 use validify::{Validate, Validify};
 
 /// High level operations related to embeddings (vectors) and their storage.
@@ -140,9 +139,11 @@ where
     /// * `chunks`: The chunked document.
     pub async fn create_embeddings(
         &self,
-        id: Uuid,
-        collection: &str,
-        chunks: Vec<&str>,
+        CreateEmbeddings {
+            id,
+            collection,
+            chunks,
+        }: CreateEmbeddings<'_>,
     ) -> Result<(), ChonkitError> {
         // Make sure the collection exists.
         let Some(collection) = self.repo.get_collection(collection).await? else {
@@ -228,6 +229,7 @@ where
 /// Vector service DTOs.
 pub mod dto {
     use serde::Deserialize;
+    use uuid::Uuid;
     use validify::{field_err, ValidationError, Validify};
 
     fn ascii_alphanumeric_underscored(s: &str) -> Result<(), ValidationError> {
@@ -267,6 +269,18 @@ pub mod dto {
 
         /// Collection model.
         pub model: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize, Validify)]
+    pub struct CreateEmbeddings<'a> {
+        /// Document ID.
+        pub id: Uuid,
+
+        /// Which collection these embeddings are for.
+        pub collection: &'a str,
+
+        /// The chunked document.
+        pub chunks: Vec<&'a str>,
     }
 
     /// Params for semantic search.
