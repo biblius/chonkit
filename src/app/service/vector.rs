@@ -77,14 +77,14 @@ mod vector_service_tests {
         vector_db: VectorDatabase,
     ) {
         let collection = service
-            .get_collection(DEFAULT_COLLECTION_NAME)
+            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
             .await
             .unwrap();
 
         assert_eq!(collection.name, DEFAULT_COLLECTION_NAME);
         assert_eq!(collection.model, embedder.default_model().0);
         assert_eq!(collection.embedder, embedder.id());
-        assert_eq!(collection.src, vector_db.id());
+        assert_eq!(collection.provider, vector_db.id());
     }
 
     #[test]
@@ -94,7 +94,7 @@ mod vector_service_tests {
         vector_db: VectorDatabase,
     ) {
         let collection = service
-            .get_collection(DEFAULT_COLLECTION_NAME)
+            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
             .await
             .unwrap();
 
@@ -130,7 +130,7 @@ mod vector_service_tests {
         assert_eq!(collection.name, name);
         assert_eq!(collection.model, model.0);
         assert_eq!(collection.embedder, embedder.id());
-        assert_eq!(collection.src, vector_db.id());
+        assert_eq!(collection.provider, vector_db.id());
 
         let v_collection = vector_db.get_collection(name).await.unwrap();
 
@@ -169,7 +169,16 @@ mod vector_service_tests {
     }
 
     #[test]
-    async fn inserting_and_searching_embeddings_works(service: VectorService, postgres: PgPool) {
+    async fn inserting_and_searching_embeddings_works(
+        service: VectorService,
+        postgres: PgPool,
+        vector_db: VectorDatabase,
+    ) {
+        let default = service
+            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
+            .await
+            .unwrap();
+
         let create = DocumentInsert::new(
             "test_document",
             "test_path_1",
@@ -184,14 +193,16 @@ mod vector_service_tests {
 
         let embeddings = CreateEmbeddings {
             id: document.id,
-            collection: DEFAULT_COLLECTION_NAME,
+            collection: default.id,
             chunks: vec![content],
         };
         service.create_embeddings(embeddings).await.unwrap();
 
         let search = SearchPayload {
             query: content.to_string(),
-            collection: DEFAULT_COLLECTION_NAME.to_string(),
+            collection_id: None,
+            collection_name: Some(DEFAULT_COLLECTION_NAME.to_string()),
+            provider: Some(vector_db.id().to_string()),
             limit: Some(1),
         };
 
@@ -201,12 +212,18 @@ mod vector_service_tests {
         assert_eq!(content, results[0]);
 
         let embeddings = postgres
-            .get_embeddings(document.id, DEFAULT_COLLECTION_NAME)
+            .get_embeddings_by_name(document.id, DEFAULT_COLLECTION_NAME, vector_db.id())
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(DEFAULT_COLLECTION_NAME, embeddings.collection);
+        let collection = postgres
+            .get_collection(embeddings.collection_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(DEFAULT_COLLECTION_NAME, collection.name);
         assert_eq!(document.id, embeddings.document_id);
     }
 
@@ -223,7 +240,7 @@ mod vector_service_tests {
             model: embedder.default_model().0,
         };
 
-        service.create_collection(create).await.unwrap();
+        let collection = service.create_collection(create).await.unwrap();
 
         let create = DocumentInsert::new(
             "test_document",
@@ -239,15 +256,16 @@ mod vector_service_tests {
 
         let embeddings = CreateEmbeddings {
             id: document.id,
-            collection: collection_name,
+            collection: collection.id,
             chunks: vec![content],
         };
+
         service.create_embeddings(embeddings).await.unwrap();
 
-        service.delete_collection(collection_name).await.unwrap();
+        service.delete_collection(collection.id).await.unwrap();
 
         let embeddings = postgres
-            .get_embeddings(document.id, collection_name)
+            .get_embeddings(document.id, collection.id)
             .await
             .unwrap();
 
@@ -255,7 +273,11 @@ mod vector_service_tests {
     }
 
     #[test]
-    async fn prevents_duplicate_embeddings(service: VectorService, postgres: PgPool) {
+    async fn prevents_duplicate_embeddings(
+        service: VectorService,
+        postgres: PgPool,
+        vector_db: VectorDatabase,
+    ) {
         let create = DocumentInsert::new(
             "test_document",
             "test_path_3",
@@ -264,12 +286,17 @@ mod vector_service_tests {
             "fs",
         );
 
+        let default = service
+            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
+            .await
+            .unwrap();
+
         let document = postgres.insert(create).await.unwrap();
 
         let content = r#"Hello World!"#;
         let embeddings = CreateEmbeddings {
             id: document.id,
-            collection: DEFAULT_COLLECTION_NAME,
+            collection: default.id,
             chunks: vec![content],
         };
         service.create_embeddings(embeddings.clone()).await.unwrap();

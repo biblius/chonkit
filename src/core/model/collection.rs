@@ -32,31 +32,35 @@ impl VectorCollection {
 #[derive(Debug, Serialize)]
 pub struct Collection {
     /// Primary key.
+    pub id: Uuid,
+    /// Collection name. Unique in combination with provider.
     pub name: String,
     /// Embedding model used for the collection.
     pub model: String,
-    /// Embedder ID.
+    /// Embedder provider ID.
     pub embedder: String,
-    /// Vector database source.
-    pub src: String,
+    /// Vector database provider.
+    pub provider: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 pub struct CollectionInsert<'a> {
+    pub id: Uuid,
     pub name: &'a str,
     pub model: &'a str,
     pub embedder: &'a str,
-    pub src: &'a str,
+    pub provider: &'a str,
 }
 
 impl<'a> CollectionInsert<'a> {
-    pub fn new(name: &'a str, model: &'a str, embedder: &'a str, src: &'a str) -> Self {
+    pub fn new(name: &'a str, model: &'a str, embedder: &'a str, provider: &'a str) -> Self {
         Self {
+            id: Uuid::new_v4(),
             name,
             model,
             embedder,
-            src,
+            provider,
         }
     }
 }
@@ -71,26 +75,27 @@ pub struct Embedding {
     pub document_id: uuid::Uuid,
 
     /// Collection name.
-    pub collection: String,
+    pub collection_id: uuid::Uuid,
 
     pub created_at: DateTime<Utc>,
+
     pub updated_at: DateTime<Utc>,
 }
 
 /// DTO for inserting.
 #[derive(Debug)]
-pub struct EmbeddingInsert<'a> {
+pub struct EmbeddingInsert {
     pub id: Uuid,
     pub document_id: Uuid,
-    pub collection: &'a str,
+    pub collection_id: Uuid,
 }
 
-impl<'a> EmbeddingInsert<'a> {
-    pub fn new(document_id: Uuid, collection: &'a str) -> Self {
+impl EmbeddingInsert {
+    pub fn new(document_id: Uuid, collection_id: Uuid) -> Self {
         Self {
             id: uuid::Uuid::new_v4(),
             document_id,
-            collection,
+            collection_id,
         }
     }
 }

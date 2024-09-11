@@ -9,6 +9,7 @@ use crate::{transaction, DEFAULT_COLLECTION_NAME};
 use dto::{CreateCollection, CreateEmbeddings, SearchPayload};
 use std::fmt::Debug;
 use tracing::{error, info};
+use uuid::Uuid;
 use validify::{Validate, Validify};
 
 /// High level operations related to embeddings (vectors) and their storage.
@@ -47,8 +48,21 @@ where
     /// Get the collection for the given ID.
     ///
     /// * `id`: Collection ID.
-    pub async fn get_collection(&self, name: &str) -> Result<Collection, ChonkitError> {
-        let collection = self.repo.get_collection(name).await?;
+    pub async fn get_collection(&self, id: Uuid) -> Result<Collection, ChonkitError> {
+        let collection = self.repo.get_collection(id).await?;
+        collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID '{id}'")))
+    }
+
+    /// Get the collection for the given name and provider unique combo.
+    ///
+    /// * `name`: Collection name.
+    /// * `provider`: Vector provider.
+    pub async fn get_collection_by_name(
+        &self,
+        name: &str,
+        provider: &str,
+    ) -> Result<Collection, ChonkitError> {
+        let collection = self.repo.get_collection_by_name(name, provider).await?;
         collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection '{name}'")))
     }
 
@@ -119,13 +133,20 @@ where
     }
 
     /// Delete a vector collection and all its corresponding embedding entries.
+    /// It is assumed the vector provider has a collection with the name
+    /// equal to the one found in the collection with the given ID.
     ///
-    /// Returns the amount of embedding entries deleted.
-    ///
-    /// * `name`: Collection name.
-    pub async fn delete_collection(&self, name: &str) -> Result<u64, ChonkitError> {
-        self.vectors.delete_vector_collection(name).await?;
-        let count = self.repo.delete_all_embeddings(name).await?;
+    /// * `id`: Collection ID.
+    pub async fn delete_collection(&self, id: Uuid) -> Result<u64, ChonkitError> {
+        let Some(collection) = self.repo.get_collection(id).await? else {
+            return Err(ChonkitError::DoesNotExist(format!(
+                "Collection with ID '{id}'"
+            )));
+        };
+        self.vectors
+            .delete_vector_collection(&collection.name)
+            .await?;
+        let count = self.repo.delete_collection(id).await?;
         Ok(count)
     }
 
@@ -152,7 +173,7 @@ where
             )));
         };
 
-        let existing = self.repo.get_embeddings(id, &collection.name).await?;
+        let existing = self.repo.get_embeddings(id, collection.id).await?;
         if existing.is_some() {
             return Err(ChonkitError::AlreadyExists(format!(
                 "Embeddings for document '{id}' in collection '{}'",
@@ -183,7 +204,7 @@ where
             .store(&collection.name, &chunks, embeddings)
             .await?;
 
-        let insert = EmbeddingInsert::new(id, &collection.name);
+        let insert = EmbeddingInsert::new(id, collection.id);
 
         self.repo.insert_embeddings(insert).await?;
 
@@ -199,16 +220,32 @@ where
 
         let SearchPayload {
             query,
-            collection: name,
             limit,
+            collection_id,
+            collection_name,
+            provider,
         } = input;
 
-        let collection = self.repo.get_collection(&name).await?;
-
-        let Some(collection) = collection else {
-            return Err(ChonkitError::DoesNotExist(format!(
-                "Collection with name {name}"
-            )));
+        let collection = if let Some(id) = collection_id {
+            let Some(collection) = self.repo.get_collection(id).await? else {
+                return Err(ChonkitError::DoesNotExist(format!(
+                    "Collection with ID {id}"
+                )));
+            };
+            collection
+        } else {
+            let (Some(ref name), Some(ref provider)) = (collection_name, provider) else {
+                // Cannot happen because of above validation
+                return Err(ChonkitError::DoesNotExist(
+                    "Missing collection name and provider".to_string(),
+                ));
+            };
+            let Some(collection) = self.repo.get_collection_by_name(name, provider).await? else {
+                return Err(ChonkitError::DoesNotExist(format!(
+                    "Collection with name {name} and provider {provider}"
+                )));
+            };
+            collection
         };
 
         let mut embeddings = self.embedder.embed(&[&query], &collection.model).await?;
@@ -230,7 +267,9 @@ where
 pub mod dto {
     use serde::Deserialize;
     use uuid::Uuid;
-    use validify::{field_err, ValidationError, Validify};
+    use validify::{
+        field_err, schema_err, schema_validation, ValidationError, ValidationErrors, Validify,
+    };
 
     fn ascii_alphanumeric_underscored(s: &str) -> Result<(), ValidationError> {
         if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -271,13 +310,13 @@ pub mod dto {
         pub model: String,
     }
 
-    #[derive(Debug, Clone, Deserialize, Validify)]
+    #[derive(Debug, Clone, Validify)]
     pub struct CreateEmbeddings<'a> {
         /// Document ID.
         pub id: Uuid,
 
         /// Which collection these embeddings are for.
-        pub collection: &'a str,
+        pub collection: Uuid,
 
         /// The chunked document.
         pub chunks: Vec<&'a str>,
@@ -285,17 +324,51 @@ pub mod dto {
 
     /// Params for semantic search.
     #[derive(Debug, Deserialize, Validify)]
+    #[validate(Self::validate)]
     pub struct SearchPayload {
         /// The text to search by.
         #[modify(trim)]
         pub query: String,
 
-        /// The collection to search in.
+        /// The collection to search in. Has priority over
+        /// everything else.
+        pub collection_id: Option<Uuid>,
+
+        /// If given search via the name and provider combo.
         #[validate(length(min = 1))]
         #[modify(trim)]
-        pub collection: String,
+        pub collection_name: Option<String>,
+
+        pub provider: Option<String>,
 
         /// Amount of results to return.
         pub limit: Option<u32>,
+    }
+
+    impl SearchPayload {
+        #[schema_validation]
+        fn validate(&self) -> Result<(), ValidationErrors> {
+            let SearchPayload {
+                collection_id,
+                collection_name,
+                provider,
+                ..
+            } = self;
+            match (collection_id, collection_name, provider) {
+                (None, None, None) => {
+                    schema_err!(
+                        "either_id_or_name_and_provider",
+                        "one of either collection_id, or provider and collection_name combination must be set"
+                    );
+                }
+                (None, Some(_), None) | (None, None, Some(_)) => {
+                    schema_err!(
+                        "name_and_provider",
+                        "both 'collection_name'and 'provider' must be set if collection_id is not set"
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 }

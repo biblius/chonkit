@@ -30,18 +30,28 @@ pub trait VectorRepo<T> {
 
     /// Delete a vector collection.
     ///
-    /// * `name`: The name of the collection.
+    /// * `collection_id`: Collection ID.
     fn delete_collection(
         &self,
-        name: &str,
+        collection_id: Uuid,
     ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 
     /// Get collection metadata.
     ///
-    /// * `id`: Collection ID.
+    /// * `collection_id`: Collection ID.
     fn get_collection(
         &self,
+        collection_id: Uuid,
+    ) -> impl Future<Output = Result<Option<Collection>, ChonkitError>> + Send;
+
+    /// Get collection metadata by name and provider.
+    ///
+    /// * `name`: Collection name.
+    /// * `provider`: Vector provider.
+    fn get_collection_by_name(
+        &self,
         name: &str,
+        provider: &str,
     ) -> impl Future<Output = Result<Option<Collection>, ChonkitError>> + Send;
 
     /// Insert embedding metadata.
@@ -49,7 +59,7 @@ pub trait VectorRepo<T> {
     /// * `embeddings`: Insert payload.
     fn insert_embeddings(
         &self,
-        embeddings: EmbeddingInsert<'_>,
+        embeddings: EmbeddingInsert,
     ) -> impl Future<Output = Result<Embedding, ChonkitError>> + Send;
 
     /// Get a document's embedding information.
@@ -66,7 +76,20 @@ pub trait VectorRepo<T> {
     fn get_embeddings(
         &self,
         id: Uuid,
-        collection: &str,
+        collection_id: Uuid,
+    ) -> impl Future<Output = Result<Option<Embedding>, ChonkitError>> + Send;
+
+    /// Get a document's embeddings via the collection name and provider
+    /// unique combination.
+    ///
+    /// * `document_id`: Document ID.
+    /// * `collection_name`: Collection name.
+    /// * `provider`: Vector provider ID. See [VectorDb][crate::core::vector::VectorDb].
+    fn get_embeddings_by_name(
+        &self,
+        document_id: Uuid,
+        collection_name: &str,
+        provider: &str,
     ) -> impl Future<Output = Result<Option<Embedding>, ChonkitError>> + Send;
 
     /// Delete embedding info for a document in the given collection.
@@ -77,7 +100,7 @@ pub trait VectorRepo<T> {
     fn delete_embeddings(
         &self,
         id: Uuid,
-        collection: &str,
+        collection_id: Uuid,
     ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 
     /// Delete all embedding entries for the given collection.
@@ -85,6 +108,6 @@ pub trait VectorRepo<T> {
     /// * `collection`: Collection name.
     fn delete_all_embeddings(
         &self,
-        collection: &str,
+        collection_id: Uuid,
     ) -> impl Future<Output = Result<u64, ChonkitError>> + Send;
 }

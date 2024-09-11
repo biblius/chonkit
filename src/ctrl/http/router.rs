@@ -22,6 +22,7 @@ use axum::{
 use std::{collections::HashMap, time::Duration};
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, Span};
+use uuid::Uuid;
 use validify::Validate;
 
 pub fn router(state: ServiceState) -> Router {
@@ -207,9 +208,9 @@ async fn create_collection(
 
 async fn get_collection(
     service: State<ServiceState>,
-    Path(name): Path<String>,
+    Path(collection_id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collection = service.vector.get_collection(&name).await?;
+    let collection = service.vector.get_collection(collection_id).await?;
     Ok(Json(collection))
 }
 
@@ -226,16 +227,16 @@ async fn list_embedding_models(
 
 async fn embed(
     service: axum::extract::State<ServiceState>,
-    Path((collection_name, document_id)): Path<(String, uuid::Uuid)>,
+    Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collection = service.vector.get_collection(&collection_name).await?;
+    let collection = service.vector.get_collection(collection_id).await?;
 
     let content = service.document.get_content(document_id).await?;
     let chunks = service.document.get_chunks(document_id, &content).await?;
 
     let embeddings = CreateEmbeddings {
         id: document_id,
-        collection: &collection.name,
+        collection: collection.id,
         chunks,
     };
 
