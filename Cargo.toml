@@ -57,11 +57,17 @@ tower-http = { version = "0.5.0", features = [
 reqwest = { version = "0.12.7", features = ["json"] }
 http = "1.1.0"
 pdfium-render = { version = "0.8.23" }
+utoipa = { version = "4.2.3", features = [
+    "axum_extras",
+    "chrono",
+    "uuid",
+], optional = true }
+utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
 
 [features]
 default = ["http", "qdrant"]
 cli = []
-http = ["axum", "axum-extra", "axum-macros", "tower-http"]
+http = ["axum", "axum-extra", "axum-macros", "tower-http", "utoipa"]
 weaviate = ["weaviate-community"]
 qdrant = ["qdrant-client"]
 

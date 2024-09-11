@@ -3,6 +3,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 /// Used by vector stores.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
 pub struct VectorCollection {
     /// Unique collection name.
@@ -29,6 +30,7 @@ impl VectorCollection {
 }
 
 /// Vector collection model.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Collection {
     /// Primary key.
@@ -66,6 +68,7 @@ impl<'a> CollectionInsert<'a> {
 }
 
 /// Embedding information model.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Embedding {
     /// Primary key.

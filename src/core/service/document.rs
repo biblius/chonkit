@@ -184,8 +184,10 @@ where
 
         let ext = document.ext.as_str().try_into()?;
         let parser = if let Some(config) = parser {
+            info!("Using existing parser ({ext}) for '{id}'");
             Parser::new_from(ext, config)
         } else {
+            info!("Using default parser ({ext}) for '{id}'");
             self.get_parser(id, ext).await?
         };
         let content = self.store.read(&document, parser).await?;
@@ -272,6 +274,7 @@ pub mod dto {
     }
 
     /// DTO used for previewing chunks.
+    #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
     #[derive(Debug, Deserialize, Default)]
     pub struct ChunkPreviewPayload {
         pub parser: Option<ParseConfig>,

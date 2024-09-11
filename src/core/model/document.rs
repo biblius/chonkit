@@ -8,6 +8,7 @@ use serde::Serialize;
 pub mod config;
 
 /// Holds relevant data for parsing and chunking.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct DocumentConfig {
     pub id: uuid::Uuid,
@@ -22,6 +23,7 @@ pub struct DocumentConfig {
 
 /// Holds document metadata.
 /// Main document model for the `documents` table.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
 pub struct Document {
     /// Primary key.

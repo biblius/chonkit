@@ -20,6 +20,7 @@ pub trait DocumentParser {
 /// General parsing configuration for documents.
 /// A text element is parser specific, it could be PDF pages,
 /// DOCX paragraphs, CSV rows, etc.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Default, Serialize, Deserialize, Validate)]
 #[validate(Self::validate)]
 pub struct ParseConfig {
@@ -36,6 +37,7 @@ pub struct ParseConfig {
 
     /// Filter specific patterns in text elements. Parser specific.
     #[serde(with = "serde_regex")]
+    #[schema(value_type = Vec<String>)]
     pub filters: Vec<Regex>,
 }
 
@@ -56,8 +58,7 @@ impl ParseConfig {
 
     /// Add a filter to the parser.
     /// Each text element (depending on the parser implementation)
-    /// will be checked for the regex
-    /// and will be omitted if it matches.
+    /// will be checked for the regex and will be omitted if it matches.
     ///
     /// * `re`: The expression to match for.
     pub fn filter(mut self, re: Regex) -> Self {

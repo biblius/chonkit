@@ -4,6 +4,7 @@ Chunk documents.
 
 ## Contents
 
+- [OpenAPI documentation](#openapi-documentation)
 - [Building](#building)
   - [Prerequisites](#prerequisites)
     - [Pdfium](#pdfium)
@@ -13,6 +14,10 @@ Chunk documents.
   - [Local quickstart](#local-quickstart)
 - [Running](#running)
 
+## OpenAPI documentation
+
+OpenAPI documentation is available at any chonker instance at `http://your-address/swagger-ui`.
+
 ## Building
 
 ### Prerequisites
@@ -20,11 +25,13 @@ Chunk documents.
 #### Pdfium
 
 Chonkit depends on [pdfium_render](https://github.com/ajrcarey/pdfium-render) to parse PDFs.
-This library in turn depends on [libpdfium.so](https://github.com/bblanchon/pdfium-binaries) library.
+This library depends on [libpdfium.so](https://github.com/bblanchon/pdfium-binaries).
 In order for compilation to succeed, the library must be installed on the system.
-To download a version of `libpdfium` compatible with chonkit (6666), run the following (assuming Linux):
+To download a version of `libpdfium` compatible with chonkit (6666),
+run the following (assuming Linux):
 
 ```bash
+mkdir pdfium
 wget https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F6666/pdfium-linux-x64.tgz -O - | tar -xzvf - -C ./pdfium
 ```
 

@@ -6,8 +6,6 @@ pub mod document;
 pub mod vector;
 
 pub async fn init(url: &str) -> PgPool {
-    info!("Connecting to postgres at {url}");
-
     let pool = sqlx::postgres::PgPool::connect(url)
         .await
         .expect("error while connecting to db");
@@ -17,6 +15,7 @@ pub async fn init(url: &str) -> PgPool {
         .await
         .expect("error in migrations");
 
+    info!("Connected to postgres");
     pool
 }
 

@@ -8,6 +8,7 @@ mod snapping;
 pub use sliding::SlidingWindow;
 pub use snapping::SnappingWindow;
 
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Chunker {
@@ -100,6 +101,7 @@ pub enum ChunkerError {
     Utf8(#[from] Utf8Error),
 }
 
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct ChunkBaseConfig {
     /// Base chunk size.

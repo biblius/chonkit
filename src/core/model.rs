@@ -8,6 +8,7 @@ pub mod document;
 
 /// Used to obtain paginated lists with a total number of items in
 /// the tables.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct List<T> {
     pub total: Option<usize>,
@@ -31,6 +32,7 @@ impl<T> std::iter::IntoIterator for List<T> {
 }
 
 /// Used to paginate queries.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {

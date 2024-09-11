@@ -25,7 +25,7 @@ fi
 
 
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
-export RUST_LOG=info,h2=off,lopdf=off,chonkit=debug
+export RUST_LOG=info,sqlx=off,h2=off,lopdf=off,chonkit=debug
 export UPLOAD_PATH=upload
 export ADDRESS=0.0.0.0:42069
 

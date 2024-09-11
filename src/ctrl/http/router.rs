@@ -1,3 +1,4 @@
+use super::api::ApiDoc;
 use crate::{
     app::service::ServiceState,
     core::{
@@ -22,6 +23,8 @@ use axum::{
 use std::{collections::HashMap, time::Duration};
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, Span};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 use validify::Validate;
 
@@ -39,6 +42,7 @@ pub fn router(state: ServiceState) -> Router {
                 tracing::error!("{error}")
             },
         ))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors)
 }
 
@@ -57,12 +61,24 @@ fn public_router(state: ServiceState) -> Router {
         .route("/vectors/collections", get(list_collections))
         .route("/vectors/collections", post(create_collection))
         .route("/vectors/collections/:id", get(get_collection))
-        .route("/vectors/collections/:id/embed/:doc_id", post(embed))
         .route("/vectors/models", get(list_embedding_models))
+        .route("/vectors/collections/:id/embed/:doc_id", post(embed))
         .route("/vectors/search", post(search))
         .with_state(state)
 }
 
+#[utoipa::path(
+    get,
+    path = "/documents",
+    responses(
+        (status = 200, description = "List documents", body = [Document]),
+        (status = 400, description = "Invalid pagination parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("pagination" = Pagination, Query, description = "Pagination parameters")
+    ),
+)]
 async fn list_documents(
     service: State<ServiceState>,
     pagination: Option<Query<Pagination>>,
@@ -73,6 +89,18 @@ async fn list_documents(
     Ok(Json(documents))
 }
 
+#[utoipa::path(
+    get,
+    path = "/documents/{id}",
+    responses(
+        (status = 200, description = "Get document by id", body = Document),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Document ID")
+    )
+)]
 async fn get_document(
     service: axum::extract::State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
@@ -81,6 +109,18 @@ async fn get_document(
     Ok(Json(document))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/documents/{id}",
+    responses(
+        (status = 200, description = "Delete document by id"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Document ID")
+    )
+)]
 async fn delete_document(
     service: axum::extract::State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
@@ -89,6 +129,15 @@ async fn delete_document(
     Ok(format!("Successfully deleted {id}"))
 }
 
+#[utoipa::path(
+    post,
+    path = "/documents",
+    responses(
+        (status = 200, description = "Upload documents", body = UploadResult),
+        (status = 400, description = "Bad request"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 async fn upload_documents(
     service: axum::extract::State<ServiceState>,
     mut form: axum::extract::Multipart,
@@ -136,6 +185,19 @@ async fn upload_documents(
     Ok(Json(UploadResult { documents, errors }))
 }
 
+#[utoipa::path(
+    put,
+    path = "/documents/{id}/chunk",
+    responses(
+        (status = 200, description = "Update chunk configuration"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Document ID"),
+    ),
+    request_body = Chunker
+)]
 async fn update_chunk_config(
     service: State<ServiceState>,
     Path(document_id): Path<uuid::Uuid>,
@@ -148,6 +210,19 @@ async fn update_chunk_config(
     Ok(format!("Successfully updated chunker for {document_id}"))
 }
 
+#[utoipa::path(
+    post,
+    path = "/documents/{id}/chunk/preview",
+    responses(
+        (status = 200, description = "Preview chunk parsing", body = ChunkPreviewPayload),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Document ID"),
+    ),
+    request_body = ChunkPreviewPayload
+)]
 async fn chunk_preview(
     service: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
@@ -160,6 +235,19 @@ async fn chunk_preview(
     Ok(Json(parsed))
 }
 
+#[utoipa::path(
+    put,
+    path = "/documents/{id}/parse",
+    responses(
+        (status = 200, description = "Update parse configuration"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Document ID"),
+    ),
+    request_body = ParseConfig
+)]
 async fn update_parse_config(
     service: State<ServiceState>,
     Path(document_id): Path<uuid::Uuid>,
@@ -169,6 +257,19 @@ async fn update_parse_config(
     Ok(format!("Successfully updated parser for {document_id}"))
 }
 
+#[utoipa::path(
+    post,
+    path = "/documents/{id}/parse/preview",
+    responses(
+        (status = 200, description = "Preview document parse result"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Document ID")
+    ),
+    request_body(content = Option<ParseConfig>, description = "Optional parse configuration for preview")
+)]
 async fn parse_preview(
     service: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
@@ -181,6 +282,14 @@ async fn parse_preview(
     Ok(Json(parsed))
 }
 
+#[utoipa::path(
+    get,
+    path = "/documents/sync", 
+    responses(
+        (status = 200, description = "Successfully synced"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 async fn sync(
     service: axum::extract::State<ServiceState>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -190,6 +299,17 @@ async fn sync(
 
 // VECTORS
 
+#[utoipa::path(
+    get,
+    path = "/vectors/collections", 
+    responses(
+        (status = 200, description = "List collections"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("pagination" = Pagination, Query, description = "Pagination parameters")
+    )
+)]
 async fn list_collections(
     service: State<ServiceState>,
     Query(p): Query<Pagination>,
@@ -198,14 +318,35 @@ async fn list_collections(
     Ok(Json(collections))
 }
 
+#[utoipa::path(
+    post,
+    path = "/vectors/collections", 
+    responses(
+        (status = 200, description = "Collection created successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    request_body = CreateCollection
+)]
 async fn create_collection(
     service: State<ServiceState>,
     Json(payload): Json<CreateCollection>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.vector.create_collection(payload).await?;
-    Ok("Successfully created collection")
+    let collection = service.vector.create_collection(payload).await?;
+    Ok(Json(collection))
 }
 
+#[utoipa::path(
+    get,
+    path = "/vectors/collections/{id}", 
+    responses(
+        (status = 200, description = "Collection retrieved successfully"),
+        (status = 404, description = "Collection not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Collection ID") // Adjusted param name
+    )
+)]
 async fn get_collection(
     service: State<ServiceState>,
     Path(collection_id): Path<uuid::Uuid>,
@@ -214,6 +355,14 @@ async fn get_collection(
     Ok(Json(collection))
 }
 
+#[utoipa::path(
+    get,
+    path = "/vectors/models", 
+    responses(
+        (status = 200, description = "List available embedding models"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 async fn list_embedding_models(
     service: State<ServiceState>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -225,6 +374,19 @@ async fn list_embedding_models(
     Ok(Json(models))
 }
 
+#[utoipa::path(
+    post,
+    path = "/vectors/collections/{id}/embed/{doc_id}", 
+    responses(
+        (status = 200, description = "Embeddings created successfully"),
+        (status = 404, description = "Collection or document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Collection ID"),
+        ("doc_id" = Uuid, Path, description = "Document ID")
+    )
+)]
 async fn embed(
     service: axum::extract::State<ServiceState>,
     Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
@@ -245,6 +407,15 @@ async fn embed(
     Ok("Successfully created embeddings")
 }
 
+#[utoipa::path(
+    post,
+    path = "/vectors/search", // Adjusted path
+    responses(
+        (status = 200, description = "Search results returned"),
+        (status = 500, description = "Internal server error")
+    ),
+    request_body = SearchPayload
+)]
 async fn search(
     service: State<ServiceState>,
     Json(search): Json<SearchPayload>,

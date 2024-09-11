@@ -296,6 +296,7 @@ pub mod dto {
     }
 
     /// Params for creating collections.
+    #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
     #[derive(Debug, Clone, Deserialize, Validify)]
     pub struct CreateCollection {
         /// Collection name. Cannot contain special characters.
@@ -323,6 +324,7 @@ pub mod dto {
     }
 
     /// Params for semantic search.
+    #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
     #[derive(Debug, Deserialize, Validify)]
     #[validate(Self::validate)]
     pub struct SearchPayload {

@@ -8,6 +8,7 @@ use tracing::debug;
 /// `size` determines the base amount for every chunk and
 /// `overlap` determines how much back and front characters
 /// to extend the base with.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlidingWindow {
     pub config: ChunkBaseConfig,

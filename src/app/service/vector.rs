@@ -36,13 +36,9 @@ mod vector_service_tests {
 
     #[cfg(feature = "qdrant")]
     type VectorDatabase = crate::app::vector::qdrant::QdrantDb;
-    #[cfg(feature = "qdrant")]
-    use crate::app::test::init_qdrant;
 
     #[cfg(feature = "weaviate")]
     type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
-    #[cfg(feature = "weaviate")]
-    use crate::app::test::init_weaviate;
 
     #[before_all]
     async fn setup() -> (
@@ -56,10 +52,10 @@ mod vector_service_tests {
         let (postgres, pg) = init_postgres().await;
 
         #[cfg(feature = "qdrant")]
-        let (vector_client, v_img) = init_qdrant().await;
+        let (vector_client, v_img) = crate::app::test::init_qdrant().await;
 
         #[cfg(feature = "weaviate")]
-        let (vector_client, v_img) = init_weaviate().await;
+        let (vector_client, v_img) = crate::app::test::init_weaviate().await;
 
         let embedder = FastEmbedder;
 
