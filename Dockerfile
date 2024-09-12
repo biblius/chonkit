@@ -6,7 +6,7 @@ ARG VEC_DB
 
 COPY Cargo.toml Cargo.lock ./
 COPY migrations ./migrations
-COPY .sqlx ./.sqlx
+COPY sqlx-data.json ./sqlx-data.json
 
 COPY src ./src
 
