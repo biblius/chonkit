@@ -29,7 +29,6 @@ async fn main() {
     Pdfium::default();
 
     let db_url = args.db_url();
-    let vec_db_url = args.vec_db_url();
     let upload_path = args.upload_path();
     let log = args.log();
 
@@ -39,19 +38,32 @@ async fn main() {
 
     let postgres = crate::app::repo::pg::init(&db_url).await;
 
-    let fastembed = Arc::new(FastEmbedder);
     let fs_store = Arc::new(FsDocumentStore::new(&upload_path));
 
+    #[cfg(feature = "fembed")]
+    let fastembed = Arc::new(FastEmbedder);
+
+    #[cfg(feature = "openai")]
+    let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
+        &args.open_ai_key(),
+    ));
+
     #[cfg(feature = "qdrant")]
-    let qdrant = Arc::new(crate::app::vector::qdrant::init(&vec_db_url));
+    let qdrant = Arc::new(crate::app::vector::qdrant::init(&args.qdrant_url()));
 
     #[cfg(feature = "weaviate")]
-    let weaviate = Arc::new(crate::app::vector::weaviate::init(&vec_db_url));
+    let weaviate = Arc::new(crate::app::vector::weaviate::init(&args.weaviate_url()));
 
     let services = ServiceState {
         postgres,
+
         fs_store,
+
+        // #[cfg(feature = "fembed")]
         fastembed,
+
+        // #[cfg(feature = "openai")]
+        openai,
 
         #[cfg(feature = "qdrant")]
         qdrant,

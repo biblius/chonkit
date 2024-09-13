@@ -1,14 +1,9 @@
-use sqlx::PgPool;
-
-pub(in crate::app) type DocumentService = crate::core::service::document::DocumentService<PgPool>;
-
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
 mod document_service_tests {
     use crate::{
         app::{
             document::store::FsDocumentStore,
-            service::document::DocumentService,
             test::{init_postgres, PostgresContainer},
         },
         core::{
@@ -19,6 +14,8 @@ mod document_service_tests {
             service::document::dto::DocumentUpload,
         },
     };
+
+    type DocumentService = crate::core::service::document::DocumentService<PgPool>;
 
     const TEST_UPLOAD_PATH: &str = "__document_service_test_upload__";
     const TEST_DOCS_PATH: &str = "test/docs";

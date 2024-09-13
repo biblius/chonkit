@@ -13,7 +13,13 @@ pub mod vector;
 #[derive(Clone)]
 pub struct ServiceState {
     pub postgres: PgPool,
+
     pub fs_store: Arc<FsDocumentStore>,
+
+    #[cfg(feature = "openai")]
+    pub openai: Arc<super::embedder::openai::OpenAiEmbeddings>,
+
+    #[cfg(feature = "fembed")]
     pub fastembed: Arc<FastEmbedder>,
 
     #[cfg(feature = "qdrant")]
@@ -34,6 +40,7 @@ impl ServiceState {
         match provider {
             #[cfg(feature = "qdrant")]
             VectorProvider::Qdrant => self.qdrant.clone(),
+
             #[cfg(feature = "weaviate")]
             VectorProvider::Weaviate => self.weaviate.clone(),
         }
@@ -41,8 +48,11 @@ impl ServiceState {
 
     pub fn embedder(&self, provider: EmbeddingProvider) -> Arc<dyn Embedder + Send + Sync> {
         match provider {
+            #[cfg(feature = "fembed")]
             EmbeddingProvider::FastEmbed => self.fastembed.clone(),
-            EmbeddingProvider::OpenAi => todo!(),
+
+            #[cfg(feature = "openai")]
+            EmbeddingProvider::OpenAi => self.openai.clone(),
         }
     }
 }
@@ -101,6 +111,7 @@ impl TryFrom<&str> for DocumentStoreProvider {
     fn try_from(provider: &str) -> Result<Self, Self::Error> {
         match provider {
             "fs" => Ok(Self::Fs),
+
             _ => Err(ChonkitError::InvalidProvider(format!(
                 "Invalid document store provider: {provider}"
             ))),
@@ -110,7 +121,9 @@ impl TryFrom<&str> for DocumentStoreProvider {
 
 #[derive(Clone, Debug, Deserialize)]
 pub enum EmbeddingProvider {
+    #[cfg(feature = "fembed")]
     FastEmbed,
+    #[cfg(feature = "openai")]
     OpenAi,
 }
 
@@ -127,8 +140,12 @@ impl TryFrom<&str> for EmbeddingProvider {
 
     fn try_from(provider: &str) -> Result<Self, Self::Error> {
         match provider {
+            #[cfg(feature = "fembed")]
             "fastembed" => Ok(Self::FastEmbed),
+
+            #[cfg(feature = "openai")]
             "openai" => Ok(Self::OpenAi),
+
             _ => Err(ChonkitError::InvalidProvider(format!(
                 "Invalid embedding provider: {provider}"
             ))),

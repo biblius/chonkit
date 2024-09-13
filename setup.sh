@@ -1,3 +1,5 @@
+#!/bin/bash
+
 mkdir chunks &> /dev/null
 
 if [[ $? == 0 ]]; then 
@@ -12,24 +14,25 @@ fi
 
 docker compose -f infra-compose.yml up -d
 
-echo "Select '[w]eaviate' or '[q]drant' (qdrant):" 
-read choice
+echo "Enter your OpenAI API key (press Enter to skip):"
+read -s oai_key
 
-if [[ $choice == 'weaviate' || $choice == 'w' ]]; then
-	export VEC_DATABASE_URL=http://localhost:8080
-elif [[ $choice == 'qdrant' || $choice == 'q' ]]; then
-	export VEC_DATABASE_URL=http://localhost:6334
-else
-	export VEC_DATABASE_URL=http://localhost:6334
+if [[ -z $oai_key ]]; then
+	echo "Skipping OPENAI_KEY"
+else 
+	export OPENAI_KEY=$oai_key
+	echo "OPENAI_KEY successfully set"
 fi
-
-
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
-export RUST_LOG=info,sqlx=off,h2=off,lopdf=off,chonkit=debug
+export QDRANT_URL=http://localhost:6334
+export WEAVIATE_URL=http://localhost:8080
+export RUST_LOG=info,sqlx=off,h2=off,chonkit=debug
 export UPLOAD_PATH=upload
 export ADDRESS=0.0.0.0:42069
 
 echo "DATABASE_URL set to $DATABASE_URL"
+echo "QDRANT_URL set to $QDRANT_URL"
+echo "WEAVIATE_URL set to $WEAVIATE_URL"
 echo "VEC_DATABASE_URL set to $VEC_DATABASE_URL"
 echo "RUST_LOG set to $RUST_LOG"
 echo "UPLOAD_PATH set to '$UPLOAD_PATH'"

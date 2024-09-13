@@ -3,7 +3,10 @@ use crate::{
     core::{
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
-        service::document::dto::DocumentUpload,
+        service::document::{
+            dto::{ChunkPreviewPayload, DocumentUpload},
+            DocumentService,
+        },
     },
 };
 use clap::{Args, Subcommand};
@@ -117,62 +120,67 @@ pub struct ListArgs {
     offset: usize,
 }
 
-pub async fn run(command: Execute, services: ServiceState) {
+pub async fn run(command: Execute, state: ServiceState) {
     match command {
-        Execute::Doc(doc) => match doc {
-            DocumentExec::Meta(IdArg { id }) => {
-                let doc = services.document.get_config(id).await.unwrap();
-                println!("{:#?}", doc);
-            }
-            DocumentExec::Sync => services.document.sync().await.unwrap(),
-            DocumentExec::List(ListArgs { limit, offset }) => {
-                let p = Pagination::new(limit, offset);
-                p.validate().unwrap();
-                let docs = services.document.list_documents(p).await.unwrap();
-                println!("{:#?}", docs);
-            }
-            DocumentExec::Chunkp(ChunkpArg {
-                id,
-                start,
-                end,
-                out,
-            }) => {
-                let chunks = services.document.chunk_preview(id, None).await.unwrap();
-                print_chunks(start, end, &chunks);
-                if let Some(out) = out {
-                    write_chunks(chunks, start, end, out);
+        Execute::Doc(doc) => {
+            let store = state.store("fs".try_into().unwrap());
+
+            let service = DocumentService::new(state.postgres.clone());
+            match doc {
+                DocumentExec::Meta(IdArg { id }) => {
+                    let doc = service.get_config(id).await.unwrap();
+                    println!("{:#?}", doc);
+                }
+                DocumentExec::Sync => service.sync(&*store).await.unwrap(),
+                DocumentExec::List(ListArgs { limit, offset }) => {
+                    let p = Pagination::new(limit, offset);
+                    p.validate().unwrap();
+                    let docs = service.list_documents(p, None).await.unwrap();
+                    println!("{:#?}", docs);
+                }
+                DocumentExec::Chunkp(ChunkpArg {
+                    id,
+                    start,
+                    end,
+                    out,
+                }) => {
+                    let document = service.get_document(id).await.unwrap();
+                    let chunks = service
+                        .chunk_preview(&*store, &document, ChunkPreviewPayload::default())
+                        .await
+                        .unwrap();
+                    print_chunks(start, end, &chunks);
+                    if let Some(out) = out {
+                        write_chunks(chunks, start, end, out);
+                    }
+                }
+                DocumentExec::Parsep(ParseArg {
+                    id,
+                    start,
+                    end,
+                    filter,
+                    range,
+                }) => {
+                    let filters = filter.map(csv_to_vec).unwrap_or_default();
+                    let mut cfg = ParseConfig::new(start, end);
+                    if range {
+                        cfg = cfg.use_range();
+                    }
+                    for filter in filters {
+                        cfg = cfg.filter(regex::Regex::new(&filter).unwrap());
+                    }
+                    let parsed = service.parse_preview(&*store, id, Some(cfg)).await.unwrap();
+                    println!("{parsed}");
+                }
+                DocumentExec::Upload(UploadArg { name, path }) => {
+                    let file = std::fs::read(path).unwrap();
+                    let ty = DocumentType::try_from_file_name(&name).unwrap();
+                    let upload = DocumentUpload::new(name, ty, &file);
+                    let doc = service.upload(&*store, upload).await.unwrap();
+                    println!("{:#?}", doc);
                 }
             }
-            DocumentExec::Parsep(ParseArg {
-                id,
-                start,
-                end,
-                filter,
-                range,
-            }) => {
-                let filters = filter.map(csv_to_vec).unwrap_or_default();
-                let mut cfg = ParseConfig::new(start, end);
-                if range {
-                    cfg = cfg.use_range();
-                }
-                for filter in filters {
-                    cfg = cfg.filter(regex::Regex::new(&filter).unwrap());
-                }
-                let parsed = services
-                    .document
-                    .parse_preview(id, Some(cfg))
-                    .await
-                    .unwrap();
-                println!("{parsed}");
-            }
-            DocumentExec::Upload(UploadArg { name, path }) => {
-                let file = std::fs::read(path).unwrap();
-                let ty = DocumentType::try_from_file_name(&name).unwrap();
-                let upload = DocumentUpload::new(name, ty, &file);
-                let doc = services.document.upload(upload).await.unwrap();
-                println!("{:#?}", doc);
-            }
-        },
+        }
         Execute::Vec(_) => todo!(),
     }
 }

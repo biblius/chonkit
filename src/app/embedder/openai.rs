@@ -1,29 +1,22 @@
-use http::{HeaderMap, HeaderValue};
-use reqwest::header;
-use serde::{Deserialize, Serialize};
-
 use crate::core::embedder::Embedder;
 use crate::error::ChonkitError;
+use serde::{Deserialize, Serialize};
+use tracing::debug;
+
+const DEFAULT_OPENAI_ENDPOINT: &str = "https://api.openai.com/v1";
 
 pub struct OpenAiEmbeddings {
     endpoint: String,
+    key: String,
     client: reqwest::Client,
 }
 
 impl OpenAiEmbeddings {
-    pub fn new(endpoint: &str, api_key: &str) -> Self {
-        let mut headers = HeaderMap::new();
-
-        let mut auth = HeaderValue::from_str(&format!("Bearer: {api_key}")).unwrap();
-        auth.set_sensitive(true);
-        headers.insert(header::AUTHORIZATION, auth);
-
+    pub fn new(api_key: &str) -> Self {
         Self {
-            endpoint: endpoint.to_string(),
-            client: reqwest::Client::builder()
-                .default_headers(headers)
-                .build()
-                .expect("unable to build client"),
+            endpoint: DEFAULT_OPENAI_ENDPOINT.to_string(),
+            key: api_key.to_string(),
+            client: reqwest::Client::new(),
         }
     }
 }
@@ -54,12 +47,21 @@ impl Embedder for OpenAiEmbeddings {
 
         let response = self
             .client
-            .post(self.endpoint.as_str())
+            .post(format!("{}/embeddings", self.endpoint))
+            .bearer_auth(&self.key)
             .json(&request)
             .send()
             .await?
             .json::<EmbeddingResponse>()
             .await?;
+
+        debug!(
+            "Embedded {} chunk(s) with '{}', used tokens {}-{} (prompt-total)",
+            content.len(),
+            response.model,
+            response.usage.prompt_tokens,
+            response.usage.total_tokens
+        );
 
         Ok(response.data.into_iter().map(|o| o.embedding).collect())
     }
@@ -78,13 +80,16 @@ struct EmbeddingRequest {
     input: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct EmbeddingResponse {
     object: String,
     data: Vec<EmbeddingObject>,
     model: String,
+    usage: Usage,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct EmbeddingObject {
     object: String,

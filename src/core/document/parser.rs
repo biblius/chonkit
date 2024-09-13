@@ -37,7 +37,7 @@ pub struct ParseConfig {
 
     /// Filter specific patterns in text elements. Parser specific.
     #[serde(with = "serde_regex")]
-    #[schema(value_type = Vec<String>)]
+    #[cfg_attr(feature = "http", schema(value_type = Vec<String>))]
     pub filters: Vec<Regex>,
 }
 

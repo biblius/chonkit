@@ -66,11 +66,14 @@ fn public_router(state: ServiceState) -> Router {
         .route("/documents/:id/chunk", put(update_chunk_config))
         .route("/documents/:id/parse/preview", post(parse_preview))
         .route("/documents/:id/parse", put(update_parse_config))
-        .route("/documents/sync", get(sync))
+        .route("/documents/sync/:provider", get(sync))
         .route("/vectors/collections", get(list_collections))
         .route("/vectors/collections", post(create_collection))
         .route("/vectors/collections/:id", get(get_collection))
-        .route("/vectors/models", get(list_embedding_models))
+        .route(
+            "/vectors/embeddings/:provider/models",
+            get(list_embedding_models),
+        )
         .route("/vectors/collections/:id/embed/:doc_id", post(embed))
         .route("/vectors/search", post(search))
         .with_state(state)
@@ -308,7 +311,7 @@ async fn parse_preview(
 
 #[utoipa::path(
     get,
-    path = "/documents/sync", 
+    path = "/documents/sync/{provider}", 
     responses(
         (status = 200, description = "Successfully synced"),
         (status = 500, description = "Internal server error")
@@ -316,7 +319,7 @@ async fn parse_preview(
 )]
 async fn sync(
     state: axum::extract::State<ServiceState>,
-    Query(provider): Query<String>,
+    Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
     let store = state.store(provider.try_into()?);
@@ -391,7 +394,7 @@ async fn get_collection(
 
 #[utoipa::path(
     get,
-    path = "/vectors/models", 
+    path = "/vectors/embeddings/{provider}/models", 
     responses(
         (status = 200, description = "List available embedding models"),
         (status = 500, description = "Internal server error")
@@ -399,7 +402,7 @@ async fn get_collection(
 )]
 async fn list_embedding_models(
     state: State<ServiceState>,
-    Query(provider): Query<String>,
+    Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
     let embedder = state.embedder(provider.as_str().try_into()?);

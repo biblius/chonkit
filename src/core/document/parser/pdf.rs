@@ -33,12 +33,8 @@ impl DocumentParser for PdfParser {
             range,
         } = self.config;
 
-        // let mut input = lopdf::Document::load_mem(input)?;
-
         let pdfium = Pdfium::default();
         let input = pdfium.load_pdf_from_byte_slice(input, None)?;
-        // Filter unwanted objects.
-        // input.objects.retain(filter_object);
 
         let mut out = String::new();
 

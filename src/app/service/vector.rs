@@ -1,9 +1,3 @@
-use sqlx::PgPool;
-
-pub(in crate::app) type VectorService = crate::core::service::vector::VectorService<PgPool>;
-
-type Embedder = crate::app::embedder::fastembed::FastEmbedder;
-
 // Tests vector service integration depending on the features used.
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
@@ -12,7 +6,6 @@ mod vector_service_tests {
     use crate::{
         app::{
             embedder::fastembed::FastEmbedder,
-            service::vector::VectorService,
             test::{init_postgres, PostgresContainer},
         },
         core::{
@@ -28,6 +21,8 @@ mod vector_service_tests {
     use sqlx::PgPool;
     use suitest::before_all;
     use testcontainers::{ContainerAsync, GenericImage};
+
+    type VectorService = crate::core::service::vector::VectorService<PgPool>;
 
     #[cfg(feature = "qdrant")]
     type VectorDatabase = crate::app::vector::qdrant::QdrantDb;

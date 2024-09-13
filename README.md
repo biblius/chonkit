@@ -52,7 +52,7 @@ In order to let cargo know of its existence, you have 2 options:
     Note: You need to pass the directory that contains the `libpdfium.so` file,
     not the file itself. This command could also be placed in your `.rc` file.
 
-- Copy the `libpdfium.so` file to `/usr/lib` or `/usr/local/lib`.
+- Copy the `libpdfium.so` file to `/usr/lib`.
 
 The latter is the preferred option as it is the least involved.
 
@@ -69,14 +69,18 @@ or via the system's native package manager.
 
 The following is a table of the supported build features.
 
-| Feature    | Configuration     | Description                                |
-| ---------- | ----------------- | ------------------------------------------ |
-| `http`     | Execution mode    | Build for http (server) execution mode     |
-| `cli`      | Execution mode    | Build for cli execution mode               |
-| `qdrant`   | VectorDb provider | Build with qdrant as the vector database   |
-|            |                   | provider                                   |
-| `weaviate` | VectorDb provider | Build with weaviate as the vector database |
-|            |                   | provider                                   |
+| Feature    | Configuration     | Description                              |
+| ---------- | ----------------- | ---------------------------------------- |
+| `http`     | Execution mode    | Build for http (server) execution mode.  |
+| `cli`      | Execution mode    | Build for cli execution mode.            |
+| `qdrant`   | VectorDb provider | Enable qdrant as one of the vector       |
+|            |                   | database providers.                      |
+| `weaviate` | VectorDb provider | Enable weaviate as one of the vector     |
+|            |                   | database providers.                      |
+| `fembed`   | Embedder provider | Enable fastembed as one of the embedding |
+|            |                   | providers.                               |
+| `openai`   | Embedder provider | Enable openai as one of the embedding    |
+|            |                   | providers.                               |
 
 Full build command example
 
@@ -125,13 +129,15 @@ Starts the app in `http` mode with `qdrant` as the vector database provider.
 
 Chonkit accepts the following arguments:
 
-| Arg             | Flag | Description                                           | Env                | Mode   | Default                               |
-| --------------- | ---- | ----------------------------------------------------- | ------------------ | ------ | ------------------------------------- |
-| `--db-url`      | `-d` | The database URL.                                     | `DATABASE_URL`     | \*     | -                                     |
-| `--vec-db-url`  | `-v` | The vector database URL.                              | `VEC_DATABASE_URL` | \*     | -                                     |
-| `--log`         | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`         | \*     | `info,h2=off,lopdf=off,chonkit=debug` |
-| `--upload-path` | `-u` | If using the `FsDocumentStore`, sets the upload path. | `UPLOAD_PATH`      | \*     | `./upload`                            |
-| `--address`     | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`          | `http` | `0.0.0.0:42069`                       |
+| Arg              | Flag | Description                                           | Env            | Feature    | Default         |
+| ---------------- | ---- | ----------------------------------------------------- | -------------- | ---------- | --------------- |
+| `--db-url`       | `-d` | The database URL.                                     | `DATABASE_URL` | \*         | -               |
+| `--log`          | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`     | \*         | `info`          |
+| `--upload-path`  | `-u` | If using the `FsDocumentStore`, sets the upload path. | `UPLOAD_PATH`  | \*         | `./upload`      |
+| `--address`      | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`      | `http`     | `0.0.0.0:42069` |
+| `--qdrant-url`   | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`   | `qdrant`   | -               |
+| `--weaviate-url` | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL` | `weaviate` | -               |
+| -                | -    | OpenAI API key.                                       | `OPENAI_KEY`   | `openai`   | -               |
 
 The arguments have priority over the environment variables.
 See `RUST_LOG` syntax [here](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html#configure-logging).
