@@ -55,6 +55,7 @@ impl FsDocumentStore {
     }
 }
 
+#[async_trait::async_trait]
 impl DocumentStore for FsDocumentStore {
     fn id(&self) -> &'static str {
         "fs"
@@ -63,7 +64,7 @@ impl DocumentStore for FsDocumentStore {
     async fn read(
         &self,
         document: &Document,
-        parser: impl DocumentParser + Send,
+        parser: &(dyn DocumentParser + Sync),
     ) -> Result<String, ChonkitError> {
         debug!("Reading {}", document.path);
         let file = tokio::fs::read(&document.path).await?;
@@ -92,12 +93,14 @@ impl DocumentStore for FsDocumentStore {
         Ok(tokio::fs::remove_file(path).await?)
     }
 
-    async fn sync(&self, repo: &(impl DocumentRepo + Sync)) -> Result<(), ChonkitError> {
+    async fn sync(&self, repo: &(dyn DocumentRepo + Sync)) -> Result<(), ChonkitError> {
         let __start = Instant::now();
         info!("Syncing documents with {}", self.id());
 
         // Prune
-        let documents = repo.list(Pagination::new(10_000, 1)).await?;
+        let documents = repo
+            .list(Pagination::new(10_000, 1), Some(self.id()))
+            .await?;
 
         for document in documents {
             if let Err(e) = tokio::fs::metadata(&document.path).await {
@@ -181,7 +184,7 @@ mod tests {
         let file = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(CONTENT, file);
 
-        let read = store.read(&d, TextParser::default()).await.unwrap();
+        let read = store.read(&d, &TextParser::default()).await.unwrap();
         assert_eq!(CONTENT, read);
 
         store.delete(&path).await.unwrap();

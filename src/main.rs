@@ -1,7 +1,10 @@
 use crate::config::StartArgs;
-use app::service::ServiceState;
+use app::{
+    document::store::FsDocumentStore, embedder::fastembed::FastEmbedder, service::ServiceState,
+};
 use clap::Parser;
 use pdfium_render::prelude::Pdfium;
+use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
 pub mod app;
@@ -17,12 +20,6 @@ compile_error!("cannot run in both cli and http mode");
 
 #[cfg(not(any(feature = "cli", feature = "http")))]
 compile_error!("execution mode not set; run with `-F cli` or -F `http` to pick one");
-
-#[cfg(not(any(feature = "qdrant", feature = "weaviate")))]
-compile_error!("vector db provider not set; run with `-F qdrant` or -F `weaviate` to pick one");
-
-#[cfg(all(feature = "qdrant", feature = "weaviate"))]
-compile_error!("only one vector database provider is allowed");
 
 #[tokio::main]
 async fn main() {
@@ -40,7 +37,28 @@ async fn main() {
         .with_env_filter(EnvFilter::from(log))
         .init();
 
-    let services = ServiceState::init(&db_url, &vec_db_url, &upload_path).await;
+    let postgres = crate::app::repo::pg::init(&db_url).await;
+
+    let fastembed = Arc::new(FastEmbedder);
+    let fs_store = Arc::new(FsDocumentStore::new(&upload_path));
+
+    #[cfg(feature = "qdrant")]
+    let qdrant = Arc::new(crate::app::vector::qdrant::init(&vec_db_url));
+
+    #[cfg(feature = "weaviate")]
+    let weaviate = Arc::new(crate::app::vector::weaviate::init(&vec_db_url));
+
+    let services = ServiceState {
+        postgres,
+        fs_store,
+        fastembed,
+
+        #[cfg(feature = "qdrant")]
+        qdrant,
+
+        #[cfg(feature = "weaviate")]
+        weaviate,
+    };
 
     #[cfg(feature = "http")]
     {

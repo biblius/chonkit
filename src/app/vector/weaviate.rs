@@ -27,6 +27,7 @@ pub fn init(url: &str) -> WeaviateDb {
 
 const CONTENT_PROPERTY: &str = "content";
 
+#[async_trait::async_trait]
 impl VectorDb for Arc<WeaviateClient> {
     fn id(&self) -> &'static str {
         "weaviate"

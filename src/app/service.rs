@@ -1,48 +1,137 @@
-use super::{document::store::FsDocumentStore, embedder::fastembed::FastEmbedder, repo::pg};
-use document::DocumentService;
-use vector::VectorService;
+use super::{document::store::FsDocumentStore, embedder::fastembed::FastEmbedder};
+use crate::{
+    core::{document::store::DocumentStore, embedder::Embedder, vector::VectorDb},
+    error::ChonkitError,
+};
+use serde::Deserialize;
+use sqlx::PgPool;
+use std::sync::Arc;
 
 pub mod document;
 pub mod vector;
 
 #[derive(Clone)]
 pub struct ServiceState {
-    pub document: DocumentService,
-    pub vector: VectorService,
+    pub postgres: PgPool,
+    pub fs_store: Arc<FsDocumentStore>,
+    pub fastembed: Arc<FastEmbedder>,
+
+    #[cfg(feature = "qdrant")]
+    pub qdrant: Arc<super::vector::qdrant::QdrantDb>,
+
+    #[cfg(feature = "weaviate")]
+    pub weaviate: Arc<super::vector::weaviate::WeaviateDb>,
 }
 
 impl ServiceState {
-    pub fn new(document: DocumentService, vector: VectorService) -> Self {
-        Self { document, vector }
+    pub fn store(&self, provider: DocumentStoreProvider) -> Arc<dyn DocumentStore + Send + Sync> {
+        match provider {
+            DocumentStoreProvider::Fs => self.fs_store.clone(),
+        }
     }
 
-    pub async fn init(repo_url: &str, vector_db_url: &str, upload_path: &str) -> Self {
-        let repo = pg::init(repo_url).await;
+    pub fn vector_db(&self, provider: VectorProvider) -> Arc<dyn VectorDb + Send + Sync> {
+        match provider {
+            #[cfg(feature = "qdrant")]
+            VectorProvider::Qdrant => self.qdrant.clone(),
+            #[cfg(feature = "weaviate")]
+            VectorProvider::Weaviate => self.weaviate.clone(),
+        }
+    }
 
-        #[cfg(feature = "qdrant")]
-        let vec_db = crate::app::vector::qdrant::init(vector_db_url);
-
-        #[cfg(feature = "weaviate")]
-        let vec_db = crate::app::vector::weaviate::init(vector_db_url);
-
-        let embedder = FastEmbedder;
-
-        let store_document = FsDocumentStore::new(upload_path);
-
-        let service_doc = DocumentService::new(repo.clone(), store_document);
-        let service_vec = VectorService::new(repo, vec_db, embedder);
-
-        service_vec.create_default_collection().await;
-        service_doc.sync().await.expect("error in sync");
-
-        Self::new(service_doc, service_vec)
+    pub fn embedder(&self, provider: EmbeddingProvider) -> Arc<dyn Embedder + Send + Sync> {
+        match provider {
+            EmbeddingProvider::FastEmbed => self.fastembed.clone(),
+            EmbeddingProvider::OpenAi => todo!(),
+        }
     }
 }
-impl std::fmt::Debug for ServiceState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ServiceState")
-            .field("document", &self.document)
-            .field("vector {{ .. }}", &"")
-            .finish()
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum VectorProvider {
+    #[cfg(feature = "qdrant")]
+    Qdrant,
+
+    #[cfg(feature = "weaviate")]
+    Weaviate,
+}
+
+impl TryFrom<String> for VectorProvider {
+    type Error = ChonkitError;
+
+    fn try_from(provider: String) -> Result<Self, Self::Error> {
+        provider.as_str().try_into()
+    }
+}
+
+impl TryFrom<&str> for VectorProvider {
+    type Error = ChonkitError;
+
+    fn try_from(provider: &str) -> Result<Self, Self::Error> {
+        match provider {
+            #[cfg(feature = "qdrant")]
+            "qdrant" => Ok(Self::Qdrant),
+
+            #[cfg(feature = "weaviate")]
+            "weaviate" => Ok(Self::Weaviate),
+
+            _ => Err(ChonkitError::InvalidProvider(format!(
+                "Invalid vector provider: {provider}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum DocumentStoreProvider {
+    Fs,
+}
+
+impl TryFrom<String> for DocumentStoreProvider {
+    type Error = ChonkitError;
+
+    fn try_from(provider: String) -> Result<Self, Self::Error> {
+        provider.as_str().try_into()
+    }
+}
+
+impl TryFrom<&str> for DocumentStoreProvider {
+    type Error = ChonkitError;
+
+    fn try_from(provider: &str) -> Result<Self, Self::Error> {
+        match provider {
+            "fs" => Ok(Self::Fs),
+            _ => Err(ChonkitError::InvalidProvider(format!(
+                "Invalid document store provider: {provider}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum EmbeddingProvider {
+    FastEmbed,
+    OpenAi,
+}
+
+impl TryFrom<String> for EmbeddingProvider {
+    type Error = ChonkitError;
+
+    fn try_from(provider: String) -> Result<Self, Self::Error> {
+        provider.as_str().try_into()
+    }
+}
+
+impl TryFrom<&str> for EmbeddingProvider {
+    type Error = ChonkitError;
+
+    fn try_from(provider: &str) -> Result<Self, Self::Error> {
+        match provider {
+            "fastembed" => Ok(Self::FastEmbed),
+            "openai" => Ok(Self::OpenAi),
+            _ => Err(ChonkitError::InvalidProvider(format!(
+                "Invalid embedding provider: {provider}"
+            ))),
+        }
     }
 }

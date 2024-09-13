@@ -1,30 +1,25 @@
-use crate::core::service::vector::VectorService as Service;
+use sqlx::PgPool;
+
+pub(in crate::app) type VectorService = crate::core::service::vector::VectorService<PgPool>;
 
 type Embedder = crate::app::embedder::fastembed::FastEmbedder;
-
-#[cfg(feature = "qdrant")]
-type VectorDatabase = crate::app::vector::qdrant::QdrantDb;
-
-#[cfg(feature = "weaviate")]
-type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
-
-pub(in crate::app) type VectorService = Service<sqlx::PgPool, VectorDatabase, Embedder>;
 
 // Tests vector service integration depending on the features used.
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
 mod vector_service_tests {
-    use super::VectorService;
+
     use crate::{
         app::{
             embedder::fastembed::FastEmbedder,
+            service::vector::VectorService,
             test::{init_postgres, PostgresContainer},
         },
         core::{
             embedder::Embedder,
             model::document::{DocumentInsert, DocumentType},
             repo::{document::DocumentRepo, vector::VectorRepo},
-            service::vector::dto::{CreateCollection, CreateEmbeddings, SearchPayload},
+            service::vector::dto::{CreateCollection, CreateEmbeddings, Search},
             vector::VectorDb,
         },
         error::ChonkitError,
@@ -59,9 +54,11 @@ mod vector_service_tests {
 
         let embedder = FastEmbedder;
 
-        let service = VectorService::new(postgres.clone(), vector_client.clone(), embedder.clone());
+        let service = VectorService::new(postgres.clone());
 
-        service.create_default_collection().await;
+        service
+            .create_default_collection(&vector_client, &embedder)
+            .await;
 
         (postgres, vector_client, service, embedder, pg, v_img)
     }
@@ -104,7 +101,7 @@ mod vector_service_tests {
         assert_eq!(size, v_collection.size);
 
         // Assert this can be called again without errors.
-        service.create_default_collection().await;
+        service.create_default_collection(vector_db, embedder).await;
     }
 
     #[test]
@@ -121,7 +118,10 @@ mod vector_service_tests {
             name: name.to_string(),
         };
 
-        let collection = service.create_collection(params).await.unwrap();
+        let collection = service
+            .create_collection(vector_db, embedder, params)
+            .await
+            .unwrap();
 
         assert_eq!(collection.name, name);
         assert_eq!(collection.model, model.0);
@@ -136,7 +136,11 @@ mod vector_service_tests {
     }
 
     #[test]
-    async fn create_collection_fails_with_invalid_model(service: VectorService) {
+    async fn create_collection_fails_with_invalid_model(
+        service: VectorService,
+        vector_db: VectorDatabase,
+        embedder: FastEmbedder,
+    ) {
         let name = "test_collection_0";
 
         let params = CreateCollection {
@@ -144,22 +148,23 @@ mod vector_service_tests {
             name: name.to_string(),
         };
 
-        let result = service.create_collection(params).await;
+        let result = service.create_collection(vector_db, embedder, params).await;
 
         assert!(result.is_err());
     }
 
     #[test]
     async fn create_collection_fails_with_existing_collection(
-        embedder: FastEmbedder,
         service: VectorService,
+        vector_db: VectorDatabase,
+        embedder: FastEmbedder,
     ) {
         let params = CreateCollection {
             model: embedder.default_model().0,
             name: DEFAULT_COLLECTION_NAME.to_string(),
         };
 
-        let result = service.create_collection(params).await;
+        let result = service.create_collection(vector_db, embedder, params).await;
 
         assert!(result.is_err());
     }
@@ -169,6 +174,7 @@ mod vector_service_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
+        embedder: FastEmbedder,
     ) {
         let default = service
             .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
@@ -192,17 +198,24 @@ mod vector_service_tests {
             collection: default.id,
             chunks: vec![content],
         };
-        service.create_embeddings(embeddings).await.unwrap();
 
-        let search = SearchPayload {
+        let collection = service
+            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
+            .await
+            .unwrap();
+
+        service
+            .create_embeddings(vector_db, embedder, embeddings)
+            .await
+            .unwrap();
+
+        let search = Search {
             query: content.to_string(),
-            collection_id: None,
-            collection_name: Some(DEFAULT_COLLECTION_NAME.to_string()),
-            provider: Some(vector_db.id().to_string()),
+            collection,
             limit: Some(1),
         };
 
-        let results = service.search(search).await.unwrap();
+        let results = service.search(vector_db, embedder, search).await.unwrap();
 
         assert_eq!(1, results.len());
         assert_eq!(content, results[0]);
@@ -227,6 +240,7 @@ mod vector_service_tests {
     async fn deleting_collection_removes_all_embeddings(
         service: VectorService,
         postgres: PgPool,
+        vector_db: VectorDatabase,
         embedder: FastEmbedder,
     ) {
         let collection_name = "test_collection_delete_embeddings";
@@ -236,7 +250,10 @@ mod vector_service_tests {
             model: embedder.default_model().0,
         };
 
-        let collection = service.create_collection(create).await.unwrap();
+        let collection = service
+            .create_collection(vector_db, embedder, create)
+            .await
+            .unwrap();
 
         let create = DocumentInsert::new(
             "test_document",
@@ -256,9 +273,15 @@ mod vector_service_tests {
             chunks: vec![content],
         };
 
-        service.create_embeddings(embeddings).await.unwrap();
+        service
+            .create_embeddings(vector_db, embedder, embeddings)
+            .await
+            .unwrap();
 
-        service.delete_collection(collection.id).await.unwrap();
+        service
+            .delete_collection(vector_db, collection.id)
+            .await
+            .unwrap();
 
         let embeddings = postgres
             .get_embeddings(document.id, collection.id)
@@ -273,6 +296,7 @@ mod vector_service_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
+        embedder: FastEmbedder,
     ) {
         let create = DocumentInsert::new(
             "test_document",
@@ -290,14 +314,17 @@ mod vector_service_tests {
         let document = postgres.insert(create).await.unwrap();
 
         let content = r#"Hello World!"#;
-        let embeddings = CreateEmbeddings {
+        let create = CreateEmbeddings {
             id: document.id,
             collection: default.id,
             chunks: vec![content],
         };
-        service.create_embeddings(embeddings.clone()).await.unwrap();
+        service
+            .create_embeddings(vector_db, embedder, create.clone())
+            .await
+            .unwrap();
 
-        let duplicate = service.create_embeddings(embeddings).await;
+        let duplicate = service.create_embeddings(vector_db, embedder, create).await;
 
         assert!(matches!(duplicate, Err(ChonkitError::AlreadyExists(_))))
     }

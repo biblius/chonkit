@@ -20,26 +20,37 @@ use uuid::Uuid;
 use validify::{Validate, Validify};
 
 /// High level operations for document management.
-#[derive(Debug, Clone)]
-pub struct DocumentService<R, S> {
+#[derive(Clone)]
+pub struct DocumentService<R> {
     pub repo: R,
-    pub store: S,
 }
 
-impl<R, S> DocumentService<R, S>
+impl<R> DocumentService<R>
 where
-    R: DocumentRepo + Sync,
-    S: DocumentStore,
+    R: DocumentRepo + Send + Sync,
 {
-    pub fn new(repo: R, store: S) -> Self {
-        Self { repo, store }
+    pub fn new(repo: R) -> Self {
+        Self { repo }
     }
 
     /// Get a paginated list of documents from the repository.
     ///
     /// * `p`: Pagination.
-    pub async fn list_documents(&self, p: Pagination) -> Result<List<Document>, ChonkitError> {
-        self.repo.list(p).await
+    pub async fn list_documents(
+        &self,
+        p: Pagination,
+        src: Option<&str>,
+    ) -> Result<List<Document>, ChonkitError> {
+        self.repo.list(p, src).await
+    }
+    /// Get a document from the repository.
+    ///
+    /// * `id`: Document ID.
+    pub async fn get_document(&self, id: Uuid) -> Result<Document, ChonkitError> {
+        self.repo
+            .get_by_id(id)
+            .await?
+            .ok_or_else(|| ChonkitError::DoesNotExist(format!("Document with ID '{id}'")))
     }
 
     /// Get the full config for a document.
@@ -59,7 +70,11 @@ where
     /// or the default parser if it has no configuration.
     ///
     /// * `id`: Document ID.
-    pub async fn get_content(&self, id: Uuid) -> Result<String, ChonkitError> {
+    pub async fn get_content(
+        &self,
+        store: &(dyn DocumentStore + Sync + Send),
+        id: Uuid,
+    ) -> Result<String, ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
         let Some(document) = document else {
@@ -69,7 +84,7 @@ where
         let ext = document.ext.as_str().try_into()?;
         let parser = self.get_parser(id, ext).await?;
 
-        self.store.read(&document, parser).await
+        store.read(&document, &parser).await
     }
 
     /// Get document chunks using its parsing and chunking configuration,
@@ -96,7 +111,11 @@ where
     /// in the underlying storage implementation.
     ///
     /// * `params`: Upload params.
-    pub async fn upload(&self, mut params: DocumentUpload<'_>) -> Result<Document, ChonkitError> {
+    pub async fn upload(
+        &self,
+        store: &(dyn DocumentStore + Sync + Send),
+        mut params: DocumentUpload<'_>,
+    ) -> Result<Document, ChonkitError> {
         params.validify()?;
 
         let DocumentUpload { ref name, ty, file } = params;
@@ -110,8 +129,8 @@ where
             )));
         };
 
-        let path = self.store.write(name, file).await?;
-        let insert = DocumentInsert::new(name, &path, ty, &hash, self.store.id());
+        let path = store.write(name, file).await?;
+        let insert = DocumentInsert::new(name, &path, ty, &hash, store.id());
         let document = self.repo.insert(insert).await?;
         Ok(document)
     }
@@ -119,18 +138,25 @@ where
     /// Remove the document from the repo and delete it from the storage.
     ///
     /// * `id`: Document ID.
-    pub async fn delete(&self, id: Uuid) -> Result<(), ChonkitError> {
+    pub async fn delete(
+        &self,
+        store: &(dyn DocumentStore + Sync + Send),
+        id: Uuid,
+    ) -> Result<(), ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
         let Some(document) = document else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
         self.repo.remove_by_id(document.id).await?;
-        self.store.delete(&document.path).await
+        store.delete(&document.path).await
     }
 
     /// Sync storage contents with the repo.
-    pub async fn sync(&self) -> Result<(), ChonkitError> {
-        self.store.sync(&self.repo).await
+    pub async fn sync(
+        &self,
+        store: &(dyn DocumentStore + Send + Sync),
+    ) -> Result<(), ChonkitError> {
+        store.sync(&self.repo).await
     }
 
     /// Preview how the document gets parsed to text.
@@ -140,6 +166,7 @@ where
     ///             file type.
     pub async fn parse_preview(
         &self,
+        store: &(dyn DocumentStore + Sync + Send),
         id: Uuid,
         config: Option<ParseConfig>,
     ) -> Result<String, ChonkitError> {
@@ -158,7 +185,7 @@ where
             config.unwrap_or_default(),
         );
 
-        self.store.read(&document, parser).await
+        store.read(&document, &parser).await
     }
 
     /// Chunk the document without saving any embeddings. Useful for previewing.
@@ -166,23 +193,21 @@ where
     /// for the repo for a configured one. If it still doesn't exist, uses the default
     /// snapping window chunker.
     ///
-    /// * `id`: Document ID.
-    /// * `parse_config`: If given, use the config, otherwise use the configured parser or the
-    ///                   default if it does not exist.
-    /// * `chunker`: Optional chunker to use.
+    /// * `store`: Document store where the file is found.
+    /// * `id`: Document ID. Used to obtain parser/chunking info.
+    /// * `config`: If given, uses the chunking/parsing config, otherwise use the default chunker/parser for
+    ///             the file type.
     pub async fn chunk_preview(
         &self,
-        id: Uuid,
-        payload: Option<ChunkPreviewPayload>,
+        store: &(dyn DocumentStore + Sync + Send),
+        document: &Document,
+        config: ChunkPreviewPayload,
     ) -> Result<Vec<String>, ChonkitError> {
-        let document = self.repo.get_by_id(id).await?;
-        let Some(document) = document else {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
-        };
+        let ChunkPreviewPayload { parser, chunker } = config;
 
-        let ChunkPreviewPayload { parser, chunker } = payload.unwrap_or_default();
-
+        let id = document.id;
         let ext = document.ext.as_str().try_into()?;
+
         let parser = if let Some(config) = parser {
             info!("Using existing parser ({ext}) for '{id}'");
             Parser::new_from(ext, config)
@@ -190,7 +215,8 @@ where
             info!("Using default parser ({ext}) for '{id}'");
             self.get_parser(id, ext).await?
         };
-        let content = self.store.read(&document, parser).await?;
+
+        let content = store.read(&document, &parser).await?;
         let chunker = if let Some(chunker) = chunker {
             chunker
         } else {

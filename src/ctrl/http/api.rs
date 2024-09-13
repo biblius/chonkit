@@ -27,12 +27,9 @@ use crate::{
             document::{Document, DocumentConfig},
             Pagination,
         },
-        service::{
-            document::dto::ChunkPreviewPayload,
-            vector::dto::{CreateCollection, SearchPayload},
-        },
+        service::document::dto::ChunkPreviewPayload,
     },
-    ctrl::http::dto::UploadResult,
+    ctrl::http::dto::{CreateCollectionPayload, SearchPayload, UploadResult},
 };
 use utoipa::OpenApi;
 
@@ -68,7 +65,7 @@ use utoipa::OpenApi;
         ChunkBaseConfig,
         ChunkPreviewPayload,
         ParseConfig,
-        CreateCollection,
+        CreateCollectionPayload,
         SearchPayload,
         Embedding,
         Collection,

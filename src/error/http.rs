@@ -18,6 +18,7 @@ impl ChonkitError {
             | E::Chunk(_)
             | E::InvalidFileName(_)
             | E::UnsupportedFileType(_)
+            | E::InvalidProvider(_)
             | E::InvalidEmbeddingModel(_) => SC::UNPROCESSABLE_ENTITY,
             E::ParsePdf(_)
             | E::DocxRead(_)
@@ -83,6 +84,7 @@ impl IntoResponse for ChonkitError {
         use ErrorType as ET;
 
         match self {
+            CE::InvalidProvider(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
             CE::DoesNotExist(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
 
             CE::SerdeJson(e) => {

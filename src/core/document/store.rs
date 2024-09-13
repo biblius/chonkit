@@ -3,25 +3,25 @@ use crate::{
     core::{model::document::Document, repo::document::DocumentRepo},
     error::ChonkitError,
 };
-use std::future::Future;
 
 /// Reads documents' content. Serves as indirection to decouple the documents from their source.
+#[async_trait::async_trait]
 pub trait DocumentStore {
     fn id(&self) -> &'static str;
 
     /// Get the content of document located on `path`.
     ///
     /// * `path`: The path to read from.
-    fn read(
+    async fn read(
         &self,
         document: &Document,
-        parser: impl DocumentParser + Send,
-    ) -> impl Future<Output = Result<String, ChonkitError>> + Send;
+        parser: &(dyn DocumentParser + Sync),
+    ) -> Result<String, ChonkitError>;
 
     /// Delete the document contents from the underlying storage.
     ///
     /// * `path`: The path to the document to delete.
-    fn delete(&self, path: &str) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    async fn delete(&self, path: &str) -> Result<(), ChonkitError>;
 
     /// Write `contents` to the storage implementation.
     /// Returns the absolute path of where the file was written
@@ -30,17 +30,10 @@ pub trait DocumentStore {
     ///
     /// * `name`: Document name.
     /// * `content`: What to write.
-    fn write(
-        &self,
-        name: &str,
-        content: &[u8],
-    ) -> impl Future<Output = Result<String, ChonkitError>> + Send;
+    async fn write(&self, name: &str, content: &[u8]) -> Result<String, ChonkitError>;
 
     /// Sync the storage client's contents with the repository.
     ///
     /// * `repo`: Document repository.
-    fn sync(
-        &self,
-        repo: &(impl DocumentRepo + Sync),
-    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    async fn sync(&self, repo: &(dyn DocumentRepo + Sync)) -> Result<(), ChonkitError>;
 }

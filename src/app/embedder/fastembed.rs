@@ -7,6 +7,7 @@ pub struct FastEmbedder;
 const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 const DEFAULT_COLLECTION_SIZE: usize = 384;
 
+#[async_trait::async_trait]
 impl Embedder for FastEmbedder {
     fn id(&self) -> &'static str {
         "fastembed"

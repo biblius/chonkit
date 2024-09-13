@@ -28,6 +28,7 @@ impl OpenAiEmbeddings {
     }
 }
 
+#[async_trait::async_trait]
 impl Embedder for OpenAiEmbeddings {
     fn id(&self) -> &'static str {
         "openai"

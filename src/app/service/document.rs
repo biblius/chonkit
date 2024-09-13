@@ -1,10 +1,6 @@
 use sqlx::PgPool;
 
-use crate::{
-    app::document::store::FsDocumentStore, core::service::document::DocumentService as Service,
-};
-
-pub(in crate::app) type DocumentService = Service<PgPool, FsDocumentStore>;
+pub(in crate::app) type DocumentService = crate::core::service::document::DocumentService<PgPool>;
 
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
@@ -36,7 +32,7 @@ mod document_service_tests {
         let (client, _pg_img) = init_postgres().await;
 
         let store = FsDocumentStore::new(TEST_UPLOAD_PATH);
-        let service = DocumentService::new(client.clone(), store.clone());
+        let service = DocumentService::new(client.clone());
 
         (client, store, service, _pg_img)
     }
@@ -52,7 +48,7 @@ mod document_service_tests {
     }
 
     #[test]
-    async fn upload_text_happy(service: DocumentService) {
+    async fn upload_text_happy(store: FsDocumentStore, service: DocumentService) {
         let content = b"Hello world";
         let upload = DocumentUpload {
             name: "UPLOAD_TEST_TXT".to_string(),
@@ -60,20 +56,20 @@ mod document_service_tests {
             file: content,
         };
 
-        let document = service.upload(upload).await.unwrap();
+        let document = service.upload(store, upload).await.unwrap();
 
         let text_from_bytes = TextParser::default().parse(content).unwrap();
-        let text_from_store = service.get_content(document.id).await.unwrap();
+        let text_from_store = service.get_content(store, document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
 
-        service.delete(document.id).await.unwrap();
+        service.delete(store, document.id).await.unwrap();
 
         assert!(tokio::fs::metadata(document.path).await.is_err());
     }
 
     #[test]
-    async fn upload_pdf_happy(service: DocumentService) {
+    async fn upload_pdf_happy(store: FsDocumentStore, service: DocumentService) {
         let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.pdf"))
             .await
             .unwrap();
@@ -83,20 +79,20 @@ mod document_service_tests {
             file: content,
         };
 
-        let document = service.upload(upload).await.unwrap();
+        let document = service.upload(store, upload).await.unwrap();
 
         let text_from_bytes = PdfParser::default().parse(content).unwrap();
-        let text_from_store = service.get_content(document.id).await.unwrap();
+        let text_from_store = service.get_content(store, document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
 
-        service.delete(document.id).await.unwrap();
+        service.delete(store, document.id).await.unwrap();
 
         assert!(tokio::fs::metadata(document.path).await.is_err());
     }
 
     #[test]
-    async fn upload_docx_happy(service: DocumentService) {
+    async fn upload_docx_happy(store: FsDocumentStore, service: DocumentService) {
         let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.docx"))
             .await
             .unwrap();
@@ -106,14 +102,14 @@ mod document_service_tests {
             file: content,
         };
 
-        let document = service.upload(upload).await.unwrap();
+        let document = service.upload(store, upload).await.unwrap();
 
         let text_from_bytes = DocxParser::default().parse(content).unwrap();
-        let text_from_store = service.get_content(document.id).await.unwrap();
+        let text_from_store = service.get_content(store, document.id).await.unwrap();
 
         assert_eq!(text_from_bytes, text_from_store);
 
-        service.delete(document.id).await.unwrap();
+        service.delete(store, document.id).await.unwrap();
 
         assert!(tokio::fs::metadata(document.path).await.is_err());
     }

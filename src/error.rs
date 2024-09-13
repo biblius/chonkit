@@ -27,6 +27,9 @@ pub enum ChonkitError {
     #[error("Invalid embedding model: {0}")]
     InvalidEmbeddingModel(String),
 
+    #[error("Invalid provider: {0}")]
+    InvalidProvider(String),
+
     #[error("IO: {0}")]
     IO(#[from] std::io::Error),
 

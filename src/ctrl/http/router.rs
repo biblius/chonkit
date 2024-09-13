@@ -1,4 +1,7 @@
-use super::api::ApiDoc;
+use super::{
+    api::ApiDoc,
+    dto::{CreateCollectionPayload, SearchPayload},
+};
 use crate::{
     app::service::ServiceState,
     core::{
@@ -6,8 +9,14 @@ use crate::{
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
         service::{
-            document::dto::{ChunkPreviewPayload, DocumentUpload},
-            vector::dto::{CreateCollection, CreateEmbeddings, SearchPayload},
+            document::{
+                dto::{ChunkPreviewPayload, DocumentUpload},
+                DocumentService,
+            },
+            vector::{
+                dto::{CreateEmbeddings, Search},
+                VectorService,
+            },
         },
     },
     ctrl::http::dto::UploadResult,
@@ -26,7 +35,7 @@ use tracing::{error, Span};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
-use validify::Validate;
+use validify::{Validate, Validify};
 
 pub fn router(state: ServiceState) -> Router {
     let router = public_router(state.clone());
@@ -80,12 +89,16 @@ fn public_router(state: ServiceState) -> Router {
     ),
 )]
 async fn list_documents(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     pagination: Option<Query<Pagination>>,
+    src: Option<Query<String>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let Query(pagination) = pagination.unwrap_or_default();
     pagination.validate()?;
-    let documents = service.document.list_documents(pagination).await?;
+    let service = DocumentService::new(state.postgres.clone());
+    let documents = service
+        .list_documents(pagination, src.map(|s| s.0).as_deref())
+        .await?;
     Ok(Json(documents))
 }
 
@@ -102,10 +115,11 @@ async fn list_documents(
     )
 )]
 async fn get_document(
-    service: axum::extract::State<ServiceState>,
+    state: axum::extract::State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let document = service.document.get_config(id).await?;
+    let service = DocumentService::new(state.postgres.clone());
+    let document = service.get_config(id).await?;
     Ok(Json(document))
 }
 
@@ -122,10 +136,13 @@ async fn get_document(
     )
 )]
 async fn delete_document(
-    service: axum::extract::State<ServiceState>,
+    state: axum::extract::State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.document.delete(id).await?;
+    let service = DocumentService::new(state.postgres.clone());
+    let document = service.get_document(id).await?;
+    let store = state.store(document.src.try_into()?);
+    service.delete(&*store, id).await?;
     Ok(format!("Successfully deleted {id}"))
 }
 
@@ -139,11 +156,15 @@ async fn delete_document(
     )
 )]
 async fn upload_documents(
-    service: axum::extract::State<ServiceState>,
+    state: axum::extract::State<ServiceState>,
+    Query(provider): Query<String>,
     mut form: axum::extract::Multipart,
 ) -> Result<Json<UploadResult>, ChonkitError> {
     let mut documents = vec![];
     let mut errors = HashMap::<String, Vec<String>>::new();
+
+    let service = DocumentService::new(state.postgres.clone());
+    let store = state.store(provider.try_into()?);
 
     while let Ok(Some(field)) = form.next_field().await {
         let Some(name) = field.file_name() else {
@@ -177,7 +198,7 @@ async fn upload_documents(
         };
 
         let upload = DocumentUpload::new(name.to_string(), typ, &file);
-        let document = service.document.upload(upload).await?;
+        let document = service.upload(&*store, upload).await?;
 
         documents.push(document);
     }
@@ -199,14 +220,12 @@ async fn upload_documents(
     request_body = Chunker
 )]
 async fn update_chunk_config(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     Path(document_id): Path<uuid::Uuid>,
     Json(chunker): Json<Chunker>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service
-        .document
-        .update_chunker(document_id, chunker)
-        .await?;
+    let service = DocumentService::new(state.postgres.clone());
+    service.update_chunker(document_id, chunker).await?;
     Ok(format!("Successfully updated chunker for {document_id}"))
 }
 
@@ -224,13 +243,15 @@ async fn update_chunk_config(
     request_body = ChunkPreviewPayload
 )]
 async fn chunk_preview(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
     config: Option<Json<ChunkPreviewPayload>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    let service = DocumentService::new(state.postgres.clone());
+    let document = service.get_document(id).await?;
+    let store = state.store(document.src.as_str().try_into()?);
     let parsed = service
-        .document
-        .chunk_preview(id, config.map(|c| c.0))
+        .chunk_preview(&*store, &document, config.map(|c| c.0).unwrap_or_default())
         .await?;
     Ok(Json(parsed))
 }
@@ -249,11 +270,12 @@ async fn chunk_preview(
     request_body = ParseConfig
 )]
 async fn update_parse_config(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     Path(document_id): Path<uuid::Uuid>,
     Json(config): Json<ParseConfig>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.document.update_parser(document_id, config).await?;
+    let service = DocumentService::new(state.postgres.clone());
+    service.update_parser(document_id, config).await?;
     Ok(format!("Successfully updated parser for {document_id}"))
 }
 
@@ -271,13 +293,15 @@ async fn update_parse_config(
     request_body(content = Option<ParseConfig>, description = "Optional parse configuration for preview")
 )]
 async fn parse_preview(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
     parser: Option<Json<ParseConfig>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    let service = DocumentService::new(state.postgres.clone());
+    let document = service.get_document(id).await?;
+    let store = state.store(document.src.try_into()?);
     let parsed = service
-        .document
-        .parse_preview(id, parser.map(|c| c.0))
+        .parse_preview(&*store, id, parser.map(|c| c.0))
         .await?;
     Ok(Json(parsed))
 }
@@ -291,9 +315,12 @@ async fn parse_preview(
     )
 )]
 async fn sync(
-    service: axum::extract::State<ServiceState>,
+    state: axum::extract::State<ServiceState>,
+    Query(provider): Query<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    service.document.sync().await?;
+    let service = DocumentService::new(state.postgres.clone());
+    let store = state.store(provider.try_into()?);
+    service.sync(&*store).await?;
     Ok("Successfully synced")
 }
 
@@ -311,10 +338,11 @@ async fn sync(
     )
 )]
 async fn list_collections(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     Query(p): Query<Pagination>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collections = service.vector.list_collections(p).await?;
+    let service = VectorService::new(state.postgres.clone());
+    let collections = service.list_collections(p).await?;
     Ok(Json(collections))
 }
 
@@ -328,10 +356,15 @@ async fn list_collections(
     request_body = CreateCollection
 )]
 async fn create_collection(
-    service: State<ServiceState>,
-    Json(payload): Json<CreateCollection>,
+    state: State<ServiceState>,
+    Json(payload): Json<CreateCollectionPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collection = service.vector.create_collection(payload).await?;
+    let service = VectorService::new(state.postgres.clone());
+    let vector_db = state.vector_db(payload.vector_provider.as_str().try_into()?);
+    let embedder = state.embedder(payload.embedding_provider.as_str().try_into()?);
+    let collection = service
+        .create_collection(&*vector_db, &*embedder, payload.into())
+        .await?;
     Ok(Json(collection))
 }
 
@@ -348,10 +381,11 @@ async fn create_collection(
     )
 )]
 async fn get_collection(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
     Path(collection_id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collection = service.vector.get_collection(collection_id).await?;
+    let service = VectorService::new(state.postgres.clone());
+    let collection = service.get_collection(collection_id).await?;
     Ok(Json(collection))
 }
 
@@ -364,11 +398,13 @@ async fn get_collection(
     )
 )]
 async fn list_embedding_models(
-    service: State<ServiceState>,
+    state: State<ServiceState>,
+    Query(provider): Query<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    let service = VectorService::new(state.postgres.clone());
+    let embedder = state.embedder(provider.as_str().try_into()?);
     let models = service
-        .vector
-        .list_embedding_models()
+        .list_embedding_models(&*embedder)
         .into_iter()
         .collect::<HashMap<String, usize>>();
     Ok(Json(models))
@@ -388,21 +424,31 @@ async fn list_embedding_models(
     )
 )]
 async fn embed(
-    service: axum::extract::State<ServiceState>,
+    state: axum::extract::State<ServiceState>,
     Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let collection = service.vector.get_collection(collection_id).await?;
+    let d_service = DocumentService::new(state.postgres.clone());
+    let v_service = VectorService::new(state.postgres.clone());
 
-    let content = service.document.get_content(document_id).await?;
-    let chunks = service.document.get_chunks(document_id, &content).await?;
+    let document = d_service.get_document(document_id).await?;
+    let collection = v_service.get_collection(collection_id).await?;
 
-    let embeddings = CreateEmbeddings {
+    let store = state.store(document.src.as_str().try_into()?);
+    let vector_db = state.vector_db(collection.provider.as_str().try_into()?);
+    let embedder = state.embedder(collection.embedder.as_str().try_into()?);
+
+    let content = d_service.get_content(&*store, document_id).await?;
+    let chunks = d_service.get_chunks(document_id, &content).await?;
+
+    let create = CreateEmbeddings {
         id: document_id,
         collection: collection.id,
         chunks,
     };
 
-    service.vector.create_embeddings(embeddings).await?;
+    v_service
+        .create_embeddings(&*vector_db, &*embedder, create)
+        .await?;
 
     Ok("Successfully created embeddings")
 }
@@ -417,9 +463,41 @@ async fn embed(
     request_body = SearchPayload
 )]
 async fn search(
-    service: State<ServiceState>,
-    Json(search): Json<SearchPayload>,
+    state: State<ServiceState>,
+    Json(mut search): Json<SearchPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    let chunks = service.vector.search(search).await?;
+    search.validify()?;
+
+    let service = VectorService::new(state.postgres.clone());
+
+    let search = if let Some(collection_id) = search.collection_id {
+        let collection = service.get_collection(collection_id).await?;
+        Search {
+            query: search.query,
+            collection,
+            limit: search.limit,
+        }
+    } else {
+        let (Some(name), Some(provider)) = (search.collection_name, search.provider) else {
+            // Cannot happen because of above validify
+            return Err(ChonkitError::InvalidProvider(
+                format!("Both 'collection_name' and 'provider' must be provided if 'collection_id' is not provided"),
+            ));
+        };
+
+        let collection = service.get_collection_by_name(&name, &provider).await?;
+
+        Search {
+            query: search.query,
+            collection,
+            limit: search.limit,
+        }
+    };
+
+    let embedder = state.embedder(search.collection.embedder.as_str().try_into()?);
+    let vector_db = state.vector_db(search.collection.provider.as_str().try_into()?);
+
+    let chunks = service.search(&*vector_db, &*embedder, search).await?;
+
     Ok(Json(chunks))
 }

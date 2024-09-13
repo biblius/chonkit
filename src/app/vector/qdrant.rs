@@ -26,6 +26,7 @@ pub fn init(url: &str) -> QdrantDb {
 
 const CONTENT_PROPERTY: &str = "content";
 
+#[async_trait::async_trait]
 impl VectorDb for Arc<Qdrant> {
     fn id(&self) -> &'static str {
         "qdrant"

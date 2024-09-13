@@ -1,40 +1,28 @@
 use crate::{core::model::collection::VectorCollection, error::ChonkitError};
-use std::future::Future;
 
 /// Vector database operations.
+#[async_trait::async_trait]
 pub trait VectorDb {
     fn id(&self) -> &'static str;
 
     /// List available vector collections.
-    fn list_vector_collections(
-        &self,
-    ) -> impl Future<Output = Result<Vec<VectorCollection>, ChonkitError>> + Send;
+    async fn list_vector_collections(&self) -> Result<Vec<VectorCollection>, ChonkitError>;
 
     /// Create a vector collection.
     ///
     /// * `name`: The name of the collection.
     /// * `size`: Vector size of the collection.
-    fn create_vector_collection(
-        &self,
-        name: &str,
-        size: usize,
-    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    async fn create_vector_collection(&self, name: &str, size: usize) -> Result<(), ChonkitError>;
 
     /// Get collection info.
     ///
     /// * `name`: Collection name.
-    fn get_collection(
-        &self,
-        name: &str,
-    ) -> impl Future<Output = Result<VectorCollection, ChonkitError>> + Send;
+    async fn get_collection(&self, name: &str) -> Result<VectorCollection, ChonkitError>;
 
     /// Delete a vector collection.
     ///
     /// * `name`: The name of the collection.
-    fn delete_vector_collection(
-        &self,
-        name: &str,
-    ) -> impl Future<Output = Result<(), ChonkitError>> + Send;
+    async fn delete_vector_collection(&self, name: &str) -> Result<(), ChonkitError>;
 
     /// Used to create the initial collection.
     ///
@@ -45,19 +33,19 @@ pub trait VectorDb {
     /// goes wrong.
     ///
     /// * `size`: The vector size of the collection.
-    fn create_default_collection(&self, size: usize) -> impl Future<Output = ()> + Send;
+    async fn create_default_collection(&self, size: usize);
 
     /// Perform semantic search.
     ///
     /// * `search`: The query to use as the search vector.
     /// * `collection`: The collection to search in.
     /// * `limit`: Amount of results to return.
-    fn query(
+    async fn query(
         &self,
         search: Vec<f32>,
         collection: &str,
         limit: u32,
-    ) -> impl Future<Output = Result<Vec<String>, ChonkitError>> + Send;
+    ) -> Result<Vec<String>, ChonkitError>;
 
     /// Store the contents and their vectors to the vector storage.
     /// The `contents` and `vectors` inputs are expected to
@@ -67,10 +55,10 @@ pub trait VectorDb {
     /// * `content`: The contents to append to the vectors.
     /// * `vectors`: The vectors to store.
     /// * `collection`: The vector collection to store in.
-    fn store(
+    async fn store(
         &self,
         collection: &str,
         content: &[&str],
         vectors: Vec<Vec<f32>>,
-    ) -> impl Future<Output = Result<(), ChonkitError>>;
+    ) -> Result<(), ChonkitError>;
 }

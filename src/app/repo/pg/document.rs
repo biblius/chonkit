@@ -15,6 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{types::Json, PgPool};
 
+#[async_trait::async_trait]
 impl DocumentRepo for PgPool {
     async fn get_by_id(&self, id: uuid::Uuid) -> Result<Option<Document>, ChonkitError> {
         Ok(sqlx::query_as!(
@@ -88,8 +89,9 @@ impl DocumentRepo for PgPool {
         .map_err(ChonkitError::from)
     }
 
-    async fn list(&self, p: Pagination) -> Result<List<Document>, ChonkitError> {
-        let total = sqlx::query!("SELECT COUNT(id) FROM documents")
+    async fn list(&self, p: Pagination, src: Option<&str>) -> Result<List<Document>, ChonkitError> {
+        // TODO:
+        let total = sqlx::query!("SELECT COUNT(id) FROM documents WHERE src = $1", src)
             .fetch_one(self)
             .await
             .map(|row| row.count.map(|count| count as usize))?;
@@ -100,16 +102,19 @@ impl DocumentRepo for PgPool {
             Document,
             r#"SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at
                    FROM documents
+                   WHERE src = $3
                    LIMIT $1
                    OFFSET $2
                 "#,
             limit,
-            offset
+            offset,
+            src
         )
         .fetch_all(self)
         .await?;
 
-        Ok(List::new(total, documents))
+        todo!()
+        // Ok(List::new(total, documents))
     }
 
     async fn insert(&self, params: DocumentInsert<'_>) -> Result<Document, ChonkitError> {
