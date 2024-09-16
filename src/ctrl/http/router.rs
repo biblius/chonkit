@@ -441,12 +441,14 @@ async fn embed(
     let embedder = state.embedder(collection.embedder.as_str().try_into()?);
 
     let content = d_service.get_content(&*store, document_id).await?;
-    let chunks = d_service.get_chunks(document_id, &content).await?;
+    let chunks = d_service
+        .get_chunks(document.id, &content, Some(embedder.clone()))
+        .await?;
 
     let create = CreateEmbeddings {
         id: document_id,
         collection: collection.id,
-        chunks,
+        chunks: chunks.iter().map(|c| c.as_str()).collect(),
     };
 
     v_service

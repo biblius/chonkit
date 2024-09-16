@@ -1,11 +1,4 @@
-use crate::config::StartArgs;
-use app::{
-    document::store::FsDocumentStore, embedder::fastembed::FastEmbedder, service::ServiceState,
-};
-use clap::Parser;
 use pdfium_render::prelude::Pdfium;
-use std::sync::Arc;
-use tracing_subscriber::EnvFilter;
 
 pub mod app;
 pub mod config;
@@ -15,18 +8,30 @@ pub mod error;
 
 pub const DEFAULT_COLLECTION_NAME: &str = "chonkit_default_0";
 
-#[cfg(all(feature = "cli", feature = "http"))]
-compile_error!("cannot run in both cli and http mode");
-
-#[cfg(not(any(feature = "cli", feature = "http")))]
-compile_error!("execution mode not set; run with `-F cli` or -F `http` to pick one");
-
 #[tokio::main]
 async fn main() {
-    let args = StartArgs::parse();
+    #[cfg(all(feature = "cli", feature = "http"))]
+    compile_error!("cannot run in both cli and http mode");
+
+    #[cfg(not(any(test, feature = "cli", feature = "http")))]
+    compile_error!("execution mode not set; run with `-F cli` or -F `http` to pick one");
 
     // Ensures the dynamic library is loaded and panics if it isn't
     Pdfium::default();
+
+    #[cfg(any(feature = "cli", feature = "http"))]
+    run().await;
+}
+
+#[cfg(any(feature = "cli", feature = "http"))]
+async fn run() {
+    use crate::config::StartArgs;
+    use app::{document::store::FsDocumentStore, service::ServiceState};
+    use clap::Parser;
+    use std::sync::Arc;
+    use tracing_subscriber::EnvFilter;
+
+    let args = StartArgs::parse();
 
     let db_url = args.db_url();
     let upload_path = args.upload_path();
@@ -41,7 +46,7 @@ async fn main() {
     let fs_store = Arc::new(FsDocumentStore::new(&upload_path));
 
     #[cfg(feature = "fembed")]
-    let fastembed = Arc::new(FastEmbedder);
+    let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder);
 
     #[cfg(feature = "openai")]
     let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
@@ -59,10 +64,10 @@ async fn main() {
 
         fs_store,
 
-        // #[cfg(feature = "fembed")]
+        #[cfg(feature = "fembed")]
         fastembed,
 
-        // #[cfg(feature = "openai")]
+        #[cfg(feature = "openai")]
         openai,
 
         #[cfg(feature = "qdrant")]

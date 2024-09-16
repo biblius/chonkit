@@ -89,7 +89,11 @@ impl DocumentRepo for PgPool {
         .map_err(ChonkitError::from)
     }
 
-    async fn list(&self, p: Pagination, src: Option<&str>) -> Result<List<Document>, ChonkitError> {
+    async fn list(
+        &self,
+        p: Pagination,
+        _src: Option<&str>,
+    ) -> Result<List<Document>, ChonkitError> {
         // TODO: implement `src` filter
         let total = sqlx::query!("SELECT COUNT(id) FROM documents")
             .fetch_one(self)
@@ -459,8 +463,11 @@ mod tests {
         let Chunker::Sliding(sliding) = config.config else {
             panic!("invalid config variant");
         };
-        assert_eq!(chunker.size(), sliding.config.size);
-        assert_eq!(chunker.overlap(), sliding.config.overlap);
+        let Chunker::Sliding(chunker) = chunker else {
+            panic!("the impossible happened");
+        };
+        assert_eq!(chunker.config.size, sliding.config.size);
+        assert_eq!(chunker.config.overlap, sliding.config.overlap);
         repo.remove_by_id(doc.id).await.unwrap();
     }
 }

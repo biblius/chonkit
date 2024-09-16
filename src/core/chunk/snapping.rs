@@ -1,4 +1,10 @@
-use super::{concat, ChunkBaseConfig, ChunkerError, DocumentChunker};
+use super::{
+    concat,
+    cursor::{
+        byte_count, snap_back, snap_front, Cursor, CursorRev, DEFAULT_SKIP_B, DEFAULT_SKIP_F,
+    },
+    ChunkBaseConfig, ChunkerError, DocumentChunker,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
@@ -52,31 +58,16 @@ pub struct SnappingWindow {
 impl Default for SnappingWindow {
     fn default() -> Self {
         Self {
-            config: ChunkBaseConfig::new(1000, 10),
+            config: ChunkBaseConfig::new(1000, 5),
             delimiter: '.',
             // Common urls, abbreviations, file extensions
-            skip_forward: Self::DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
-            skip_back: Self::DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+            skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+            skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
         }
     }
 }
 
 impl SnappingWindow {
-    /// Default patterns to skip in front of delimiters.
-    /// `___. some text`
-    pub const DEFAULT_SKIP_F: &'static [&'static str] = &[
-        "com", "org", "net", // Common URL patterns
-        "g.", "e.", // Common acronyms (e.g., i.e.)
-        "sh", "rs", "js", "json", // Common file extensions
-    ];
-
-    /// Default patterns to skip behind delimiters.
-    /// `Some text.___` <
-    pub const DEFAULT_SKIP_B: &'static [&'static str] = &[
-        "www", // Common URL patterns
-        "etc", "e.g", "i.e", // Common acronyms
-    ];
-
     pub fn new(size: usize, overlap: usize) -> Self {
         Self {
             config: ChunkBaseConfig::new(size, overlap),
@@ -100,8 +91,14 @@ impl SnappingWindow {
     }
 }
 
-impl DocumentChunker for SnappingWindow {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+impl<'a> DocumentChunker<'a> for SnappingWindow {
+    type Output = &'a str;
+
+    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+        if input.trim().is_empty() {
+            return Ok(vec![]);
+        }
+
         let Self {
             config: ChunkBaseConfig { size, overlap },
             delimiter: delim,
@@ -123,6 +120,7 @@ impl DocumentChunker for SnappingWindow {
         let mut chunk = &input[..start];
 
         loop {
+            // Cursor has reached the end.
             if start >= total_bytes {
                 if !chunk.is_empty() {
                     chunks.push(chunk)
@@ -145,10 +143,12 @@ impl DocumentChunker for SnappingWindow {
             chunk = concat(chunk, piece)?;
 
             if byte_count(chunk) < *size {
+                // If the cursor is not finished, take another batch.
                 if !cursor.finished() {
                     continue;
                 }
 
+                // Otherwise, we are at the end of input.
                 let prev = &input[..cursor.byte_offset - byte_count(chunk)];
                 let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
                 let chunk_full = concat(prev, chunk)?;
@@ -224,6 +224,7 @@ impl DocumentChunker for SnappingWindow {
     }
 }
 
+#[inline(always)]
 fn previous_chunk<'a>(
     input: &'a str,
     overlap: usize,
@@ -241,6 +242,7 @@ fn previous_chunk<'a>(
     p_cursor.get_slice()
 }
 
+#[inline(always)]
 fn next_chunk<'a>(
     input: &'a str,
     overlap: usize,
@@ -256,335 +258,6 @@ fn next_chunk<'a>(
         }
     }
     (n_cursor.get_slice(), n_cursor.byte_offset)
-}
-
-///
-/// TODO: Maybe check if we can remove skip_b because fullstops are usually followed by spaces.
-/// It would save a lot of work in the long run.
-
-#[derive(Debug)]
-struct Cursor<'a> {
-    /// Input.
-    buf: &'a str,
-
-    /// Total bytes in buf.
-    byte_count: usize,
-
-    /// Indexes into buf, the current position of the cursor.
-    /// Always gets advanced past the delimiter.
-    byte_offset: usize,
-
-    /// How many chars were skipped during advancing.
-    char_offset: usize,
-
-    /// Delimiter to split by.
-    delim: char,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(input: &'a str, delim: char) -> Self {
-        Self {
-            buf: input,
-            byte_count: byte_count(input),
-            byte_offset: 0,
-            char_offset: 0,
-            delim,
-        }
-    }
-
-    fn finished(&self) -> bool {
-        self.byte_offset == self.byte_count - 1
-    }
-
-    fn get_slice(&self) -> &'a str {
-        if self.buf.is_empty() || self.finished() {
-            return self.buf;
-        }
-        &self.buf[..self.byte_offset]
-    }
-
-    /// Advance the byte_offset until `delim` is found. The byte_offset will be set
-    /// to the index following the delim.
-    fn advance(&mut self) {
-        if self.buf.is_empty() || self.finished() {
-            return;
-        }
-
-        let mut chars = self.buf.chars().skip(self.char_offset);
-
-        loop {
-            let Some(ch) = chars.next() else {
-                break;
-            };
-
-            self.byte_offset += ch.len_utf8();
-            self.char_offset += 1;
-
-            if self.byte_offset == self.byte_count - 1 {
-                break;
-            }
-
-            if ch != self.delim {
-                continue;
-            }
-
-            // If we find repeating delimiters, we should
-            // continue to the next single one to capture the end
-            // of the sentence
-            let mut stop = true;
-
-            while chars.next().is_some_and(|ch| ch == self.delim) {
-                self.byte_offset += ch.len_utf8();
-                self.char_offset += 1;
-                stop = false;
-            }
-
-            if stop {
-                break;
-            }
-
-            self.byte_offset += ch.len_utf8();
-            self.char_offset += 1;
-        }
-    }
-
-    fn advance_exact(&mut self, pat: &str) {
-        let amt = byte_count(pat);
-        if self.byte_offset + amt >= self.byte_count {
-            self.byte_offset = self.byte_count - 1;
-            self.char_offset = self.buf.chars().count();
-            return;
-        }
-        self.byte_offset += amt;
-        self.char_offset += pat.chars().count();
-    }
-
-    fn peek_back(&self, pat: &str) -> bool {
-        let pat_offset = byte_count(pat);
-
-        if self.byte_offset.saturating_sub(pat_offset) == 0 {
-            return false;
-        }
-
-        // Skip if we are done.
-        if self.finished() {
-            return false;
-        }
-
-        let mut start = self.byte_offset - 1 - pat_offset;
-        let mut end = self.byte_offset - 1;
-
-        snap_back(&mut start, self.buf);
-        snap_back(&mut end, self.buf);
-
-        &self.buf[start..end] == pat
-    }
-
-    fn peek_forward(&self, pat: &str) -> bool {
-        // Skip if we are done.
-        if self.byte_offset + byte_count(pat) >= self.byte_count {
-            return false;
-        }
-        let mut end = self.byte_offset + byte_count(pat);
-        snap_front(&mut end, self.buf);
-        &self.buf[self.byte_offset..end] == pat
-    }
-
-    /// TODO: I'm pretty sure that we can only iterate through
-    /// one of the skip vectors in this one if we change the implementation
-    /// to always advance if it doesn't encounter a character behind a delimiter.
-    fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
-        for s in back {
-            if self.peek_back(s) {
-                return true;
-            }
-        }
-
-        for s in forward {
-            if self.peek_forward(s) {
-                self.advance_exact(s);
-                return true;
-            }
-        }
-
-        false
-    }
-}
-
-/// Cursor for scanning a string backwards. The `byte_offset` of this cursor is always
-/// kept at `delim` points in `buf`.
-#[derive(Debug)]
-struct CursorRev<'a> {
-    /// The str being scanned.
-    buf: &'a str,
-
-    byte_count: usize,
-
-    /// The current byte byte offset of the cursor in the str.
-    /// Is kept on delimiter when advancing.
-    byte_offset: usize,
-
-    /// Total input UTF-8 chars
-    char_count: usize,
-
-    /// The current byte byte offset of the cursor in the str.
-    char_offset: usize,
-
-    /// The delimiter to snap to
-    delim: char,
-}
-
-impl<'a> CursorRev<'a> {
-    fn new(input: &'a str, delim: char) -> Self {
-        Self {
-            buf: input,
-            byte_count: byte_count(input),
-            byte_offset: input.len().saturating_sub(1),
-            char_count: input.chars().count(),
-            char_offset: input.chars().count(),
-            delim,
-        }
-    }
-
-    fn finished(&self) -> bool {
-        self.byte_offset == 0
-    }
-
-    fn get_slice(&self) -> &'a str {
-        if self.finished() {
-            self.buf
-        } else {
-            let mut start = self.byte_offset + 1;
-            snap_front(&mut start, self.buf);
-            &self.buf[start..]
-        }
-    }
-
-    fn advance(&mut self) {
-        if self.finished() {
-            return;
-        }
-
-        self.byte_offset -= self.delim.len_utf8();
-        self.char_offset -= 1;
-
-        let mut chars = self
-            .buf
-            .chars()
-            .rev()
-            .skip(self.char_count - self.char_offset);
-
-        loop {
-            let Some(ch) = chars.next() else {
-                self.byte_offset = 0;
-                self.char_offset = self.char_count;
-                break;
-            };
-
-            if self.finished() {
-                break;
-            }
-
-            self.byte_offset -= ch.len_utf8();
-            self.char_offset -= 1;
-
-            if ch != self.delim {
-                continue;
-            }
-
-            let mut stop = true;
-
-            // Advance until end of delimiter sequence
-            while chars.next().is_some_and(|ch| ch == self.delim) {
-                self.byte_offset -= ch.len_utf8();
-                self.char_offset -= 1;
-                stop = false;
-            }
-
-            if stop {
-                // Since we are at a single fullstop, we want to increment the
-                // byte_offset so as not to include it at the start of the slice.
-                self.byte_offset += ch.len_utf8();
-                self.char_offset += 1;
-                break;
-            }
-
-            self.byte_offset -= ch.len_utf8();
-            self.char_offset -= 1;
-        }
-    }
-
-    fn peek_back(&self, pat: &str) -> bool {
-        // Skip if we are done.
-        if self.finished() {
-            return false;
-        }
-        let mut start = self.byte_offset.saturating_sub(byte_count(pat));
-        snap_back(&mut start, self.buf);
-        &self.buf[start..self.byte_offset] == pat
-    }
-
-    fn peek_forward(&self, pat: &str) -> bool {
-        let pat_offset = byte_count(pat);
-
-        // Skip if we are done or at the start.
-        if self.finished() || self.byte_offset + pat_offset >= self.byte_count {
-            return false;
-        }
-
-        let mut start = self.byte_offset + 1;
-        let mut end = self.byte_offset + 1 + pat_offset;
-
-        snap_front(&mut start, self.buf);
-        snap_front(&mut end, self.buf);
-
-        &self.buf[start..end] == pat
-    }
-
-    fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
-        for s in back {
-            if self.peek_back(s) {
-                self.advance_exact(s);
-                return true;
-            }
-        }
-
-        for s in forward {
-            if self.peek_forward(s) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn advance_exact(&mut self, pat: &str) {
-        let amt = byte_count(pat);
-        self.char_offset -= pat.chars().count();
-        self.byte_offset = self.byte_offset.saturating_sub(amt);
-    }
-}
-
-#[inline(always)]
-fn byte_count(input: &str) -> usize {
-    input.chars().fold(0, |acc, el| acc + el.len_utf8())
-}
-
-#[inline(always)]
-fn snap_front(i: &mut usize, input: &str) {
-    while !input.is_char_boundary(*i) && *i < input.len() {
-        *i += 1;
-    }
-}
-
-#[inline(always)]
-fn snap_back(i: &mut usize, input: &str) {
-    if *i == 0 {
-        return;
-    }
-    while !input.is_char_boundary(*i) {
-        *i -= 1;
-    }
 }
 
 #[cfg(test)]
@@ -619,143 +292,8 @@ mod tests {
         assert_eq!(skip_b, chunker.skip_back);
     }
 
-    #[test]
-    fn cursor_advances_to_delimiter() {
-        let input = "This is such a sentence. One of the sentences in the world. Super wow.";
-        let mut cursor = Cursor::new(input, '.');
-        let expected = [
-            "This is such a sentence.",
-            "This is such a sentence. One of the sentences in the world.",
-            input,
-        ];
-        assert!(cursor.get_slice().is_empty());
-        for test in expected {
-            cursor.advance();
-            assert_eq!(test, cursor.get_slice());
-        }
-    }
-
-    #[test]
-    fn cursor_advances_past_repeating_delimiters() {
-        let input = "This is such a sentence... One of the sentences in the world. Super wow.";
-        let mut cursor = Cursor::new(input, '.');
-        let expected = [
-            "This is such a sentence... One of the sentences in the world.",
-            input,
-        ];
-        for test in expected {
-            cursor.advance();
-            assert_eq!(test, cursor.get_slice());
-        }
-    }
-
-    #[test]
-    fn cursor_advances_exact() {
-        let input = "This is Sparta my friend";
-        let mut cursor = Cursor::new(input, '.');
-        let expected = input.split_inclusive(' ');
-        let mut buf = String::new();
-        for test in expected {
-            assert_eq!(&buf, cursor.get_slice());
-            cursor.advance_exact(test);
-            buf.push_str(test);
-        }
-    }
-
-    #[test]
-    fn cursor_peek_forward() {
-        let input = "This. Is. Sentence. etc.";
-        let mut cursor = Cursor::new(input, '.');
-        let expected = ["This", " Is", " Sentence", " etc"];
-        for test in expected {
-            assert!(cursor.peek_forward(test));
-            cursor.advance();
-        }
-        assert!(!cursor.peek_forward("etc"));
-    }
-
-    #[test]
-    fn cursor_peek_back() {
-        let input = "This. Is. Sentence. etc.";
-        let mut cursor = Cursor::new(input, '.');
-        let expected = ["This", " Is", " Sentence"];
-        assert!(!cursor.peek_back("This"));
-        for test in expected {
-            cursor.advance();
-            assert!(cursor.peek_back(test));
-        }
-    }
-
-    #[test]
-    fn rev_cursor_advances_to_delimiter() {
-        let input = "This is such a sentence. One of the sentences in the world. Super wow.";
-        let mut cursor = CursorRev::new(input, '.');
-        let expected = [
-            " Super wow.",
-            " One of the sentences in the world. Super wow.",
-            input,
-        ];
-        for test in expected {
-            cursor.advance();
-            assert_eq!(test, cursor.get_slice());
-        }
-    }
-
-    #[test]
-    fn rev_cursor_advances_past_repeating_delimiters() {
-        let input =
-            "This is such a sentence..... Very sentencey. So many.......... words. One of the sentences in the world... Super wow.";
-        let mut cursor = CursorRev::new(input, '.');
-        let expected = [
-            " One of the sentences in the world... Super wow.",
-            " So many.......... words. One of the sentences in the world... Super wow.",
-            input,
-        ];
-        for test in expected {
-            cursor.advance();
-            assert_eq!(test, cursor.get_slice());
-        }
-    }
-
-    #[test]
-    fn rev_cursor_advances_exact() {
-        let input = "This is Sparta my friend";
-        let mut cursor = CursorRev::new(input, '.');
-        let mut buf = String::new();
-        let expected = input.split_inclusive(' ');
-        for test in expected.into_iter().rev() {
-            assert_eq!(&buf, cursor.get_slice());
-            cursor.advance_exact(test);
-            buf.insert_str(0, test);
-        }
-    }
-
-    #[test]
-    fn rev_cursor_peek_forward() {
-        let input = "This. Is. Sentence. etc.";
-        let mut cursor = CursorRev::new(input, '.');
-        let expected = [" Is", " Sentence", " etc"];
-        for test in expected.into_iter().rev() {
-            cursor.advance();
-            assert!(cursor.peek_forward(test), "{test}");
-        }
-    }
-
-    #[test]
-    fn rev_cursor_peek_back() {
-        let input = "This. Is. Sentence. etc.";
-        let mut cursor = CursorRev::new(input, '.');
-        let expected = ["This", " Is", " Sentence", " etc"];
-        assert!(cursor.peek_back("etc"));
-        for test in expected.into_iter().rev() {
-            assert!(cursor.peek_back(test));
-            cursor.advance();
-        }
-        assert!(!cursor.peek_back("etc"));
-    }
-
-    #[test]
-    fn snapping_works() {
+    #[tokio::test]
+    async fn snapping_works() {
         let input =
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
         let chunker = SnappingWindow {
@@ -767,7 +305,7 @@ mod tests {
             " It is not very long. Here is another. Long schlong ding dong.",
         ];
 
-        let chunks = chunker.chunk(input.trim()).unwrap();
+        let chunks = chunker.chunk(input.trim()).await.unwrap();
         assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -775,8 +313,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn snapping_skips_back() {
+    #[tokio::test]
+    async fn snapping_skips_back() {
         let input =
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
         let chunker = SnappingWindow {
@@ -786,7 +324,7 @@ mod tests {
         };
         let expected = [input];
 
-        let chunks = chunker.chunk(input.trim()).unwrap();
+        let chunks = chunker.chunk(input.trim()).await.unwrap();
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -794,8 +332,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn snapping_skips_forward() {
+    #[tokio::test]
+    async fn snapping_skips_forward() {
         let input =
             "Go to sentences.org for more words. 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.";
 
@@ -807,7 +345,7 @@ mod tests {
 
         let expected = [input];
 
-        let chunks = chunker.chunk(input.trim()).unwrap();
+        let chunks = chunker.chunk(input.trim()).await.unwrap();
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -815,8 +353,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn snapping_skips_common_abbreviations() {
+    #[tokio::test]
+    async fn snapping_skips_common_abbreviations() {
         let input =
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
@@ -832,7 +370,7 @@ mod tests {
             " Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.",
         ];
 
-        let chunks = chunker.chunk(input.trim()).unwrap();
+        let chunks = chunker.chunk(input.trim()).await.unwrap();
         assert_eq!(4, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -840,8 +378,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn snapping_table_of_contents() {
+    #[tokio::test]
+    async fn snapping_table_of_contents() {
         let input =
             "Table of contents:\n1 Super cool stuff\n1.1 Some chonkers in rust\n1.2 Some data for your LLM\n1.3 ??? \n1.4 Profit \n1.4.1 Lambo\nHope you liked the table of contents. See more at content.co.com.";
 
@@ -862,11 +400,22 @@ mod tests {
 
         let expected = [input];
 
-        let chunks = chunker.chunk(input.trim()).unwrap();
+        let chunks = chunker.chunk(input.trim()).await.unwrap();
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
             assert_eq!(test, chunk);
         }
+    }
+
+    #[tokio::test]
+    async fn snapping_window_empty() {
+        let chunker = SnappingWindow {
+            config: ChunkBaseConfig::new(1, 1),
+            ..Default::default()
+        };
+
+        let chunks = chunker.chunk("").await.unwrap();
+        assert!(chunks.is_empty());
     }
 }

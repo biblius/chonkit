@@ -1,7 +1,10 @@
+use semantic::SemanticWindow;
 use serde::{Deserialize, Serialize};
-use std::str::Utf8Error;
+use std::{future::Future, str::Utf8Error};
 use thiserror::Error;
 
+mod cursor;
+mod semantic;
 mod sliding;
 mod snapping;
 
@@ -14,6 +17,7 @@ pub use snapping::SnappingWindow;
 pub enum Chunker {
     Sliding(SlidingWindow),
     Snapping(SnappingWindow),
+    Semantic(SemanticWindow),
 }
 
 impl Chunker {
@@ -49,17 +53,27 @@ impl Chunker {
         Self::Snapping(SnappingWindow::default())
     }
 
-    pub fn size(&self) -> usize {
+    /// Chunk the input using the current variant.
+    ///
+    /// TODO: See if we can get away without allocating new strings for chunkers
+    /// that do not allocate.
+    ///
+    /// * `input`: Input to chunk.
+    pub async fn chunk(&self, input: &str) -> Result<Vec<String>, ChunkerError> {
         match self {
-            Self::Sliding(SlidingWindow { config }) => config.size,
-            Self::Snapping(SnappingWindow { config, .. }) => config.size,
-        }
-    }
-
-    pub fn overlap(&self) -> usize {
-        match self {
-            Self::Sliding(SlidingWindow { config }) => config.overlap,
-            Self::Snapping(SnappingWindow { config, .. }) => config.overlap,
+            Self::Sliding(chunker) => Ok(chunker
+                .chunk(input)
+                .await?
+                .into_iter()
+                .map(String::from)
+                .collect()),
+            Self::Snapping(chunker) => Ok(chunker
+                .chunk(input)
+                .await?
+                .into_iter()
+                .map(String::from)
+                .collect()),
+            Self::Semantic(chunker) => Ok(chunker.chunk(input).await?),
         }
     }
 }
@@ -69,15 +83,7 @@ impl std::fmt::Display for Chunker {
         match self {
             Self::Sliding(_) => write!(f, "SlidingWindow"),
             Self::Snapping(_) => write!(f, "SnappingWindow"),
-        }
-    }
-}
-
-impl DocumentChunker for Chunker {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
-        match self {
-            Self::Sliding(chunker) => Ok(chunker.chunk(input)?),
-            Self::Snapping(chunker) => Ok(chunker.chunk(input)?),
+            Self::Semantic(_) => write!(f, "SemanticWindow"),
         }
     }
 }
@@ -88,8 +94,13 @@ impl Default for Chunker {
     }
 }
 
-pub trait DocumentChunker {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError>;
+pub trait DocumentChunker<'a> {
+    type Output: AsRef<str> + 'a;
+
+    fn chunk(
+        &self,
+        input: &'a str,
+    ) -> impl Future<Output = Result<Vec<Self::Output>, ChunkerError>> + Send;
 }
 
 #[derive(Debug, Error)]
@@ -99,6 +110,9 @@ pub enum ChunkerError {
 
     #[error("utf-8: {0}")]
     Utf8(#[from] Utf8Error),
+
+    #[error("error in semantic chunker embedder: {0}")]
+    Embedder(String),
 }
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]

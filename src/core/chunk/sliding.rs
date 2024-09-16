@@ -37,8 +37,10 @@ impl Default for SlidingWindow {
     }
 }
 
-impl DocumentChunker for SlidingWindow {
-    fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+impl<'a> DocumentChunker<'a> for SlidingWindow {
+    type Output = &'a str;
+
+    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         let SlidingWindow {
             config: ChunkBaseConfig { size, overlap },
         } = self;
@@ -101,11 +103,11 @@ impl DocumentChunker for SlidingWindow {
 mod tests {
     use super::*;
 
-    #[test]
-    fn sliding_window_works() {
+    #[tokio::test]
+    async fn sliding_window_works() {
         let input = "Sticks and stones may break my bones, but words will never leverage agile frameworks to provide a robust synopsis for high level overviews.";
         let window = SlidingWindow::new(30, 20);
-        let chunks = window.chunk(input).unwrap();
+        let chunks = window.chunk(input).await.unwrap();
 
         assert_eq!(&input[0..50], chunks[0]);
         assert_eq!(&input[10..80], chunks[1]);
@@ -113,20 +115,20 @@ mod tests {
         assert_eq!(&input[70..], chunks[3]);
     }
 
-    #[test]
-    fn sliding_window_empty() {
+    #[tokio::test]
+    async fn sliding_window_empty() {
         let input = "";
         let window = SlidingWindow::new(1, 0);
-        let chunks = window.chunk(input).unwrap();
+        let chunks = window.chunk(input).await.unwrap();
 
         assert!(chunks.is_empty());
     }
 
-    #[test]
-    fn sliding_window_small_input() {
+    #[tokio::test]
+    async fn sliding_window_small_input() {
         let input = "Foobar";
         let window = SlidingWindow::new(30, 20);
-        let chunks = window.chunk(input).unwrap();
+        let chunks = window.chunk(input).await.unwrap();
 
         assert_eq!(input, chunks[0]);
     }

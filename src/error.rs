@@ -60,9 +60,6 @@ pub enum ChonkitError {
     #[error("Fastembed: {0}")]
     Fastembed(String),
 
-    #[error("Openai: {0}")]
-    Reqwest(#[from] reqwest::Error),
-
     #[error("Validation: {0}")]
     Validation(#[from] ValidationErrors),
 
@@ -77,4 +74,8 @@ pub enum ChonkitError {
     #[cfg(feature = "weaviate")]
     #[error("Weaviate: {0}")]
     Weaviate(String),
+
+    #[cfg(feature = "openai")]
+    #[error("Openai: {0}")]
+    Reqwest(#[from] reqwest::Error),
 }

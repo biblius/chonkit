@@ -3,9 +3,6 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 use tracing::error;
 
-#[cfg(feature = "qdrant")]
-use qdrant_client::QdrantError;
-
 impl ChonkitError {
     pub fn status(&self) -> StatusCode {
         use ChonkitError as E;
@@ -29,6 +26,8 @@ impl ChonkitError {
             | E::Fmt(_)
             | E::Utf8(_)
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
+
+            #[cfg(feature = "openai")]
             E::Reqwest(e) => e.status().unwrap_or(SC::INTERNAL_SERVER_ERROR),
 
             #[cfg(feature = "qdrant")]
@@ -41,7 +40,6 @@ impl ChonkitError {
 }
 
 /// Error response wrapper.
-#[cfg(feature = "http")]
 #[derive(Debug, Serialize)]
 struct ResponseError<T: Serialize> {
     error_type: ErrorType,
@@ -57,7 +55,6 @@ where
     }
 }
 
-#[cfg(feature = "http")]
 #[derive(Debug, Serialize)]
 enum ErrorType {
     Internal,
@@ -112,6 +109,7 @@ impl IntoResponse for ChonkitError {
             CE::DocxRead(_) => todo!(),
             CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
 
+            #[cfg(feature = "openai")]
             CE::Reqwest(e) => {
                 (status, ResponseError::new(ET::Internal, e.to_string())).into_response()
             }
@@ -120,9 +118,10 @@ impl IntoResponse for ChonkitError {
             CE::Weaviate(e) => (status, ResponseError::new(ET::Internal, e)).into_response(),
 
             #[cfg(feature = "qdrant")]
-            CE::Qdrant(QdrantError::ResponseError { status: st }) => {
+            CE::Qdrant(qdrant_client::QdrantError::ResponseError { status: st }) => {
                 (status, ResponseError::new(ET::Internal, st.to_string())).into_response()
             }
+
             #[cfg(feature = "qdrant")]
             CE::Qdrant(_) => (status, self.to_string()).into_response(),
         }

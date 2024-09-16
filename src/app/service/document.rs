@@ -1,6 +1,6 @@
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
-mod document_service_tests {
+mod document_service_integration_tests {
     use crate::{
         app::{
             document::store::FsDocumentStore,

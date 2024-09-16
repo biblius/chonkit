@@ -1,15 +1,12 @@
 // Tests vector service integration depending on the features used.
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
-mod vector_service_tests {
+mod vector_service_integration_tests {
 
     use crate::{
-        app::{
-            embedder::fastembed::FastEmbedder,
-            test::{init_postgres, PostgresContainer},
-        },
+        app::test::{init_postgres, PostgresContainer},
         core::{
-            embedder::Embedder,
+            embedder::Embedder as _,
             model::document::{DocumentInsert, DocumentType},
             repo::{document::DocumentRepo, vector::VectorRepo},
             service::vector::dto::{CreateCollection, CreateEmbeddings, Search},
@@ -24,18 +21,24 @@ mod vector_service_tests {
 
     type VectorService = crate::core::service::vector::VectorService<PgPool>;
 
+    #[cfg(all(feature = "qdrant", feature = "weaviate"))]
+    compile_error!("test can only be run with exactly 1 vector provider");
+
     #[cfg(feature = "qdrant")]
     type VectorDatabase = crate::app::vector::qdrant::QdrantDb;
 
     #[cfg(feature = "weaviate")]
     type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
 
+    #[cfg(feature = "fembed")]
+    type Embedder = crate::app::embedder::fastembed::FastEmbedder;
+
     #[before_all]
     async fn setup() -> (
         PgPool,
         VectorDatabase,
         VectorService,
-        FastEmbedder,
+        Embedder,
         PostgresContainer,
         ContainerAsync<GenericImage>,
     ) {
@@ -47,7 +50,7 @@ mod vector_service_tests {
         #[cfg(feature = "weaviate")]
         let (vector_client, v_img) = crate::app::test::init_weaviate().await;
 
-        let embedder = FastEmbedder;
+        let embedder = Embedder {};
 
         let service = VectorService::new(postgres.clone());
 
@@ -61,7 +64,7 @@ mod vector_service_tests {
     #[test]
     async fn default_collection_is_stored_in_repo(
         service: VectorService,
-        embedder: FastEmbedder,
+        embedder: Embedder,
         vector_db: VectorDatabase,
     ) {
         let collection = service
@@ -78,7 +81,7 @@ mod vector_service_tests {
     #[test]
     async fn default_collection_is_stored_vec_db(
         service: VectorService,
-        embedder: FastEmbedder,
+        embedder: Embedder,
         vector_db: VectorDatabase,
     ) {
         let collection = service
@@ -102,7 +105,7 @@ mod vector_service_tests {
     #[test]
     async fn create_collection_works(
         service: VectorService,
-        embedder: FastEmbedder,
+        embedder: Embedder,
         vector_db: VectorDatabase,
     ) {
         let name = "test_collection_0";
@@ -134,7 +137,7 @@ mod vector_service_tests {
     async fn create_collection_fails_with_invalid_model(
         service: VectorService,
         vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Embedder,
     ) {
         let name = "test_collection_0";
 
@@ -152,7 +155,7 @@ mod vector_service_tests {
     async fn create_collection_fails_with_existing_collection(
         service: VectorService,
         vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Embedder,
     ) {
         let params = CreateCollection {
             model: embedder.default_model().0,
@@ -169,7 +172,7 @@ mod vector_service_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Embedder,
     ) {
         let default = service
             .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
@@ -236,7 +239,7 @@ mod vector_service_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Embedder,
     ) {
         let collection_name = "test_collection_delete_embeddings";
 
@@ -291,7 +294,7 @@ mod vector_service_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Embedder,
     ) {
         let create = DocumentInsert::new(
             "test_document",

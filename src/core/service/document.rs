@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use crate::{
     core::{
-        chunk::{Chunker, DocumentChunker},
+        chunk::Chunker,
         document::{
             parser::{ParseConfig, Parser},
             sha256,
             store::DocumentStore,
         },
+        embedder::Embedder,
         model::{
             document::{Document, DocumentConfig, DocumentInsert, DocumentType},
             List, Pagination,
@@ -92,19 +95,31 @@ where
     ///
     /// * `id`: Document ID.
     /// * `content`: The document's content.
-    pub async fn get_chunks<'content>(
+    /// * `embedder`: Embedder for the semantic chunker.
+    pub async fn get_chunks(
         &self,
         id: Uuid,
-        content: &'content str,
-    ) -> Result<Vec<&'content str>, ChonkitError> {
-        let chunker = self
+        content: &str,
+        embedder: Option<Arc<dyn Embedder + Send + Sync>>,
+    ) -> Result<Vec<String>, ChonkitError> {
+        let mut chunker = self
             .repo
             .get_chunk_config(id)
             .await?
             .map(|config| config.config)
             .unwrap_or_else(Chunker::snapping_default);
 
-        Ok(chunker.chunk(content)?.into_iter().collect())
+        // If it's a semantic chunker, it needs an embedder.
+        if let Chunker::Semantic(ref mut chunker) = chunker {
+            let Some(embedder) = embedder else {
+                return Err(ChonkitError::InvalidEmbeddingModel(
+                    "No embedder provided for semantic chunker".to_string(),
+                ));
+            };
+            chunker.embedder(embedder);
+        }
+
+        Ok(chunker.chunk(content).await?)
     }
 
     /// Insert the document metadata to the repository and persist it
@@ -230,7 +245,8 @@ where
         info!("Chunking {} with {chunker}", document.name);
 
         Ok(chunker
-            .chunk(&content)?
+            .chunk(&content)
+            .await?
             .into_iter()
             .map(|chunk| chunk.to_owned())
             .collect())

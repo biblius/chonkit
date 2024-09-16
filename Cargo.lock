@@ -545,6 +545,7 @@ dependencies = [
  "http 1.1.0",
  "pdfium-render",
  "qdrant-client",
+ "rayon",
  "regex",
  "reqwest 0.12.7",
  "serde",

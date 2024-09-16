@@ -1,4 +1,4 @@
-use super::{document::store::FsDocumentStore, embedder::fastembed::FastEmbedder};
+use super::document::store::FsDocumentStore;
 use crate::{
     core::{document::store::DocumentStore, embedder::Embedder, vector::VectorDb},
     error::ChonkitError,
@@ -20,7 +20,7 @@ pub struct ServiceState {
     pub openai: Arc<super::embedder::openai::OpenAiEmbeddings>,
 
     #[cfg(feature = "fembed")]
-    pub fastembed: Arc<FastEmbedder>,
+    pub fastembed: Arc<super::embedder::fastembed::FastEmbedder>,
 
     #[cfg(feature = "qdrant")]
     pub qdrant: Arc<super::vector::qdrant::QdrantDb>,
