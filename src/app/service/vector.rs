@@ -194,7 +194,7 @@ mod vector_service_integration_tests {
         let embeddings = CreateEmbeddings {
             id: document.id,
             collection: default.id,
-            chunks: vec![content],
+            chunks: &[content],
         };
 
         let collection = service
@@ -268,7 +268,7 @@ mod vector_service_integration_tests {
         let embeddings = CreateEmbeddings {
             id: document.id,
             collection: collection.id,
-            chunks: vec![content],
+            chunks: &[content],
         };
 
         service
@@ -315,7 +315,7 @@ mod vector_service_integration_tests {
         let create = CreateEmbeddings {
             id: document.id,
             collection: default.id,
-            chunks: vec![content],
+            chunks: &[content],
         };
         service
             .create_embeddings(vector_db, embedder, create.clone())

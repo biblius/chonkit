@@ -1,6 +1,6 @@
-use semantic::SemanticWindow;
+use semantic::{DistanceFn, SemanticWindow};
 use serde::{Deserialize, Serialize};
-use std::{future::Future, str::Utf8Error};
+use std::{future::Future, str::Utf8Error, sync::Arc};
 use thiserror::Error;
 
 mod cursor;
@@ -10,6 +10,8 @@ mod snapping;
 
 pub use sliding::SlidingWindow;
 pub use snapping::SnappingWindow;
+
+use super::embedder::Embedder;
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,27 +55,43 @@ impl Chunker {
         Self::Snapping(SnappingWindow::default())
     }
 
+    /// Create a `SemanticWindow` chunker.
+    ///
+    /// * `size`: Amount of sentences per chunk.
+    /// * `threshold`: Threshold for semantic similarity.
+    /// * `distance_fn`: Distance function to use for semantic similarity.
+    /// * `embedder`: Embedder to use for embedding chunks.
+    /// * `model`: Model to use for embeddings.
+    pub fn semantic(
+        size: usize,
+        threshold: f64,
+        distance_fn: DistanceFn,
+        embedder: Arc<dyn Embedder + Send + Sync>,
+        model: String,
+    ) -> Self {
+        Self::Semantic(SemanticWindow::new(
+            size,
+            threshold,
+            distance_fn,
+            embedder,
+            model,
+        ))
+    }
+
     /// Chunk the input using the current variant.
     ///
     /// TODO: See if we can get away without allocating new strings for chunkers
     /// that do not allocate.
     ///
     /// * `input`: Input to chunk.
-    pub async fn chunk(&self, input: &str) -> Result<Vec<String>, ChunkerError> {
+    pub async fn chunk<'content>(
+        &self,
+        input: &'content str,
+    ) -> Result<ChunkedDocument<'content>, ChunkerError> {
         match self {
-            Self::Sliding(chunker) => Ok(chunker
-                .chunk(input)
-                .await?
-                .into_iter()
-                .map(String::from)
-                .collect()),
-            Self::Snapping(chunker) => Ok(chunker
-                .chunk(input)
-                .await?
-                .into_iter()
-                .map(String::from)
-                .collect()),
-            Self::Semantic(chunker) => Ok(chunker.chunk(input).await?),
+            Self::Sliding(chunker) => Ok(ChunkedDocument::Ref(chunker.chunk(input).await?)),
+            Self::Snapping(chunker) => Ok(ChunkedDocument::Ref(chunker.chunk(input).await?)),
+            Self::Semantic(chunker) => Ok(ChunkedDocument::Owned(chunker.chunk(input).await?)),
         }
     }
 }
@@ -88,10 +106,9 @@ impl std::fmt::Display for Chunker {
     }
 }
 
-impl Default for Chunker {
-    fn default() -> Self {
-        Self::snapping_default()
-    }
+pub enum ChunkedDocument<'content> {
+    Ref(Vec<&'content str>),
+    Owned(Vec<String>),
 }
 
 pub trait DocumentChunker<'a> {

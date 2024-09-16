@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use crate::{
     core::{
-        chunk::Chunker,
+        chunk::{ChunkedDocument, Chunker},
         document::{
             parser::{ParseConfig, Parser},
             sha256,
@@ -17,7 +15,8 @@ use crate::{
     },
     error::ChonkitError,
 };
-use dto::{ChunkPreviewPayload, DocumentUpload};
+use dto::DocumentUpload;
+use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 use validify::{Validate, Validify};
@@ -95,13 +94,13 @@ where
     ///
     /// * `id`: Document ID.
     /// * `content`: The document's content.
-    /// * `embedder`: Embedder for the semantic chunker.
-    pub async fn get_chunks(
+    /// * `embedder`: Optional embedder for the semantic chunker.
+    pub async fn get_chunks<'content>(
         &self,
         id: Uuid,
-        content: &str,
+        content: &'content str,
         embedder: Option<Arc<dyn Embedder + Send + Sync>>,
-    ) -> Result<Vec<String>, ChonkitError> {
+    ) -> Result<ChunkedDocument<'content>, ChonkitError> {
         let mut chunker = self
             .repo
             .get_chunk_config(id)
@@ -183,22 +182,20 @@ where
         &self,
         store: &(dyn DocumentStore + Sync + Send),
         id: Uuid,
-        config: Option<ParseConfig>,
+        config: ParseConfig,
     ) -> Result<String, ChonkitError> {
+        config.validate()?;
+
         let document = self.repo.get_by_id(id).await?;
 
         let Some(document) = document else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        if let Some(ref config) = config {
-            config.validate()?;
-        }
+        let ext = document.ext.as_str().try_into()?;
+        let parser = Parser::new_from(ext, config);
 
-        let parser = Parser::new_from(
-            document.ext.as_str().try_into()?,
-            config.unwrap_or_default(),
-        );
+        info!("Using parser ({ext}) for '{id}'");
 
         store.read(&document, &parser).await
     }
@@ -212,44 +209,24 @@ where
     /// * `id`: Document ID. Used to obtain parser/chunking info.
     /// * `config`: If given, uses the chunking/parsing config, otherwise use the default chunker/parser for
     ///             the file type.
-    pub async fn chunk_preview(
+    pub async fn chunk_preview<'content>(
         &self,
-        store: &(dyn DocumentStore + Sync + Send),
         document: &Document,
-        config: ChunkPreviewPayload,
-    ) -> Result<Vec<String>, ChonkitError> {
-        let ChunkPreviewPayload { parser, chunker } = config;
-
-        let id = document.id;
-        let ext = document.ext.as_str().try_into()?;
-
-        let parser = if let Some(config) = parser {
-            info!("Using existing parser ({ext}) for '{id}'");
-            Parser::new_from(ext, config)
-        } else {
-            info!("Using default parser ({ext}) for '{id}'");
-            self.get_parser(id, ext).await?
-        };
-
-        let content = store.read(&document, &parser).await?;
-        let chunker = if let Some(chunker) = chunker {
-            chunker
-        } else {
-            self.repo
-                .get_chunk_config(id)
-                .await?
-                .map(|config| config.config)
-                .unwrap_or_default()
-        };
-
+        content: &'content str,
+        mut chunker: Chunker,
+        embedder: Option<Arc<dyn Embedder + Send + Sync>>,
+    ) -> Result<ChunkedDocument<'content>, ChonkitError> {
         info!("Chunking {} with {chunker}", document.name);
-
-        Ok(chunker
-            .chunk(&content)
-            .await?
-            .into_iter()
-            .map(|chunk| chunk.to_owned())
-            .collect())
+        // If it's a semantic chunker, it needs an embedder.
+        if let Chunker::Semantic(ref mut chunker) = chunker {
+            let Some(embedder) = embedder else {
+                return Err(ChonkitError::InvalidEmbeddingModel(
+                    "No embedder provided for semantic chunker".to_string(),
+                ));
+            };
+            chunker.embedder(embedder);
+        }
+        Ok(chunker.chunk(&content).await?)
     }
 
     pub async fn update_parser(&self, id: Uuid, config: ParseConfig) -> Result<(), ChonkitError> {
@@ -293,7 +270,7 @@ pub mod dto {
         chunk::Chunker, document::parser::ParseConfig, model::document::DocumentType,
     };
     use serde::Deserialize;
-    use validify::Validify;
+    use validify::{schema_err, schema_validation, Validate, ValidationErrors, Validify};
 
     #[derive(Debug, Validify)]
     pub struct DocumentUpload<'a> {
@@ -317,9 +294,27 @@ pub mod dto {
 
     /// DTO used for previewing chunks.
     #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-    #[derive(Debug, Deserialize, Default)]
+    #[derive(Debug, Deserialize, Validate)]
+    #[validate(Self::validate)]
     pub struct ChunkPreviewPayload {
-        pub parser: Option<ParseConfig>,
-        pub chunker: Option<Chunker>,
+        pub parser: ParseConfig,
+        pub chunker: Chunker,
+        pub embedder: Option<String>,
+        pub embedder_model: Option<String>,
+    }
+
+    impl ChunkPreviewPayload {
+        #[schema_validation]
+        fn validate(&self) -> Result<(), ValidationErrors> {
+            match (&self.chunker, &self.embedder) {
+                (Chunker::Semantic(_), None) => {
+                    schema_err! {
+                        "chunker_params",
+                        "Embedder provider must be set when using semantic chunker"
+                    };
+                }
+                _ => {}
+            }
+        }
     }
 }

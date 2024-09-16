@@ -3,10 +3,7 @@ use crate::{
     core::{
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
-        service::document::{
-            dto::{ChunkPreviewPayload, DocumentUpload},
-            DocumentService,
-        },
+        service::document::{dto::DocumentUpload, DocumentService},
     },
 };
 use clap::{Args, Subcommand};
@@ -145,10 +142,26 @@ pub async fn run(command: Execute, state: ServiceState) {
                     out,
                 }) => {
                     let document = service.get_document(id).await.unwrap();
-                    let chunks = service
-                        .chunk_preview(&*store, &document, ChunkPreviewPayload::default())
+                    let content = service
+                        .parse_preview(&*store, id, ParseConfig::default())
                         .await
                         .unwrap();
+                    let chunks = service
+                        .chunk_preview(
+                            &document,
+                            &content,
+                            crate::core::chunk::Chunker::snapping_default(),
+                            None,
+                        )
+                        .await
+                        .unwrap();
+
+                    let chunks = match chunks {
+                        crate::core::chunk::ChunkedDocument::Ref(chunks) => {
+                            chunks.into_iter().map(String::from).collect()
+                        }
+                        crate::core::chunk::ChunkedDocument::Owned(chunks) => chunks,
+                    };
                     print_chunks(start, end, &chunks);
                     if let Some(out) = out {
                         write_chunks(chunks, start, end, out);
@@ -169,7 +182,7 @@ pub async fn run(command: Execute, state: ServiceState) {
                     for filter in filters {
                         cfg = cfg.filter(regex::Regex::new(&filter).unwrap());
                     }
-                    let parsed = service.parse_preview(&*store, id, Some(cfg)).await.unwrap();
+                    let parsed = service.parse_preview(&*store, id, cfg).await.unwrap();
                     println!("{parsed}");
                 }
                 DocumentExec::Upload(UploadArg { name, path }) => {

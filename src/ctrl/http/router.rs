@@ -236,7 +236,7 @@ async fn update_chunk_config(
     post,
     path = "/documents/{id}/chunk/preview",
     responses(
-        (status = 200, description = "Preview chunk parsing", body = ChunkPreviewPayload),
+        (status = 200, description = "Preview chunk parsing", body = Vec<String>),
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -248,15 +248,32 @@ async fn update_chunk_config(
 async fn chunk_preview(
     state: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
-    config: Option<Json<ChunkPreviewPayload>>,
+    Json(config): Json<ChunkPreviewPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    config.validate()?;
+
     let service = DocumentService::new(state.postgres.clone());
     let document = service.get_document(id).await?;
+
     let store = state.store(document.src.as_str().try_into()?);
-    let parsed = service
-        .chunk_preview(&*store, &document, config.map(|c| c.0).unwrap_or_default())
+
+    let embedder = if let Some(embedder) = &config.embedder {
+        Some(state.embedder(embedder.as_str().try_into()?))
+    } else {
+        None
+    };
+
+    let content = service.parse_preview(&*store, id, config.parser).await?;
+    let chunked = service
+        .chunk_preview(&document, &content, config.chunker, embedder)
         .await?;
-    Ok(Json(parsed))
+
+    match chunked {
+        crate::core::chunk::ChunkedDocument::Ref(chunked) => {
+            Ok(Json(chunked.into_iter().map(String::from).collect()))
+        }
+        crate::core::chunk::ChunkedDocument::Owned(chunked) => Ok(Json(chunked)),
+    }
 }
 
 #[utoipa::path(
@@ -293,19 +310,17 @@ async fn update_parse_config(
     params(
         ("id" = Uuid, Path, description = "Document ID")
     ),
-    request_body(content = Option<ParseConfig>, description = "Optional parse configuration for preview")
+    request_body(content = ParseConfig, description = "Optional parse configuration for preview")
 )]
 async fn parse_preview(
     state: State<ServiceState>,
     Path(id): Path<uuid::Uuid>,
-    parser: Option<Json<ParseConfig>>,
+    Json(parser): Json<ParseConfig>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
     let document = service.get_document(id).await?;
     let store = state.store(document.src.try_into()?);
-    let parsed = service
-        .parse_preview(&*store, id, parser.map(|c| c.0))
-        .await?;
+    let parsed = service.parse_preview(&*store, id, parser).await?;
     Ok(Json(parsed))
 }
 
@@ -445,10 +460,15 @@ async fn embed(
         .get_chunks(document.id, &content, Some(embedder.clone()))
         .await?;
 
+    let chunks = match chunks {
+        crate::core::chunk::ChunkedDocument::Ref(r) => r,
+        crate::core::chunk::ChunkedDocument::Owned(ref o) => o.iter().map(|s| s.as_str()).collect(),
+    };
+
     let create = CreateEmbeddings {
         id: document_id,
         collection: collection.id,
-        chunks: chunks.iter().map(|c| c.as_str()).collect(),
+        chunks: &chunks,
     };
 
     v_service

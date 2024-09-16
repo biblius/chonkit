@@ -8,9 +8,28 @@ use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc, usize};
 
 /// Semantic similarity chunker implementation.
+///
+/// `size` will indicate the base amount of sentences each chunk consists of.
+///
+/// `threshold` is the similarity threshold between 0 and 1 used to determine
+/// whether to create a new chunk or not. The higher the threshold, the more
+/// similar the chunks must be to get grouped.
+///
+/// `distance_fn` is the distance function used for semantic similarity.
+///
+/// This chunker will iterate through each batch of sentences determined by `size`
+/// and will group them together based on the given `threshold` and `distance_fn`.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SemanticWindow {
+    /// The embedder to use for embedding chunks.
+    #[serde(skip)]
+    pub embedder: Option<Arc<dyn Embedder + Send + Sync>>,
+    pub config: SemanticWindowConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticWindowConfig {
     /// How many sentences to use as the base for semantic similarity.
     pub size: usize,
 
@@ -38,10 +57,6 @@ pub struct SemanticWindow {
     /// Useful for common abbreviations and urls.
     pub skip_back: Vec<String>,
 
-    /// The embedder to use for embedding chunks.
-    #[serde(skip)]
-    pub embedder: Option<Arc<dyn Embedder + Send + Sync>>,
-
     /// The model to use for embeddings.
     pub embed_model: String,
 }
@@ -49,12 +64,7 @@ pub struct SemanticWindow {
 impl Debug for SemanticWindow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SemanticWindow")
-            .field("size", &self.size)
-            .field("threshold", &self.threshold)
-            .field("distance_fn", &self.distance_fn)
-            .field("delimiter", &self.delimiter)
-            .field("skip_forward", &self.skip_forward)
-            .field("skip_back", &self.skip_back)
+            .field("config", &self.config)
             .field("embedder", &self.embedder.as_ref().map(|e| e.id()))
             .finish()
     }
@@ -69,14 +79,16 @@ impl SemanticWindow {
         model: String,
     ) -> Self {
         Self {
-            size,
-            threshold,
-            distance_fn,
             embedder: Some(embedder),
-            embed_model: model,
-            delimiter: '.',
-            skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
-            skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+            config: SemanticWindowConfig {
+                size,
+                threshold,
+                distance_fn,
+                embed_model: model,
+                delimiter: '.',
+                skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+                skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+            },
         }
     }
 
@@ -90,14 +102,17 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
     async fn chunk(&self, input: &'a str) -> Result<Vec<Self::Output>, ChunkerError> {
         let Self {
-            size,
-            threshold,
-            distance_fn,
-            delimiter: delim,
-            skip_forward,
-            skip_back,
             embedder,
-            embed_model,
+            config:
+                SemanticWindowConfig {
+                    size,
+                    threshold,
+                    distance_fn,
+                    delimiter: delim,
+                    skip_forward,
+                    skip_back,
+                    embed_model,
+                },
         } = self;
 
         let embedder = embedder

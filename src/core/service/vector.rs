@@ -297,7 +297,7 @@ pub mod dto {
         pub collection: Uuid,
 
         /// The chunked document.
-        pub chunks: Vec<&'a str>,
+        pub chunks: &'a [&'a str],
     }
 
     /// Params for semantic search.
