@@ -1,5 +1,8 @@
 #[rustfmt::skip]
 use super::router::{
+    // App config
+    __path_health_check,
+    __path_app_config,
     // Documents
     __path_list_documents,
     __path_get_document,
@@ -19,6 +22,7 @@ use super::router::{
     __path_search, 
 };
 use crate::{
+    app::service::AppConfig,
     core::{
         chunk::{ChunkBaseConfig, Chunker, SlidingWindow, SnappingWindow},
         document::parser::ParseConfig,
@@ -36,6 +40,9 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        // App config
+        health_check,
+        app_config,
         // Documents
         list_documents,
         get_document,
@@ -70,6 +77,7 @@ use utoipa::OpenApi;
         Embedding,
         Collection,
         VectorCollection,
+        AppConfig,
     ))
 )]
 pub struct ApiDoc;

@@ -1,5 +1,5 @@
 // Tests vector service integration depending on the features used.
-#[cfg(test)]
+#[cfg(all(test, any(feature = "qdrant", feature = "weaviate")))]
 #[suitest::suite(integration_tests)]
 mod vector_service_integration_tests {
 

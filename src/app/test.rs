@@ -1,10 +1,6 @@
 //! Test container utilites.
 
-use testcontainers::{
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-    ContainerAsync, GenericImage,
-};
+use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
 use testcontainers_modules::postgres::Postgres;
 
 #[cfg(feature = "qdrant")]
@@ -37,6 +33,8 @@ pub async fn init_postgres() -> (sqlx::PgPool, PostgresContainer) {
 /// container will get dropped and cleaned up.
 #[cfg(feature = "qdrant")]
 pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
+    use testcontainers::core::{IntoContainerPort, WaitFor};
+
     let qd_image = GenericImage::new("qdrant/qdrant", "latest")
         .with_exposed_port(6334.tcp())
         .with_wait_for(WaitFor::message_on_stdout("gRPC listening on"))
@@ -55,7 +53,7 @@ pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
 /// container will get dropped and cleaned up.
 #[cfg(feature = "weaviate")]
 pub async fn init_weaviate() -> (WeaviateDb, ContainerAsync<GenericImage>) {
-    use testcontainers::ImageExt;
+    use testcontainers::core::{ImageExt, IntoContainerPort, WaitFor};
 
     let wv_image = GenericImage::new("semitechnologies/weaviate", "1.24.12")
         .with_exposed_port(8080.tcp())

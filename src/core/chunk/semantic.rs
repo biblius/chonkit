@@ -7,6 +7,9 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc, usize};
 
+#[cfg(debug_assertions)]
+use tracing::trace;
+
 /// Semantic similarity chunker implementation.
 ///
 /// `size` will indicate the base amount of sentences each chunk consists of.
@@ -166,15 +169,24 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                 continue;
             }
 
+            #[cfg(debug_assertions)]
+            let __start = std::time::Instant::now();
+
             let current = embedder.embed(&[&chunk], &embed_model).await.unwrap()[0]
                 .iter()
                 .map(|f| *f as f64)
                 .collect::<Vec<_>>();
 
+            #[cfg(debug_assertions)]
+            trace!("Embedding took {}ms", __start.elapsed().as_millis());
+
             let mut max_similarity = 0.0;
             let mut chunk_idx = 0;
 
             for (i, existing_chunk) in chunks.iter_mut().enumerate() {
+                #[cfg(debug_assertions)]
+                let __start = std::time::Instant::now();
+
                 let embedded = embedder
                     .embed(&[existing_chunk], &embed_model)
                     .await
@@ -182,6 +194,9 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                     .iter()
                     .map(|f| *f as f64)
                     .collect::<Vec<_>>();
+
+                #[cfg(debug_assertions)]
+                trace!("Embedding took {}ms", __start.elapsed().as_millis());
 
                 let similarity = distance_fn.calculate(&current, &embedded);
 
@@ -193,9 +208,23 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
             if max_similarity < *threshold {
                 chunks.push(chunk.trim().to_string());
+                #[cfg(debug_assertions)]
+                trace!(
+                    "Added new chunk (len:{}|similarity:{max_similarity:.4}/{threshold}) - total: {}",
+                    chunk.trim().len(),
+                    chunks.len(),
+                );
             } else {
                 chunks[chunk_idx].push_str(chunk);
+                #[cfg(debug_assertions)]
+                trace!(
+                    "Added to existing chunk (chunk:{chunk_idx}|similarity:{max_similarity:.4}/{threshold}) - total: {}",
+                    chunks.len()
+                );
             }
+
+            #[cfg(debug_assertions)]
+            trace!("Processed {start}/{total_bytes} bytes");
         }
 
         Ok(chunks)
@@ -232,7 +261,6 @@ impl DistanceFn {
 // Taken from https://github.com/maishathasin/SemanticSimilarity-rs/blob/main/src/similarity.rs
 
 /// https://en.wikipedia.org/wiki/Cosine_similarity
-/// Get the cosine similarity of two vectors.
 /// Normalizes the vectors.
 fn cosine_similarity(vec1: &[f64], vec2: &[f64]) -> f64 {
     let dot_product: f64 = vec1
@@ -248,7 +276,6 @@ fn cosine_similarity(vec1: &[f64], vec2: &[f64]) -> f64 {
 }
 
 /// https://en.wikipedia.org/wiki/Euclidean_distance
-/// Get the euclidean distance of two vectors.
 fn euclidean_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
     vec1.par_iter()
         .zip(vec2.par_iter())
@@ -265,12 +292,13 @@ fn manhattan_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
         .sum()
 }
 
-// angular distance (vec1, vec2, bool)
+/// https://en.wikipedia.org/wiki/Angular_distance
 fn angular_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
     let cosine_sim = cosine_similarity(vec1, vec2);
     cosine_sim.acos() / std::f64::consts::PI
 }
 
+/// https://en.wikipedia.org/wiki/Chebyshev_distance
 fn chebyshev_distance(a: &[f64], b: &[f64]) -> f64 {
     a.iter()
         .zip(b.iter())
@@ -278,6 +306,7 @@ fn chebyshev_distance(a: &[f64], b: &[f64]) -> f64 {
         .fold(0.0, f64::max)
 }
 
+/// https://en.wikipedia.org/wiki/Dot_product
 fn dot_product_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
     vec1.par_iter()
         .zip(vec2.par_iter())
@@ -285,6 +314,7 @@ fn dot_product_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
         .sum()
 }
 
+/// https://en.wikipedia.org/wiki/Minkowski_distance
 fn minkowski_distance(vec1: &[f64], vec2: &[f64], p: i32) -> f64 {
     vec1.par_iter()
         .zip(vec2.par_iter())
@@ -300,7 +330,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn semantic_chunker_works() {
+    async fn semantic_window_works() {
         let input = r#"Leverage agile frameworks to provide robust synopses for high level overviews. Pee is stored in the testicles. SCRUM is an agile framework used for reducing the efficiency of software development teams. The testicular regions of the human male, do in fact contain urea composites. SCRUM is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations. Poopoo, kaka, peepee, doodoo, piss."#;
 
         let embedder = Arc::new(FastEmbedder);
@@ -317,7 +347,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn semantic_chunker_empty() {
+    async fn semantic_window_empty() {
         let input = "";
         let embedder = Arc::new(FastEmbedder);
         let model = embedder.default_model().0;

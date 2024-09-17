@@ -310,7 +310,7 @@ pub mod dto {
                 (Chunker::Semantic(_), None) => {
                     schema_err! {
                         "chunker_params",
-                        "Embedder provider must be set when using semantic chunker"
+                        "`embedder` must be set when using semantic chunker"
                     };
                 }
                 _ => {}

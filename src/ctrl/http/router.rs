@@ -57,6 +57,8 @@ pub fn router(state: ServiceState) -> Router {
 
 fn public_router(state: ServiceState) -> Router {
     Router::new()
+        .route("/_health", get(health_check))
+        .route("/info", get(app_config))
         .route("/documents", get(list_documents))
         .route("/documents", post(upload_documents))
         .layer(DefaultBodyLimit::max(50_000_000))
@@ -81,6 +83,29 @@ fn public_router(state: ServiceState) -> Router {
 
 #[utoipa::path(
     get,
+    path = "/info",
+    responses(
+        (status = 200, description = "Get app configuration and available providers", body = AppConfig),
+        (status = 500, description = "Internal server error")
+    )
+)]
+async fn app_config(state: State<ServiceState>) -> Result<impl IntoResponse, ChonkitError> {
+    Ok(Json(state.get_configuration()?))
+}
+
+#[utoipa::path(
+    get,
+    path = "/_health",
+    responses(
+        (status = 200, description = "OK")
+    )
+)]
+async fn health_check() -> impl IntoResponse {
+    "OK"
+}
+
+#[utoipa::path(
+    get,
     path = "/documents",
     responses(
         (status = 200, description = "List documents", body = [Document]),
@@ -88,7 +113,8 @@ fn public_router(state: ServiceState) -> Router {
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("pagination" = Pagination, Query, description = "Pagination parameters")
+        ("pagination" = Pagination, Query, description = "Pagination parameters"),
+        ("src" = String, Query, description = "Filter documents by source")
     ),
 )]
 async fn list_documents(
