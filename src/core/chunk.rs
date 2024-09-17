@@ -1,3 +1,4 @@
+use super::embedder::Embedder;
 use semantic::{DistanceFn, SemanticWindow};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, str::Utf8Error, sync::Arc};
@@ -10,8 +11,6 @@ mod snapping;
 
 pub use sliding::SlidingWindow;
 pub use snapping::SnappingWindow;
-
-use super::embedder::Embedder;
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,9 +78,6 @@ impl Chunker {
     }
 
     /// Chunk the input using the current variant.
-    ///
-    /// TODO: See if we can get away without allocating new strings for chunkers
-    /// that do not allocate.
     ///
     /// * `input`: Input to chunk.
     pub async fn chunk<'content>(

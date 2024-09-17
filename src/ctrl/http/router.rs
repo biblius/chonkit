@@ -72,6 +72,7 @@ fn public_router(state: ServiceState) -> Router {
         .route("/vectors/collections", get(list_collections))
         .route("/vectors/collections", post(create_collection))
         .route("/vectors/collections/:id", get(get_collection))
+        .route("/vectors/collections/:id", delete(delete_collection))
         .route(
             "/vectors/embeddings/:provider/models",
             get(list_embedding_models),
@@ -80,6 +81,8 @@ fn public_router(state: ServiceState) -> Router {
         .route("/vectors/search", post(search))
         .with_state(state)
 }
+
+// General app configuration
 
 #[utoipa::path(
     get,
@@ -103,6 +106,8 @@ async fn app_config(state: State<ServiceState>) -> Result<impl IntoResponse, Cho
 async fn health_check() -> impl IntoResponse {
     "OK"
 }
+
+// Document router
 
 #[utoipa::path(
     get,
@@ -368,7 +373,7 @@ async fn sync(
     Ok("Successfully synced")
 }
 
-// VECTORS
+// Vector router
 
 #[utoipa::path(
     get,
@@ -421,7 +426,7 @@ async fn create_collection(
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("id" = Uuid, Path, description = "Collection ID") // Adjusted param name
+        ("id" = Uuid, Path, description = "Collection ID")
     )
 )]
 async fn get_collection(
@@ -431,6 +436,33 @@ async fn get_collection(
     let service = VectorService::new(state.postgres.clone());
     let collection = service.get_collection(collection_id).await?;
     Ok(Json(collection))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/vectors/collections/{id}", 
+    responses(
+        (status = 200, description = "Collection deleted successfully"),
+        (status = 404, description = "Collection not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Collection ID")
+    )
+)]
+async fn delete_collection(
+    state: State<ServiceState>,
+    Path(collection_id): Path<uuid::Uuid>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let service = VectorService::new(state.postgres.clone());
+    let collection = service.get_collection(collection_id).await?;
+    let vector_db = state.vector_db(collection.provider.try_into()?);
+    service
+        .delete_collection(&*vector_db, collection_id)
+        .await?;
+    Ok(format!(
+        "Successfully deleted collection with ID '{collection_id}'"
+    ))
 }
 
 #[utoipa::path(
@@ -506,7 +538,7 @@ async fn embed(
 
 #[utoipa::path(
     post,
-    path = "/vectors/search", // Adjusted path
+    path = "/vectors/search", 
     responses(
         (status = 200, description = "Search results returned"),
         (status = 500, description = "Internal server error")

@@ -18,6 +18,7 @@ use super::router::{
     __path_list_embedding_models,
     __path_get_collection,
     __path_create_collection,
+    __path_delete_collection,
     __path_embed,
     __path_search, 
 };
@@ -57,6 +58,7 @@ use utoipa::OpenApi;
         list_collections,
         get_collection,
         create_collection,
+        delete_collection,
         list_embedding_models,
         embed,
         search,
