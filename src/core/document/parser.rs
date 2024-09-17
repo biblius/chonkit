@@ -22,6 +22,7 @@ pub trait DocumentParser {
 /// DOCX paragraphs, CSV rows, etc.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Default, Serialize, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
 #[validate(Self::validate)]
 pub struct ParseConfig {
     /// Skip the first amount of text elements.
@@ -82,6 +83,7 @@ impl ParseConfig {
 
 /// Enumeration of all supported parser types.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Parser {
     Text(TextParser),
     Pdf(PdfParser),

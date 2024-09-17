@@ -10,6 +10,7 @@ use tracing::debug;
 /// to extend the base with.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SlidingWindow {
     pub config: ChunkBaseConfig,
 }

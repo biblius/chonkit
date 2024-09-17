@@ -25,7 +25,10 @@ use super::router::{
 use crate::{
     app::service::AppConfig,
     core::{
-        chunk::{ChunkBaseConfig, Chunker, SlidingWindow, SnappingWindow},
+        chunk::{
+            ChunkBaseConfig, Chunker, DistanceFn, SemanticWindow, SemanticWindowConfig,
+            SlidingWindow, SnappingWindow,
+        },
         document::parser::ParseConfig,
         model::{
             collection::{Collection, Embedding, VectorCollection},
@@ -71,6 +74,9 @@ use utoipa::OpenApi;
         Chunker,
         SlidingWindow,
         SnappingWindow,
+        SemanticWindow,
+        SemanticWindowConfig,
+        DistanceFn,
         ChunkBaseConfig,
         ChunkPreviewPayload,
         ParseConfig,

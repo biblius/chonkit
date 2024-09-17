@@ -1,5 +1,4 @@
 use super::embedder::Embedder;
-use semantic::{DistanceFn, SemanticWindow};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, str::Utf8Error, sync::Arc};
 use thiserror::Error;
@@ -9,6 +8,7 @@ mod semantic;
 mod sliding;
 mod snapping;
 
+pub use semantic::{DistanceFn, SemanticWindow, SemanticWindowConfig};
 pub use sliding::SlidingWindow;
 pub use snapping::SnappingWindow;
 
@@ -77,6 +77,13 @@ impl Chunker {
         ))
     }
 
+    /// Create a default `SemanticWindow` chunker for the embedder.
+    ///
+    /// * `embedder`: Embedder to use for embedding chunks, uses the default embedder model.
+    pub fn semantic_default(embedder: Arc<dyn Embedder + Send + Sync>) -> Self {
+        Self::Semantic(SemanticWindow::default(embedder))
+    }
+
     /// Chunk the input using the current variant.
     ///
     /// * `input`: Input to chunk.
@@ -130,6 +137,7 @@ pub enum ChunkerError {
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChunkBaseConfig {
     /// Base chunk size.
     pub size: usize,

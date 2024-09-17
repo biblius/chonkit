@@ -24,6 +24,7 @@ use tracing::trace;
 /// and will group them together based on the given `threshold` and `distance_fn`.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SemanticWindow {
     /// The embedder to use for embedding chunks.
     #[serde(skip)]
@@ -31,7 +32,9 @@ pub struct SemanticWindow {
     pub config: SemanticWindowConfig,
 }
 
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SemanticWindowConfig {
     /// How many sentences to use as the base for semantic similarity.
     pub size: usize,
@@ -62,6 +65,10 @@ pub struct SemanticWindowConfig {
 
     /// The model to use for embeddings.
     pub embed_model: String,
+
+    /// Embedder provider, not used in the chunker and serves
+    /// solely as metadata.
+    pub embed_provider: String,
 }
 
 impl Debug for SemanticWindow {
@@ -82,16 +89,33 @@ impl SemanticWindow {
         model: String,
     ) -> Self {
         Self {
-            embedder: Some(embedder),
             config: SemanticWindowConfig {
                 size,
                 threshold,
                 distance_fn,
-                embed_model: model,
                 delimiter: '.',
+                embed_provider: embedder.id().to_string(),
+                embed_model: model,
                 skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
                 skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
             },
+            embedder: Some(embedder),
+        }
+    }
+
+    pub fn default(embedder: Arc<dyn Embedder + Send + Sync>) -> Self {
+        Self {
+            config: SemanticWindowConfig {
+                size: 10,
+                threshold: 0.9,
+                distance_fn: DistanceFn::Cosine,
+                delimiter: '.',
+                embed_model: embedder.default_model().0,
+                embed_provider: embedder.id().to_string(),
+                skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+                skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+            },
+            embedder: Some(embedder),
         }
     }
 
@@ -115,6 +139,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                     skip_forward,
                     skip_back,
                     embed_model,
+                    ..
                 },
         } = self;
 
@@ -233,6 +258,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum DistanceFn {
     #[default]
     Cosine,

@@ -1,6 +1,6 @@
 use super::document::store::FsDocumentStore;
 use crate::{
-    core::{document::store::DocumentStore, embedder::Embedder, vector::VectorDb},
+    core::{chunk::Chunker, document::store::DocumentStore, embedder::Embedder, vector::VectorDb},
     error::ChonkitError,
 };
 use serde::{Deserialize, Serialize};
@@ -38,10 +38,13 @@ impl ServiceState {
 
     pub fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
         let mut embedding_providers = HashMap::new();
+        let mut default_chunkers = vec![Chunker::sliding_default(), Chunker::snapping_default()];
 
         for provider_str in EMBEDDING_PROVIDERS {
             let provider = (*provider_str).try_into()?;
             let embedder = self.embedder(provider);
+
+            default_chunkers.push(Chunker::semantic_default(embedder.clone()));
 
             let models = embedder.list_embedding_models().into_iter().collect();
             embedding_providers.insert(provider_str.to_string(), models);
@@ -50,18 +53,23 @@ impl ServiceState {
         Ok(AppConfig {
             vector_providers: VECTOR_PROVIDERS.iter().map(|s| s.to_string()).collect(),
             embedding_providers,
+            default_chunkers,
         })
     }
 }
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     /// A list of available vector providers.
     pub vector_providers: Vec<String>,
 
     /// A map of available embedding providers, their models and the respective model sizes.
     pub embedding_providers: HashMap<String, HashMap<String, usize>>,
+
+    /// A list of default chunking configurations.
+    pub default_chunkers: Vec<Chunker>,
 }
 
 /// Creates a provider enum and its TryFrom <String> and <&str> implementations.

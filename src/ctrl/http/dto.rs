@@ -8,6 +8,7 @@ use uuid::Uuid;
 use validify::{schema_err, schema_validation, ValidationErrors, Validify};
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct UploadResult {
     pub documents: Vec<Document>,
     /// Map form keys to errors
@@ -15,6 +16,7 @@ pub(super) struct UploadResult {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct CreateCollectionPayload {
     /// Collection name. Cannot contain special characters.
     pub name: String,
@@ -40,6 +42,7 @@ impl From<CreateCollectionPayload> for CreateCollection {
 
 /// Params for semantic search.
 #[derive(Debug, Deserialize, Validify, ToSchema)]
+#[serde(rename_all = "camelCase")]
 #[validate(Self::validate)]
 pub(super) struct SearchPayload {
     /// The text to search by.
@@ -75,13 +78,13 @@ impl SearchPayload {
             (None, None, None) => {
                 schema_err!(
                         "either_id_or_name_and_provider",
-                        "one of either collection_id, or provider and collection_name combination must be set"
+                        "one of either `collection_id`, or `provider` and `collection_name` combination must be set"
                     );
             }
             (None, Some(_), None) | (None, None, Some(_)) => {
                 schema_err!(
                     "name_and_provider",
-                    "both 'collection_name'and 'provider' must be set if collection_id is not set"
+                    "both 'collection_name'and 'provider' must be set if `collection_id` is not set"
                 );
             }
             _ => {}

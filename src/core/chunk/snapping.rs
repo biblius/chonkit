@@ -34,6 +34,7 @@ use tracing::trace;
 /// recommended.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnappingWindow {
     /// Here `size` represents the amount of bytes in the base chunk
     /// while `overlap` will represent the amount of leading/trailing sentences.
