@@ -5,6 +5,7 @@ use uuid::Uuid;
 /// Used by vector stores.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct VectorCollection {
     /// Unique collection name.
     pub name: String,
@@ -32,6 +33,7 @@ impl VectorCollection {
 /// Vector collection model.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Collection {
     /// Primary key.
     pub id: Uuid,
@@ -70,6 +72,7 @@ impl<'a> CollectionInsert<'a> {
 /// Embedding information model.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Embedding {
     /// Primary key.
     pub id: Uuid,

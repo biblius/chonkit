@@ -455,7 +455,7 @@ mod tests {
             "fs",
         );
         let doc = repo.insert(doc).await.unwrap();
-        let chunker = Chunker::sliding(420, 69);
+        let chunker = Chunker::sliding(420, 69).unwrap();
         repo.upsert_chunk_config(doc.id, chunker.clone())
             .await
             .unwrap();

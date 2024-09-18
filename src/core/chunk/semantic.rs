@@ -2,7 +2,8 @@ use super::{
     cursor::{byte_count, Cursor, DEFAULT_SKIP_B, DEFAULT_SKIP_F},
     ChunkerError, DocumentChunker,
 };
-use crate::core::embedder::Embedder;
+use crate::{core::embedder::Embedder, error::ChonkitError};
+use futures_util::future::join_all;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc, usize};
@@ -68,6 +69,7 @@ pub struct SemanticWindowConfig {
 
     /// Embedder provider, not used in the chunker and serves
     /// solely as metadata.
+    #[serde(skip_deserializing)]
     pub embed_provider: String,
 }
 
@@ -127,7 +129,10 @@ impl SemanticWindow {
 impl<'a> DocumentChunker<'a> for SemanticWindow {
     type Output = String;
 
-    async fn chunk(&self, input: &'a str) -> Result<Vec<Self::Output>, ChunkerError> {
+    async fn chunk(&self, input: &'a str) -> Result<Vec<Self::Output>, ChonkitError> {
+        #[cfg(debug_assertions)]
+        let __chunk_start = std::time::Instant::now();
+
         let Self {
             embedder,
             config:
@@ -144,7 +149,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
         } = self;
 
         let embedder = embedder
-            .as_deref()
+            .clone()
             .ok_or_else(|| ChunkerError::Embedder("embedder not provided".to_string()))?;
 
         embedder.size(embed_model).ok_or_else(|| {
@@ -166,6 +171,9 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
         // Amount of sentences processed in the current chunk.
         let mut amount = 0;
+
+        #[cfg(debug_assertions)]
+        let mut total_time_spent_embedding_chunks = 0;
 
         loop {
             if start >= total_bytes {
@@ -195,40 +203,68 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             }
 
             #[cfg(debug_assertions)]
-            let __start = std::time::Instant::now();
+            let __current_start = std::time::Instant::now();
 
-            let current = embedder.embed(&[&chunk], &embed_model).await.unwrap()[0]
+            let current = embedder
+                .as_ref()
+                .embed(&[&chunk], &embed_model)
+                .await
+                .unwrap()[0]
                 .iter()
                 .map(|f| *f as f64)
                 .collect::<Vec<_>>();
 
             #[cfg(debug_assertions)]
-            trace!("Embedding took {}ms", __start.elapsed().as_millis());
+            trace!(
+                "Embedding current chunk took {}ms",
+                __current_start.elapsed().as_millis()
+            );
 
-            let mut max_similarity = 0.0;
-            let mut chunk_idx = 0;
+            // Used for parallel embedding
+            let mut tasks = vec![];
 
-            for (i, existing_chunk) in chunks.iter_mut().enumerate() {
-                #[cfg(debug_assertions)]
-                let __start = std::time::Instant::now();
+            #[cfg(debug_assertions)]
+            let __start = std::time::Instant::now();
 
-                let embedded = embedder
-                    .embed(&[existing_chunk], &embed_model)
-                    .await
-                    .unwrap()[0]
-                    .iter()
-                    .map(|f| *f as f64)
-                    .collect::<Vec<_>>();
+            for (i, existing_chunk) in chunks.iter().cloned().enumerate() {
+                let current = current.clone();
+                let embedder = embedder.clone();
+                let embed_model = embed_model.clone();
+                let distance_fn = distance_fn.clone();
 
-                #[cfg(debug_assertions)]
-                trace!("Embedding took {}ms", __start.elapsed().as_millis());
+                let task = tokio::spawn(async move {
+                    let embedded = embedder.embed(&[&existing_chunk], &embed_model).await?[0]
+                        .iter()
+                        .map(|f| *f as f64)
+                        .collect::<Vec<_>>();
 
-                let similarity = distance_fn.calculate(&current, &embedded);
+                    let similarity = distance_fn.calculate(&current, &embedded);
 
-                if similarity > max_similarity {
-                    max_similarity = similarity;
-                    chunk_idx = i;
-                }
+                    Result::<(f64, usize), ChonkitError>::Ok((similarity, i))
+                });
+
+                tasks.push(task);
+            }
+
+            let Some((max_similarity, chunk_idx)) = join_all(tasks)
+                .await
+                .into_iter()
+                // Spawn errors
+                .filter_map(Result::ok)
+                // Embedding errors
+                .filter_map(Result::ok)
+                .reduce(|a, b| if b.0 > a.0 { b } else { a })
+            else {
+                continue;
+            };
+
+            #[cfg(debug_assertions)]
+            {
+                total_time_spent_embedding_chunks += __start.elapsed().as_millis();
+                trace!(
+                    "Embedding existing chunks took {}ms",
+                    __start.elapsed().as_millis()
+                );
             }
 
             if max_similarity < *threshold {
@@ -243,14 +279,24 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                 chunks[chunk_idx].push_str(chunk);
                 #[cfg(debug_assertions)]
                 trace!(
-                    "Added to existing chunk (chunk:{chunk_idx}|similarity:{max_similarity:.4}/{threshold}) - total: {}",
-                    chunks.len()
+                    "Added to existing chunk (chunk:{chunk_idx}|len:{}|similarity:{max_similarity:.4}/{threshold}) - total: {}",
+                    chunks[chunk_idx].len(),
+                    chunks.len(),
                 );
             }
 
             #[cfg(debug_assertions)]
-            trace!("Processed {start}/{total_bytes} bytes");
+            trace!(
+                "Processed {start}/{total_bytes} bytes, elapsed: {}ms",
+                __chunk_start.elapsed().as_millis()
+            );
         }
+
+        #[cfg(debug_assertions)]
+        trace!(
+            "Total time spent embedding chunks: {}ms",
+            total_time_spent_embedding_chunks
+        );
 
         Ok(chunks)
     }

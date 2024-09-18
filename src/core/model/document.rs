@@ -10,6 +10,7 @@ pub mod config;
 /// Holds relevant data for parsing and chunking.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentConfig {
     pub id: uuid::Uuid,
     pub name: String,
@@ -25,6 +26,7 @@ pub struct DocumentConfig {
 /// Main document model for the `documents` table.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Document {
     /// Primary key.
     pub id: uuid::Uuid,

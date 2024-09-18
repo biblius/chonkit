@@ -541,6 +541,7 @@ dependencies = [
  "cookie",
  "docx-rs",
  "fastembed",
+ "futures-util",
  "hex",
  "http 1.1.0",
  "pdfium-render",

@@ -1,7 +1,10 @@
 use super::{ChunkerError, DocumentChunker};
-use crate::core::chunk::ChunkBaseConfig;
+use crate::{core::chunk::ChunkBaseConfig, error::ChonkitError};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+
+const SLIDING_WINDOW_DEFAULT_SIZE: usize = 1000;
+const SLIDING_WINDOW_DEFAULT_OVERLAP: usize = 200;
 
 /// The most basic of chunkers.
 ///
@@ -16,32 +19,24 @@ pub struct SlidingWindow {
 }
 
 impl SlidingWindow {
-    pub fn from_config(config: ChunkBaseConfig) -> Result<Self, ChunkerError> {
-        Ok(Self { config })
-    }
-
-    pub fn new(size: usize, overlap: usize) -> Self {
-        Self {
-            config: ChunkBaseConfig::new(size, overlap),
-        }
+    pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+        Ok(Self {
+            config: ChunkBaseConfig::new(size, overlap)?,
+        })
     }
 }
 
 impl Default for SlidingWindow {
     fn default() -> Self {
-        Self {
-            config: ChunkBaseConfig {
-                size: 1000,
-                overlap: 200,
-            },
-        }
+        Self::new(SLIDING_WINDOW_DEFAULT_SIZE, SLIDING_WINDOW_DEFAULT_OVERLAP)
+            .expect("overlap is greater than size")
     }
 }
 
 impl<'a> DocumentChunker<'a> for SlidingWindow {
     type Output = &'a str;
 
-    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
         let SlidingWindow {
             config: ChunkBaseConfig { size, overlap },
         } = self;
@@ -107,7 +102,7 @@ mod tests {
     #[tokio::test]
     async fn sliding_window_works() {
         let input = "Sticks and stones may break my bones, but words will never leverage agile frameworks to provide a robust synopsis for high level overviews.";
-        let window = SlidingWindow::new(30, 20);
+        let window = SlidingWindow::new(30, 20).unwrap();
         let chunks = window.chunk(input).await.unwrap();
 
         assert_eq!(&input[0..50], chunks[0]);
@@ -119,7 +114,7 @@ mod tests {
     #[tokio::test]
     async fn sliding_window_empty() {
         let input = "";
-        let window = SlidingWindow::new(1, 0);
+        let window = SlidingWindow::new(1, 0).unwrap();
         let chunks = window.chunk(input).await.unwrap();
 
         assert!(chunks.is_empty());
@@ -128,7 +123,7 @@ mod tests {
     #[tokio::test]
     async fn sliding_window_small_input() {
         let input = "Foobar";
-        let window = SlidingWindow::new(30, 20);
+        let window = SlidingWindow::new(30, 20).unwrap();
         let chunks = window.chunk(input).await.unwrap();
 
         assert_eq!(input, chunks[0]);

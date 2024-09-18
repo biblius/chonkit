@@ -66,6 +66,7 @@ utoipa = { version = "4.2.3", features = [
 utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
 async-trait = "0.1.82"
 rayon = "1.10.0"
+futures-util = "0.3.30"
 
 [features]
 default = ["http", "qdrant", "fembed", "openai"]

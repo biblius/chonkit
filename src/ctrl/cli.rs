@@ -141,18 +141,13 @@ pub async fn run(command: Execute, state: ServiceState) {
                     end,
                     out,
                 }) => {
-                    let document = service.get_document(id).await.unwrap();
+                    let document = service.get_config(id).await.unwrap();
                     let content = service
-                        .parse_preview(&*store, id, ParseConfig::default())
+                        .parse_preview(&*store, id, document.parse_config.unwrap())
                         .await
                         .unwrap();
                     let chunks = service
-                        .chunk_preview(
-                            &document,
-                            &content,
-                            crate::core::chunk::Chunker::snapping_default(),
-                            None,
-                        )
+                        .chunk_preview(&content, document.chunk_config.unwrap(), None)
                         .await
                         .unwrap();
 

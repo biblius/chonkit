@@ -45,6 +45,7 @@ where
     ) -> Result<List<Document>, ChonkitError> {
         self.repo.list(p, src).await
     }
+
     /// Get a document from the repository.
     ///
     /// * `id`: Document ID.
@@ -106,7 +107,9 @@ where
             .get_chunk_config(id)
             .await?
             .map(|config| config.config)
-            .unwrap_or_else(Chunker::snapping_default);
+            .ok_or_else(|| {
+                ChonkitError::DoesNotExist(format!("Chunking config for document with ID {id}"))
+            })?;
 
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
@@ -211,12 +214,10 @@ where
     ///             the file type.
     pub async fn chunk_preview<'content>(
         &self,
-        document: &Document,
         content: &'content str,
         mut chunker: Chunker,
         embedder: Option<Arc<dyn Embedder + Send + Sync>>,
     ) -> Result<ChunkedDocument<'content>, ChonkitError> {
-        info!("Chunking {} with {chunker}", document.name);
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
             let Some(embedder) = embedder else {

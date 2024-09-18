@@ -10,6 +10,7 @@ pub mod document;
 /// the tables.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct List<T> {
     pub total: Option<usize>,
     pub items: Vec<T>,

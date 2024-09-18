@@ -5,10 +5,14 @@ use super::{
     },
     ChunkBaseConfig, ChunkerError, DocumentChunker,
 };
+use crate::error::ChonkitError;
 use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
 use tracing::trace;
+
+const SNAPPING_WINDOW_DEFAULT_SIZE: usize = 1000;
+const SNAPPING_WINDOW_DEFAULT_OVERLAP: usize = 5;
 
 /// Heuristic chunker for texts intended for humans, e.g. documentation, books, blogs, etc.
 ///
@@ -58,22 +62,24 @@ pub struct SnappingWindow {
 
 impl Default for SnappingWindow {
     fn default() -> Self {
-        Self {
-            config: ChunkBaseConfig::new(1000, 5),
-            delimiter: '.',
-            // Common urls, abbreviations, file extensions
-            skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
-            skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
-        }
+        Self::new(
+            SNAPPING_WINDOW_DEFAULT_SIZE,
+            SNAPPING_WINDOW_DEFAULT_OVERLAP,
+        )
+        .expect("overlap is greater than size")
+        .skip_forward(DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect())
+        .skip_back(DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect())
     }
 }
 
 impl SnappingWindow {
-    pub fn new(size: usize, overlap: usize) -> Self {
-        Self {
-            config: ChunkBaseConfig::new(size, overlap),
-            ..Default::default()
-        }
+    pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+        Ok(Self {
+            config: ChunkBaseConfig::new(size, overlap)?,
+            delimiter: '.',
+            skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+            skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+        })
     }
 
     pub fn delimiter(mut self, delimiter: char) -> Self {
@@ -81,13 +87,22 @@ impl SnappingWindow {
         self
     }
 
+    /// Set the forward skips.
     pub fn skip_forward(mut self, skip_forward: Vec<String>) -> Self {
         self.skip_forward = skip_forward;
         self
     }
 
+    /// Set the backward skips.
     pub fn skip_back(mut self, skip_back: Vec<String>) -> Self {
         self.skip_back = skip_back;
+        self
+    }
+
+    /// Extend the forward and backward skips.
+    pub fn extend_skips(mut self, skip_forward: Vec<String>, skip_back: Vec<String>) -> Self {
+        self.skip_forward.extend(skip_forward);
+        self.skip_back.extend(skip_back);
         self
     }
 }
@@ -95,7 +110,7 @@ impl SnappingWindow {
 impl<'a> DocumentChunker<'a> for SnappingWindow {
     type Output = &'a str;
 
-    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
         if input.trim().is_empty() {
             return Ok(vec![]);
         }
@@ -282,6 +297,7 @@ mod tests {
         let delimiter = '!';
 
         let chunker = SnappingWindow::new(size, overlap)
+            .unwrap()
             .delimiter(delimiter)
             .skip_forward(skip_f.clone())
             .skip_back(skip_b.clone());
@@ -297,10 +313,7 @@ mod tests {
     async fn snapping_works() {
         let input =
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
-        let chunker = SnappingWindow {
-            config: ChunkBaseConfig::new(1, 1),
-            ..Default::default()
-        };
+        let chunker = SnappingWindow::new(1, 1).unwrap();
         let expected = [
             "I have a sentence. It is not very long. Here is another.",
             " It is not very long. Here is another. Long schlong ding dong.",
@@ -318,11 +331,9 @@ mod tests {
     async fn snapping_skips_back() {
         let input =
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
-        let chunker = SnappingWindow {
-            config: ChunkBaseConfig::new(1, 1),
-            skip_back: vec!["etc".to_string(), "foobar".to_string()],
-            ..Default::default()
-        };
+        let chunker = SnappingWindow::new(1, 1)
+            .unwrap()
+            .skip_back(vec!["etc".to_string(), "foobar".to_string()]);
         let expected = [input];
 
         let chunks = chunker.chunk(input.trim()).await.unwrap();
@@ -338,12 +349,9 @@ mod tests {
         let input =
             "Go to sentences.org for more words. 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.";
 
-        let chunker = SnappingWindow {
-            config: ChunkBaseConfig::new(1, 1),
-            skip_forward: vec!["com".to_string(), "org".to_string()],
-            ..Default::default()
-        };
-
+        let chunker = SnappingWindow::new(1, 1)
+            .unwrap()
+            .skip_forward(vec!["com".to_string(), "org".to_string()]);
         let expected = [input];
 
         let chunks = chunker.chunk(input.trim()).await.unwrap();
@@ -359,10 +367,7 @@ mod tests {
         let input =
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
-        let chunker = SnappingWindow {
-            config: ChunkBaseConfig::new(1, 1),
-            ..Default::default()
-        };
+        let chunker = SnappingWindow::new(1, 1).unwrap();
 
         let expected = [
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning.",
@@ -384,9 +389,9 @@ mod tests {
         let input =
             "Table of contents:\n1 Super cool stuff\n1.1 Some chonkers in rust\n1.2 Some data for your LLM\n1.3 ??? \n1.4 Profit \n1.4.1 Lambo\nHope you liked the table of contents. See more at content.co.com.";
 
-        let chunker = SnappingWindow {
-            config: ChunkBaseConfig::new(1, 1),
-            skip_forward: vec![
+        let chunker = SnappingWindow::new(1, 1)
+            .unwrap()
+            .skip_forward(vec![
                 "0".to_string(),
                 "1".to_string(),
                 "2".to_string(),
@@ -394,10 +399,8 @@ mod tests {
                 "4".to_string(),
                 "co".to_string(),
                 "com".to_string(),
-            ],
-            skip_back: vec!["com".to_string()],
-            ..Default::default()
-        };
+            ])
+            .skip_back(vec!["com".to_string()]);
 
         let expected = [input];
 
@@ -411,11 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapping_window_empty() {
-        let chunker = SnappingWindow {
-            config: ChunkBaseConfig::new(1, 1),
-            ..Default::default()
-        };
-
+        let chunker = SnappingWindow::new(1, 1).unwrap();
         let chunks = chunker.chunk("").await.unwrap();
         assert!(chunks.is_empty());
     }

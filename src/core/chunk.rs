@@ -1,3 +1,5 @@
+use crate::error::ChonkitError;
+
 use super::embedder::Embedder;
 use serde::{Deserialize, Serialize};
 use std::{future::Future, str::Utf8Error, sync::Arc};
@@ -26,8 +28,8 @@ impl Chunker {
     ///
     /// * `size`: Chunk base size.
     /// * `overlap`: Chunk overlap.
-    pub fn sliding(size: usize, overlap: usize) -> Self {
-        Self::Sliding(SlidingWindow::new(size, overlap))
+    pub fn sliding(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+        Ok(Self::Sliding(SlidingWindow::new(size, overlap)?))
     }
 
     /// Create a default `SlidingWindow` chunker.
@@ -41,12 +43,17 @@ impl Chunker {
     /// * `overlap`: Chunk overlap.
     /// * `skip_f`: Patterns in front of delimiters to not treat as sentence stops.
     /// * `skip_b`: Patterns behind delimiters to not treat as sentence stops.
-    pub fn snapping(size: usize, overlap: usize, skip_f: Vec<String>, skip_b: Vec<String>) -> Self {
-        Self::Snapping(
-            SnappingWindow::new(size, overlap)
+    pub fn snapping(
+        size: usize,
+        overlap: usize,
+        skip_f: Vec<String>,
+        skip_b: Vec<String>,
+    ) -> Result<Self, ChunkerError> {
+        Ok(Self::Snapping(
+            SnappingWindow::new(size, overlap)?
                 .skip_forward(skip_f)
                 .skip_back(skip_b),
-        )
+        ))
     }
 
     /// Create a default `SnappingWindow` chunker.
@@ -77,7 +84,7 @@ impl Chunker {
         ))
     }
 
-    /// Create a default `SemanticWindow` chunker for the embedder.
+    /// Create a default `SemanticWindow` chunker.
     ///
     /// * `embedder`: Embedder to use for embedding chunks, uses the default embedder model.
     pub fn semantic_default(embedder: Arc<dyn Embedder + Send + Sync>) -> Self {
@@ -90,7 +97,7 @@ impl Chunker {
     pub async fn chunk<'content>(
         &self,
         input: &'content str,
-    ) -> Result<ChunkedDocument<'content>, ChunkerError> {
+    ) -> Result<ChunkedDocument<'content>, ChonkitError> {
         match self {
             Self::Sliding(chunker) => Ok(ChunkedDocument::Ref(chunker.chunk(input).await?)),
             Self::Snapping(chunker) => Ok(ChunkedDocument::Ref(chunker.chunk(input).await?)),
@@ -120,7 +127,7 @@ pub trait DocumentChunker<'a> {
     fn chunk(
         &self,
         input: &'a str,
-    ) -> impl Future<Output = Result<Vec<Self::Output>, ChunkerError>> + Send;
+    ) -> impl Future<Output = Result<Vec<Self::Output>, ChonkitError>> + Send;
 }
 
 #[derive(Debug, Error)]
@@ -147,16 +154,21 @@ pub struct ChunkBaseConfig {
 }
 
 impl ChunkBaseConfig {
-    pub fn new(size: usize, overlap: usize) -> Self {
-        Self { size, overlap }
+    pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+        if size < overlap {
+            return Err(ChunkerError::Config(
+                "size must be greater than overlap".to_string(),
+            ));
+        }
+        Ok(Self { size, overlap })
     }
 }
 
 #[inline(always)]
-fn concat<'a>(start_str: &'a str, end_str: &'a str) -> Result<&'a str, Utf8Error> {
+fn concat<'a>(start_str: &'a str, end_str: &'a str) -> Result<&'a str, ChunkerError> {
     let current_ptr =
         std::ptr::slice_from_raw_parts(start_str.as_ptr(), start_str.len() + end_str.len());
-    unsafe { std::str::from_utf8(&*current_ptr) }
+    Ok(unsafe { std::str::from_utf8(&*current_ptr) }?)
 }
 
 #[cfg(test)]

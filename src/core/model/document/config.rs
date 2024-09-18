@@ -4,6 +4,7 @@ use serde::Serialize;
 
 /// Main config model for the `chunkers` table.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentChunkConfig {
     /// Primary key.
     pub id: uuid::Uuid,
@@ -17,6 +18,7 @@ pub struct DocumentChunkConfig {
 
 /// Main config model for the `parsers` table.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentParseConfig {
     /// Primary key.
     pub id: uuid::Uuid,
