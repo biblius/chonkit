@@ -175,7 +175,7 @@ pub async fn run(command: Execute, state: ServiceState) {
                         cfg = cfg.use_range();
                     }
                     for filter in filters {
-                        cfg = cfg.filter(regex::Regex::new(&filter).unwrap());
+                        cfg = cfg.with_filter(&filter).unwrap();
                     }
                     let parsed = service.parse_preview(&*store, id, cfg).await.unwrap();
                     println!("{parsed}");

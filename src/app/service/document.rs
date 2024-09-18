@@ -8,7 +8,7 @@ mod document_service_integration_tests {
         },
         core::{
             document::parser::{
-                docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser,
+                docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser, ParseConfig,
             },
             model::document::DocumentType,
             service::document::dto::DocumentUpload,
@@ -109,5 +109,40 @@ mod document_service_integration_tests {
         service.delete(store, document.id).await.unwrap();
 
         assert!(tokio::fs::metadata(document.path).await.is_err());
+    }
+
+    #[test]
+    async fn update_parser(store: FsDocumentStore, service: DocumentService) {
+        let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.pdf"))
+            .await
+            .unwrap();
+
+        let upload = DocumentUpload {
+            name: "UPLOAD_TEST_PARSER".to_string(),
+            ty: DocumentType::Pdf,
+            file: content,
+        };
+        let document = service.upload(store, upload).await.unwrap();
+
+        let config = ParseConfig::new(10, 20)
+            .use_range()
+            .with_filter("foo")
+            .unwrap();
+
+        service
+            .update_parser(document.id, config.clone())
+            .await
+            .unwrap();
+
+        let document = service.get_config(document.id).await.unwrap();
+        let parse_config = document.parse_config.unwrap();
+
+        assert_eq!(config.start, parse_config.start);
+        assert_eq!(config.end, parse_config.end);
+        assert_eq!(
+            config.filters[0].to_string(),
+            parse_config.filters[0].to_string()
+        );
+        assert_eq!(config.range, parse_config.range);
     }
 }

@@ -35,9 +35,8 @@ use crate::{
             document::{Document, DocumentConfig},
             Pagination,
         },
-        service::document::dto::ChunkPreviewPayload,
     },
-    ctrl::http::dto::{CreateCollectionPayload, SearchPayload, UploadResult},
+    ctrl::http::dto::{ChunkPreviewPayload, CreateCollectionPayload, SearchPayload, UploadResult},
 };
 use utoipa::OpenApi;
 

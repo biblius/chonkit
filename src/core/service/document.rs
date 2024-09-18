@@ -267,11 +267,8 @@ where
 
 /// Document service DTOs.
 pub mod dto {
-    use crate::core::{
-        chunk::Chunker, document::parser::ParseConfig, model::document::DocumentType,
-    };
-    use serde::Deserialize;
-    use validify::{schema_err, schema_validation, Validate, ValidationErrors, Validify};
+    use crate::core::model::document::DocumentType;
+    use validify::Validify;
 
     #[derive(Debug, Validify)]
     pub struct DocumentUpload<'a> {
@@ -290,32 +287,6 @@ pub mod dto {
     impl<'a> DocumentUpload<'a> {
         pub fn new(name: String, ty: DocumentType, file: &'a [u8]) -> Self {
             Self { name, ty, file }
-        }
-    }
-
-    /// DTO used for previewing chunks.
-    #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-    #[derive(Debug, Deserialize, Validate)]
-    #[validate(Self::validate)]
-    pub struct ChunkPreviewPayload {
-        pub parser: ParseConfig,
-        pub chunker: Chunker,
-        pub embedder: Option<String>,
-        pub embedder_model: Option<String>,
-    }
-
-    impl ChunkPreviewPayload {
-        #[schema_validation]
-        fn validate(&self) -> Result<(), ValidationErrors> {
-            match (&self.chunker, &self.embedder) {
-                (Chunker::Semantic(_), None) => {
-                    schema_err! {
-                        "chunker_params",
-                        "`embedder` must be set when using semantic chunker"
-                    };
-                }
-                _ => {}
-            }
         }
     }
 }

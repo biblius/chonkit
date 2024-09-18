@@ -12,6 +12,7 @@ impl ChonkitError {
             E::AlreadyExists(_) => SC::CONFLICT,
             E::DoesNotExist(_) => SC::NOT_FOUND,
             E::Validation(_)
+            | E::Regex(_)
             | E::Chunk(_)
             | E::InvalidFileName(_)
             | E::UnsupportedFileType(_)
@@ -96,6 +97,7 @@ impl IntoResponse for ChonkitError {
 
             // TODO
             CE::IO(_)
+            | CE::Regex(_)
             | CE::Fastembed(_)
             | CE::UnsupportedFileType(_)
             | CE::Fmt(_)

@@ -9,17 +9,14 @@ use crate::{
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
         service::{
-            document::{
-                dto::{ChunkPreviewPayload, DocumentUpload},
-                DocumentService,
-            },
+            document::{dto::DocumentUpload, DocumentService},
             vector::{
                 dto::{CreateEmbeddings, Search},
                 VectorService,
             },
         },
     },
-    ctrl::http::dto::UploadResult,
+    ctrl::http::dto::{ChunkPreviewPayload, UploadResult},
     error::ChonkitError,
 };
 use axum::{
@@ -296,7 +293,7 @@ async fn chunk_preview(
 
     let content = service.parse_preview(&*store, id, config.parser).await?;
     let chunked = service
-        .chunk_preview(&document, &content, config.chunker, embedder)
+        .chunk_preview(&content, config.chunker, embedder)
         .await?;
 
     match chunked {

@@ -21,7 +21,7 @@ pub trait DocumentParser {
 /// A text element is parser specific, it could be PDF pages,
 /// DOCX paragraphs, CSV rows, etc.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Default, Serialize, Deserialize, Validate)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 #[validate(Self::validate)]
 pub struct ParseConfig {
@@ -62,9 +62,9 @@ impl ParseConfig {
     /// will be checked for the regex and will be omitted if it matches.
     ///
     /// * `re`: The expression to match for.
-    pub fn filter(mut self, re: Regex) -> Self {
-        self.filters.push(re);
-        self
+    pub fn with_filter(mut self, re: &str) -> Result<Self, ChonkitError> {
+        self.filters.push(Regex::new(re)?);
+        Ok(self)
     }
 
     #[schema_validation]

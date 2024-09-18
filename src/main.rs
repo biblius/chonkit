@@ -29,6 +29,7 @@ async fn run() {
     use app::{document::store::FsDocumentStore, service::ServiceState};
     use clap::Parser;
     use std::sync::Arc;
+    use tracing::info;
     use tracing_subscriber::EnvFilter;
 
     let args = StartArgs::parse();
@@ -41,12 +42,18 @@ async fn run() {
         .with_env_filter(EnvFilter::from(log))
         .init();
 
+    #[cfg(feature = "fembed")]
+    info!(
+        "Cuda available: {:?}",
+        ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
+    );
+
     let postgres = crate::app::repo::pg::init(&db_url).await;
 
     let fs_store = Arc::new(FsDocumentStore::new(&upload_path));
 
     #[cfg(feature = "fembed")]
-    let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder);
+    let fastembed = Arc::new(crate::app::embedder::fastembed::init());
 
     #[cfg(feature = "openai")]
     let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(

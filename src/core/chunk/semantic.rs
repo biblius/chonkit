@@ -271,7 +271,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                 chunks.push(chunk.trim().to_string());
                 #[cfg(debug_assertions)]
                 trace!(
-                    "Added new chunk (len:{}|similarity:{max_similarity:.4}/{threshold}) - total: {}",
+                    "Added new chunk (candidate:{chunk_idx}|len:{}|max:{max_similarity:.4}/{threshold}) - total: {}",
                     chunk.trim().len(),
                     chunks.len(),
                 );
@@ -279,7 +279,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                 chunks[chunk_idx].push_str(chunk);
                 #[cfg(debug_assertions)]
                 trace!(
-                    "Added to existing chunk (chunk:{chunk_idx}|len:{}|similarity:{max_similarity:.4}/{threshold}) - total: {}",
+                    "Added to existing chunk (chunk:{chunk_idx}|len:{}|max:{max_similarity:.4}/{threshold}) - total: {}",
                     chunks[chunk_idx].len(),
                     chunks.len(),
                 );
@@ -396,34 +396,42 @@ fn minkowski_distance(vec1: &[f64], vec2: &[f64], p: i32) -> f64 {
 }
 
 #[cfg(all(test, feature = "fembed"))]
+#[suitest::suite(semantic_window_tests)]
 mod tests {
-    use crate::app::embedder::fastembed::FastEmbedder;
-
     use super::*;
+    use crate::app::embedder::fastembed::FastEmbedder;
+    use suitest::before_all;
+    use tracing_test::traced_test;
 
-    #[tokio::test]
-    async fn semantic_window_works() {
-        let input = r#"Leverage agile frameworks to provide robust synopses for high level overviews. Pee is stored in the testicles. SCRUM is an agile framework used for reducing the efficiency of software development teams. The testicular regions of the human male, do in fact contain urea composites. SCRUM is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations. Poopoo, kaka, peepee, doodoo, piss."#;
+    #[before_all]
+    fn setup() -> Arc<FastEmbedder> {
+        let embedder = Arc::new(crate::app::embedder::fastembed::init_single(None));
+        embedder
+    }
 
-        let embedder = Arc::new(FastEmbedder);
+    #[test]
+    #[traced_test]
+    async fn semantic_window_works(embedder: Arc<FastEmbedder>) {
+        let input = r#"Leverage agile frameworks to provide robust synopses for high level overviews. Pee, AKA urine is stored in the testicles. SCRUM is one of the agile frameworks used to facilitate the robust synopses. The testicles, do in fact, facilitate urine. SCRUM, an agile framework, is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations. This is about pee, i.e. urine."#;
+
         let model = embedder.default_model().0;
-        let chunker = SemanticWindow::new(1, 0.7, DistanceFn::Cosine, embedder, model);
+        let chunker = SemanticWindow::new(1, 0.64, DistanceFn::Cosine, embedder.clone(), model);
 
         let chunks = chunker.chunk(input).await.unwrap();
 
         assert_eq!(2, chunks.len());
 
-        assert_eq!("Leverage agile frameworks to provide robust synopses for high level overviews. SCRUM is an agile framework used for reducing the efficiency of software development teams. SCRUM is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations.", chunks[0]);
+        assert_eq!("Leverage agile frameworks to provide robust synopses for high level overviews. SCRUM is one of the agile frameworks used to facilitate the robust synopses. SCRUM, an agile framework, is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations.", chunks[0]);
 
-        assert_eq!("Pee is stored in the testicles. The testicular regions of the human male, do in fact contain urea composites. Poopoo, kaka, peepee, doodoo, piss.", chunks[1]);
+        assert_eq!("Pee, AKA urine is stored in the testicles. The testicles, do in fact, facilitate urine. This is about pee, i.e. urine.", chunks[1]);
     }
 
-    #[tokio::test]
-    async fn semantic_window_empty() {
+    #[test]
+    #[traced_test]
+    async fn semantic_window_empty(embedder: Arc<FastEmbedder>) {
         let input = "";
-        let embedder = Arc::new(FastEmbedder);
         let model = embedder.default_model().0;
-        let chunker = SemanticWindow::new(1, 0.7, DistanceFn::Cosine, embedder, model);
+        let chunker = SemanticWindow::new(1, 0.7, DistanceFn::Cosine, embedder.clone(), model);
 
         let chunks = chunker.chunk(input).await.unwrap();
         assert!(chunks.is_empty());

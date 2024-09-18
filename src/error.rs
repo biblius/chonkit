@@ -63,6 +63,9 @@ pub enum ChonkitError {
     #[error("Validation: {0}")]
     Validation(#[from] ValidationErrors),
 
+    #[error("Regex: {0}")]
+    Regex(#[from] regex::Error),
+
     #[cfg(feature = "http")]
     #[error("Http: {0}")]
     Http(#[from] axum::http::Error),

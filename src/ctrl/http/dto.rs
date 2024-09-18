@@ -1,11 +1,14 @@
 //! Http specific DTOs.
 
-use crate::core::{model::document::Document, service::vector::dto::CreateCollection};
+use crate::core::{
+    chunk::Chunker, document::parser::ParseConfig, model::document::Document,
+    service::vector::dto::CreateCollection,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validify::{schema_err, schema_validation, ValidationErrors, Validify};
+use validify::{schema_err, schema_validation, Validate, ValidationErrors, Validify};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +89,32 @@ impl SearchPayload {
                     "name_and_provider",
                     "both 'collection_name'and 'provider' must be set if `collection_id` is not set"
                 );
+            }
+            _ => {}
+        }
+    }
+}
+
+/// DTO used for previewing chunks.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Deserialize, Validate)]
+#[validate(Self::validate)]
+pub struct ChunkPreviewPayload {
+    pub parser: ParseConfig,
+    pub chunker: Chunker,
+    pub embedder: Option<String>,
+    pub embedder_model: Option<String>,
+}
+
+impl ChunkPreviewPayload {
+    #[schema_validation]
+    fn validate(&self) -> Result<(), ValidationErrors> {
+        match (&self.chunker, &self.embedder) {
+            (Chunker::Semantic(_), None) => {
+                schema_err! {
+                    "chunker_params",
+                    "`embedder` must be set when using semantic chunker"
+                };
             }
             _ => {}
         }

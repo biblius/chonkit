@@ -4,7 +4,10 @@
 mod vector_service_integration_tests {
 
     use crate::{
-        app::test::{init_postgres, PostgresContainer},
+        app::{
+            embedder::fastembed::FastEmbedder,
+            test::{init_postgres, PostgresContainer},
+        },
         core::{
             embedder::Embedder as _,
             model::document::{DocumentInsert, DocumentType},
@@ -30,15 +33,12 @@ mod vector_service_integration_tests {
     #[cfg(feature = "weaviate")]
     type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
 
-    #[cfg(feature = "fembed")]
-    type Embedder = crate::app::embedder::fastembed::FastEmbedder;
-
     #[before_all]
     async fn setup() -> (
         PgPool,
         VectorDatabase,
         VectorService,
-        Embedder,
+        FastEmbedder,
         PostgresContainer,
         ContainerAsync<GenericImage>,
     ) {
@@ -50,7 +50,8 @@ mod vector_service_integration_tests {
         #[cfg(feature = "weaviate")]
         let (vector_client, v_img) = crate::app::test::init_weaviate().await;
 
-        let embedder = Embedder {};
+        #[cfg(feature = "fembed")]
+        let embedder = crate::app::embedder::fastembed::init();
 
         let service = VectorService::new(postgres.clone());
 
@@ -64,7 +65,7 @@ mod vector_service_integration_tests {
     #[test]
     async fn default_collection_is_stored_in_repo(
         service: VectorService,
-        embedder: Embedder,
+        embedder: FastEmbedder,
         vector_db: VectorDatabase,
     ) {
         let collection = service
@@ -81,7 +82,7 @@ mod vector_service_integration_tests {
     #[test]
     async fn default_collection_is_stored_vec_db(
         service: VectorService,
-        embedder: Embedder,
+        embedder: FastEmbedder,
         vector_db: VectorDatabase,
     ) {
         let collection = service
@@ -105,7 +106,7 @@ mod vector_service_integration_tests {
     #[test]
     async fn create_collection_works(
         service: VectorService,
-        embedder: Embedder,
+        embedder: FastEmbedder,
         vector_db: VectorDatabase,
     ) {
         let name = "test_collection_0";
@@ -137,7 +138,7 @@ mod vector_service_integration_tests {
     async fn create_collection_fails_with_invalid_model(
         service: VectorService,
         vector_db: VectorDatabase,
-        embedder: Embedder,
+        embedder: FastEmbedder,
     ) {
         let name = "test_collection_0";
 
@@ -155,7 +156,7 @@ mod vector_service_integration_tests {
     async fn create_collection_fails_with_existing_collection(
         service: VectorService,
         vector_db: VectorDatabase,
-        embedder: Embedder,
+        embedder: FastEmbedder,
     ) {
         let params = CreateCollection {
             model: embedder.default_model().0,
@@ -172,7 +173,7 @@ mod vector_service_integration_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
-        embedder: Embedder,
+        embedder: FastEmbedder,
     ) {
         let default = service
             .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
@@ -239,7 +240,7 @@ mod vector_service_integration_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
-        embedder: Embedder,
+        embedder: FastEmbedder,
     ) {
         let collection_name = "test_collection_delete_embeddings";
 
@@ -294,7 +295,7 @@ mod vector_service_integration_tests {
         service: VectorService,
         postgres: PgPool,
         vector_db: VectorDatabase,
-        embedder: Embedder,
+        embedder: FastEmbedder,
     ) {
         let create = DocumentInsert::new(
             "test_document",
