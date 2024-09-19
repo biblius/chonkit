@@ -36,7 +36,7 @@ pub struct FastEmbedder {
 #[async_trait::async_trait]
 impl Embedder for FastEmbedder {
     fn id(&self) -> &'static str {
-        "fastembed"
+        "fembed"
     }
 
     fn default_model(&self) -> (String, usize) {
