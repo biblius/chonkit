@@ -613,7 +613,6 @@ dependencies = [
  "fastembed",
  "futures-util",
  "hex",
- "http 1.1.0",
  "ort",
  "pdfium-render",
  "qdrant-client",

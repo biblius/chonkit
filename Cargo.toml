@@ -31,6 +31,12 @@ regex = "1.10.6"
 suitest = "0.1.4"
 sha2 = "0.10.8"
 hex = "0.4.3"
+pdfium-render = { version = "0.8.23" }
+async-trait = "0.1.82"
+rayon = "1.10.0"
+futures-util = "0.3.30"
+ort = { version = "2.0.0-rc.5", optional = true }
+tracing-test = "0.2.5"
 testcontainers = "0.22.0"
 testcontainers-modules = { version = "0.10.0", features = ["postgres"] }
 
@@ -65,20 +71,20 @@ utoipa = { version = "4.2.3", features = [
     "chrono",
     "uuid",
 ], optional = true }
-utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "7.1.0", features = ["axum"], optional = true }
 
-http = "1.1.0"
-pdfium-render = { version = "0.8.23" }
-async-trait = "0.1.82"
-rayon = "1.10.0"
-futures-util = "0.3.30"
-ort = { version = "2.0.0-rc.5", optional = true }
-tracing-test = "0.2.5"
 
 [features]
-default = ["http", "qdrant", "fembed", "openai"]
+default = ["http", "qdrant", "fembed"]
 cli = []
-http = ["axum", "axum-extra", "axum-macros", "tower-http", "utoipa"]
+http = [
+    "axum",
+    "axum-extra",
+    "axum-macros",
+    "tower-http",
+    "utoipa",
+    "utoipa-swagger-ui",
+]
 fembed = ["fastembed", "ort"]
 openai = ["reqwest"]
 weaviate = ["weaviate-community"]

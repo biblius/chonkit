@@ -9,6 +9,7 @@ Chunk documents.
   - [Prerequisites](#prerequisites)
     - [Pdfium](#pdfium)
     - [Fastembed](#fastembed)
+    - [CUDA](#cuda)
   - [Features](#features)
   - [Sqlx 'offline' compilation](#sqlx-offline-compilation)
   - [Local quickstart](#local-quickstart)
@@ -61,26 +62,35 @@ actual library files will be different.
 
 #### Fastembed
 
-Fastembed requires [onnxruntime](https://github.com/microsoft/onnxruntime).
+- Required when compiling with `fembed`.
+
+Fastembed models require an [onnxruntime](https://github.com/microsoft/onnxruntime).
 This library can be downloaded from [here](https://github.com/microsoft/onnxruntime/releases),
 or via the system's native package manager.
+
+#### CUDA
+
+- Required when compiling with `fembed` and `cuda`.
+
+If using the `cuda` feature flag with `fastembed`, the system will need to have
+the [CUDA toolkit](https://developer.nvidia.com/cuda-downloads) installed.
+Fastembed, and in turn `ort`, will then use the CUDA execution provider for the
+onnxruntime. `ort` is designed to fail gracefully if it cannot register CUDA as
+one of the execution providers and the CPU provider will be used as fallback.
 
 ### Features
 
 The following is a table of the supported build features.
 
-| Feature    | Configuration     | Description                              |
-| ---------- | ----------------- | ---------------------------------------- |
-| `http`     | Execution mode    | Build for http (server) execution mode.  |
-| `cli`      | Execution mode    | Build for cli execution mode.            |
-| `qdrant`   | VectorDb provider | Enable qdrant as one of the vector       |
-|            |                   | database providers.                      |
-| `weaviate` | VectorDb provider | Enable weaviate as one of the vector     |
-|            |                   | database providers.                      |
-| `fembed`   | Embedder provider | Enable fastembed as one of the embedding |
-|            |                   | providers.                               |
-| `openai`   | Embedder provider | Enable openai as one of the embedding    |
-|            |                   | providers.                               |
+| Feature    | Configuration      | Description                                                                                      |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------ |
+| `http`     | Execution mode     | Build for http (server) execution mode.                                                          |
+| `cli`      | Execution mode     | Build for cli execution mode.                                                                    |
+| `qdrant`   | VectorDb provider  | Enable qdrant as one of the vector database providers.                                           |
+| `weaviate` | VectorDb provider  | Enable weaviate as one of the vector database providers.                                         |
+| `fembed`   | Embedder provider  | Enable fastembed as one of the embedding providers.                                              |
+| `openai`   | Embedder provider  | Enable openai as one of the embedding providers.                                                 |
+| `cuda`     | Execution provider | Available when using `fembed`. When enabled, uses the CUDAExecutionProvider for the onnxruntime. |
 
 Full build command example
 
@@ -133,7 +143,7 @@ Chonkit accepts the following arguments:
 | ---------------- | ---- | ----------------------------------------------------- | -------------- | ---------- | --------------- |
 | `--db-url`       | `-d` | The database URL.                                     | `DATABASE_URL` | \*         | -               |
 | `--log`          | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`     | \*         | `info`          |
-| `--upload-path`  | `-u` | If using the `FsDocumentStore`, sets the upload path. | `UPLOAD_PATH`  | \*         | `./upload`      |
+| `--upload-path`  | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`  | \*         | `./upload`      |
 | `--address`      | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`      | `http`     | `0.0.0.0:42069` |
 | `--qdrant-url`   | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`   | `qdrant`   | -               |
 | `--weaviate-url` | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL` | `weaviate` | -               |
