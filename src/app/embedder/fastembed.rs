@@ -1,5 +1,5 @@
 use crate::{core::embedder::Embedder, error::ChonkitError};
-use fastembed::{InitOptions, TextEmbedding};
+use fastembed::{EmbeddingModel, InitOptions, ModelInfo, TextEmbedding};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -10,7 +10,7 @@ const DEFAULT_COLLECTION_SIZE: usize = 384;
 pub fn init() -> FastEmbedder {
     let mut models = HashMap::new();
 
-    for model in TextEmbedding::list_supported_models() {
+    for model in list_models() {
         info!("Setting up text embedding model: {}", model.model_code);
         let embedding = TextEmbedding::try_new(
             InitOptions::new(model.model)
@@ -47,7 +47,7 @@ impl Embedder for FastEmbedder {
     }
 
     fn list_embedding_models(&self) -> Vec<(String, usize)> {
-        fastembed::TextEmbedding::list_supported_models()
+        list_models()
             .into_iter()
             .map(|model| (model.model_code, model.dim))
             .collect()
@@ -80,6 +80,21 @@ impl Embedder for FastEmbedder {
             .find(|m| m.model_code == model)
             .map(|m| m.dim)
     }
+}
+
+fn list_models() -> Vec<ModelInfo<EmbeddingModel>> {
+    const MODEL_LIST: &[EmbeddingModel] = &[
+        EmbeddingModel::BGESmallENV15,
+        EmbeddingModel::BGELargeENV15,
+        EmbeddingModel::BGEBaseENV15,
+        EmbeddingModel::AllMiniLML6V2,
+        EmbeddingModel::AllMiniLML12V2,
+    ];
+
+    fastembed::TextEmbedding::list_supported_models()
+        .into_iter()
+        .filter(|model| MODEL_LIST.contains(&model.model))
+        .collect()
 }
 
 impl std::fmt::Debug for FastEmbedder {

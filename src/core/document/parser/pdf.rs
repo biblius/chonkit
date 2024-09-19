@@ -40,12 +40,11 @@ impl DocumentParser for PdfParser {
 
         let pages = input.pages();
 
-        // Size hint of pages is the total amount
         let total_pages = pages.len();
 
         let start = if range { start - 1 } else { start };
         let end_condition: Box<dyn Fn(usize) -> bool> = if range {
-            Box::new(|page_num| page_num == end)
+            Box::new(|page_num| page_num == end.saturating_sub(1))
         } else {
             Box::new(|page_num| {
                 total_pages
