@@ -1,14 +1,16 @@
 use axum::{
+    extract::{Query, State},
     http::{Method, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
-use chonkit::app::embedder::fastembed::FastEmbedder;
+use chonkit::core::embedder::Embedder;
+use chonkit::{app::embedder::fastembed::FastEmbedder, error::ChonkitError};
 use clap::Parser;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{info, Span};
 use tracing_subscriber::EnvFilter;
@@ -32,6 +34,9 @@ async fn main() {
     let router = Router::new()
         .route("/_health", get(_health))
         .route("/embed", post(embed))
+        .route("/list", get(list_embedding_models))
+        .route("/default", get(default_model))
+        .route("/size", get(size))
         .layer(cors)
         .layer(TraceLayer::new_for_http().on_failure(
             |error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
@@ -57,33 +62,74 @@ struct StartArgs {
     address: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct EmbedRequest {
-    model: String,
-    content: Vec<String>,
-}
+// Routes
 
 async fn embed(
-    state: axum::extract::State<Arc<FastEmbedder>>,
-    req: axum::extract::Json<EmbedRequest>,
-) -> impl IntoResponse {
-    let Some(model) = state.models.get(&req.model) else {
-        let message = format!("Invalid model: {}", req.model);
-        return (StatusCode::BAD_REQUEST, Json(json! { message }));
-    };
-
+    state: State<Arc<FastEmbedder>>,
+    Json(EmbedRequest { ref model, content }): axum::extract::Json<EmbedRequest>,
+) -> Result<impl IntoResponse, ChonkitError> {
     // Uses the default batch size of 256
-    let embeddings = match model.embed(req.0.content, None) {
-        Ok(e) => e,
-        Err(e) => {
-            let message = format!("Error while embedding: {e}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json! { message }));
-        }
-    };
+    let content = content.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let embeddings = state.embed(&content, model).await?;
 
-    (StatusCode::OK, Json(json! { embeddings }))
+    Ok(Json(EmbedResponse { embeddings }))
+}
+
+async fn list_embedding_models(
+    state: axum::extract::State<Arc<FastEmbedder>>,
+) -> impl IntoResponse {
+    let models = state
+        .list_embedding_models()
+        .into_iter()
+        .collect::<HashMap<String, usize>>();
+
+    (StatusCode::OK, Json(json! { models }))
+}
+
+async fn default_model(state: State<Arc<FastEmbedder>>) -> impl IntoResponse {
+    let (model, size) = state.default_model();
+    Json(DefaultModelResponse { model, size })
+}
+
+async fn size(
+    state: State<Arc<FastEmbedder>>,
+    Query(req): Query<SizeRequest>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let size = state
+        .size(&req.model)
+        .ok_or_else(|| ChonkitError::InvalidEmbeddingModel(req.model))?;
+    Ok(Json(SizeResponse { size }))
 }
 
 async fn _health() -> impl IntoResponse {
     "OK"
+}
+
+// DTO
+
+#[derive(Debug, Deserialize)]
+pub struct EmbedRequest {
+    model: String,
+    content: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SizeRequest {
+    model: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EmbedResponse {
+    embeddings: Vec<Vec<f32>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DefaultModelResponse {
+    model: String,
+    size: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SizeResponse {
+    size: usize,
 }

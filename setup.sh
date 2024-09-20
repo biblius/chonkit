@@ -23,6 +23,18 @@ else
 	export OPENAI_KEY=$oai_key
 	echo "OPENAI_KEY successfully set"
 fi
+
+echo "Enter the remote fembedder URL (press Enter to skip):"
+read fembed_url
+
+if [[ -z $fembed_url ]]; then
+	echo "Defaulting FEMBED_URL to 127.0.0.1:6969"
+	export FEMBED_URL=127.0.0.1:6969
+else 
+	export FEMBED_URL=$fembed_url
+fi
+
+
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
 export QDRANT_URL=http://localhost:6334
 export WEAVIATE_URL=http://localhost:8080
@@ -37,3 +49,4 @@ echo "VEC_DATABASE_URL set to $VEC_DATABASE_URL"
 echo "RUST_LOG set to $RUST_LOG"
 echo "UPLOAD_PATH set to '$UPLOAD_PATH'"
 echo "ADDRESS set to $ADDRESS"
+echo "FEMBED_URL set to $FEMBED_URL"

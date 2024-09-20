@@ -1,19 +1,38 @@
-use crate::{core::embedder::Embedder, error::ChonkitError};
-use fastembed::{EmbeddingModel, InitOptions, ModelInfo, TextEmbedding};
-use std::collections::HashMap;
-use tracing::info;
+use fastembed::{EmbeddingModel, ModelInfo};
+
+#[cfg(all(feature = "fe-local", feature = "fe-remote"))]
+compile_error!("only one of 'fe-local' or 'fe-remote' can be enabled");
+
+#[cfg(feature = "fe-local")]
+pub mod local;
+
+#[cfg(feature = "fe-remote")]
+pub mod remote;
 
 const DEFAULT_COLLECTION_MODEL: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 const DEFAULT_COLLECTION_SIZE: usize = 384;
 
-/// Initialise the FastEmbedder and all of its supported models.
+pub struct FastEmbedder {
+    #[cfg(feature = "fe-local")]
+    pub models: std::collections::HashMap<String, fastembed::TextEmbedding>,
+
+    #[cfg(feature = "fe-remote")]
+    pub client: reqwest::Client,
+
+    #[cfg(feature = "fe-remote")]
+    pub url: String,
+}
+
+/// Initialise the FastEmbedder locally.
+#[cfg(feature = "fe-local")]
 pub fn init() -> FastEmbedder {
-    let mut models = HashMap::new();
+    tracing::info!("Initializing local Fastembed");
+    let mut models = std::collections::HashMap::new();
 
     for model in list_models() {
-        info!("Setting up text embedding model: {}", model.model_code);
-        let embedding = TextEmbedding::try_new(
-            InitOptions::new(model.model)
+        tracing::info!("Setting up text embedding model: {}", model.model_code);
+        let embedding = fastembed::TextEmbedding::try_new(
+            fastembed::InitOptions::new(model.model)
                 .with_execution_providers(vec![
                     #[cfg(feature = "cuda")]
                     ort::CUDAExecutionProvider::default().into(),
@@ -29,57 +48,12 @@ pub fn init() -> FastEmbedder {
     FastEmbedder { models }
 }
 
-pub struct FastEmbedder {
-    pub models: HashMap<String, fastembed::TextEmbedding>,
-}
-
-#[async_trait::async_trait]
-impl Embedder for FastEmbedder {
-    fn id(&self) -> &'static str {
-        "fembed"
-    }
-
-    fn default_model(&self) -> (String, usize) {
-        (
-            String::from(DEFAULT_COLLECTION_MODEL),
-            DEFAULT_COLLECTION_SIZE,
-        )
-    }
-
-    fn list_embedding_models(&self) -> Vec<(String, usize)> {
-        list_models()
-            .into_iter()
-            .map(|model| (model.model_code, model.dim))
-            .collect()
-    }
-
-    async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f32>>, ChonkitError> {
-        let embedder = self.models.get(model).ok_or_else(|| {
-            ChonkitError::InvalidEmbeddingModel(format!(
-                "Model '{model}' not supported by embedder '{}'",
-                self.id()
-            ))
-        })?;
-
-        let embeddings = embedder
-            .embed(content.to_vec(), None)
-            .map_err(|err| ChonkitError::Fastembed(err.to_string()))?;
-
-        debug_assert_eq!(
-            embeddings.len(),
-            content.len(),
-            "Content length is different from embeddings!"
-        );
-
-        Ok(embeddings)
-    }
-
-    fn size(&self, model: &str) -> Option<usize> {
-        fastembed::TextEmbedding::list_supported_models()
-            .into_iter()
-            .find(|m| m.model_code == model)
-            .map(|m| m.dim)
-    }
+/// Initialise the FastEmbedder remote client.
+#[cfg(feature = "fe-remote")]
+pub fn init(url: String) -> FastEmbedder {
+    tracing::info!("Initializing remote Fastembed at {url}");
+    let client = reqwest::Client::new();
+    FastEmbedder { client, url }
 }
 
 fn list_models() -> Vec<ModelInfo<EmbeddingModel>> {
@@ -103,23 +77,30 @@ impl std::fmt::Debug for FastEmbedder {
     }
 }
 
+#[cfg(feature = "fe-remote")]
+impl FastEmbedder {
+    fn url(&self, path: &str) -> String {
+        format!("{}/{path}", self.url)
+    }
+}
+
 /// Initialize the FastEmbedder with a specific model.
 /// Useful for tests. If `model` is `None`, the default model will be used.
-#[cfg(test)]
+#[cfg(all(test, feature = "fe-local", not(feature = "fe-remote")))]
 pub fn init_single(model: Option<&str>) -> FastEmbedder {
-    let mut models = HashMap::new();
+    let mut models = std::collections::HashMap::new();
 
     let model = model.unwrap_or(DEFAULT_COLLECTION_MODEL);
 
-    for m in TextEmbedding::list_supported_models() {
+    for m in fastembed::TextEmbedding::list_supported_models() {
         if m.model_code != model {
             continue;
         }
 
-        info!("Setting up text embedding model: {}", m.model_code);
+        tracing::info!("Setting up text embedding model: {}", m.model_code);
 
-        let embedding = TextEmbedding::try_new(
-            InitOptions::new(m.model)
+        let embedding = fastembed::TextEmbedding::try_new(
+            fastembed::InitOptions::new(m.model)
                 .with_execution_providers(vec![
                     #[cfg(feature = "cuda")]
                     ort::CUDAExecutionProvider::default().into(),

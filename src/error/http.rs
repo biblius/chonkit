@@ -28,7 +28,7 @@ impl ChonkitError {
             | E::Utf8(_)
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
 
-            #[cfg(feature = "openai")]
+            #[cfg(any(feature = "openai", feature = "fe-remote"))]
             E::Reqwest(e) => e.status().unwrap_or(SC::INTERNAL_SERVER_ERROR),
 
             #[cfg(feature = "qdrant")]
@@ -111,7 +111,7 @@ impl IntoResponse for ChonkitError {
             CE::DocxRead(_) => todo!(),
             CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
 
-            #[cfg(feature = "openai")]
+            #[cfg(any(feature = "openai", feature = "fe-remote"))]
             CE::Reqwest(e) => {
                 (status, ResponseError::new(ET::Internal, e.to_string())).into_response()
             }

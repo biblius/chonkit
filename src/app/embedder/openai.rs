@@ -65,13 +65,6 @@ impl Embedder for OpenAiEmbeddings {
 
         Ok(response.data.into_iter().map(|o| o.embedding).collect())
     }
-
-    fn size(&self, model: &str) -> Option<usize> {
-        self.list_embedding_models()
-            .into_iter()
-            .find(|m| m.0 == model)
-            .map(|m| m.1)
-    }
 }
 
 #[derive(Debug, Serialize)]

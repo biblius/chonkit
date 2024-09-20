@@ -17,7 +17,7 @@ required-features = ["http"]
 
 [[bin]]
 name = "fembedder"
-required-features = ["fembed", "cuda"]
+required-features = ["http", "fe-local", "cuda"]
 
 [dependencies]
 chrono = { version = "0.4.31", features = ["serde"] }
@@ -51,7 +51,7 @@ pdfium-render = { version = "0.8.23" }
 async-trait = "0.1.82"
 rayon = "1.10.0"
 futures-util = "0.3.30"
-ort = { version = "2.0.0-rc.5", optional = true }
+ort = { version = "2.0.0-rc.5", features = ["load-dynamic"], optional = true }
 tracing-test = "0.2.5"
 testcontainers = "0.22.0"
 testcontainers-modules = { version = "0.10.0", features = ["postgres"] }
@@ -91,7 +91,7 @@ utoipa-swagger-ui = { version = "7.1.0", features = ["axum"], optional = true }
 
 
 [features]
-default = ["http", "qdrant", "fembed"]
+default = ["http", "qdrant", "fembed", "fe-remote"]
 cli = []
 http = [
     "axum",
@@ -101,7 +101,9 @@ http = [
     "utoipa",
     "utoipa-swagger-ui",
 ]
-fembed = ["fastembed", "ort"]
+fembed = ["fastembed"]
+fe-local = ["fembed", "ort"]
+fe-remote = ["fembed", "reqwest"]
 openai = ["reqwest"]
 weaviate = ["weaviate-community"]
 qdrant = ["qdrant-client"]

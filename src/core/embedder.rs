@@ -16,7 +16,12 @@ pub trait Embedder {
     /// if it is supported by the embedder.
     ///
     /// * `model`:
-    fn size(&self, model: &str) -> Option<usize>;
+    fn size(&self, model: &str) -> Option<usize> {
+        self.list_embedding_models()
+            .into_iter()
+            .find(|m| m.0 == model)
+            .map(|m| m.1)
+    }
 
     /// Get the vectors for the elements in `content`.
     /// The content passed in can be a user's query,

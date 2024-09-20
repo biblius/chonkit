@@ -10,35 +10,40 @@ const DEFAULT_ADDRESS: &str = "0.0.0.0:42069";
 pub struct StartArgs {
     /// Database URL.
     #[arg(short, long)]
-    pub db_url: Option<String>,
+    db_url: Option<String>,
 
     /// RUST_LOG string to use as the env filter.
     #[arg(short, long)]
-    pub log: Option<String>,
+    log: Option<String>,
 
     /// If using the `FsDocumentStore`, sets its path.
     #[arg(short, long)]
-    pub upload_path: Option<String>,
+    upload_path: Option<String>,
 
     /// Address to listen on.
     #[cfg(feature = "http")]
     #[arg(short, long)]
-    pub address: Option<String>,
+    address: Option<String>,
 
     /// Qdrant URL.
     #[cfg(feature = "qdrant")]
     #[arg(short, long)]
-    pub qdrant_url: Option<String>,
+    qdrant_url: Option<String>,
 
     /// Weaviate URL.
     #[cfg(feature = "weaviate")]
     #[arg(short, long)]
-    pub weaviate_url: Option<String>,
+    weaviate_url: Option<String>,
 
     /// If using the [OpenAiEmbeddings][crate::app::embedder::openai::OpenAiEmbeddings] module, set its endpoint.
     #[cfg(feature = "openai")]
     #[arg(short, long)]
-    pub openai_endpoint: Option<String>,
+    openai_endpoint: Option<String>,
+
+    /// If using the fastembedder remote embedding module, set its endpoint.
+    #[cfg(feature = "fe-remote")]
+    #[arg(short, long)]
+    fembed_url: Option<String>,
 
     /// CLI mode execution command
     #[cfg(feature = "cli")]
@@ -114,8 +119,21 @@ impl StartArgs {
         }
     }
 
-    // #[cfg(feature = "openai")]
+    #[cfg(feature = "openai")]
     pub fn open_ai_key(&self) -> String {
         std::env::var("OPENAI_KEY").expect("Missing OPENAI_KEY in env")
+    }
+
+    #[cfg(feature = "fe-remote")]
+    pub fn fembed_url(&self) -> String {
+        match &self.fembed_url {
+            Some(url) => url.to_string(),
+            None => match std::env::var("FEMBED_URL") {
+                Ok(url) => url,
+                Err(_) => {
+                    panic!("Fembed url not found; Pass --fembed-url (-f) or set FEMBED_URL")
+                }
+            },
+        }
     }
 }

@@ -1,6 +1,5 @@
 use app::service::ServiceState;
 use std::sync::Arc;
-use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 pub mod app;
@@ -16,25 +15,28 @@ pub async fn state(args: &config::StartArgs) -> ServiceState {
     pdfium_render::prelude::Pdfium::default();
 
     let db_url = args.db_url();
-    let upload_path = args.upload_path();
-    let log = args.log();
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from(log))
+        .with_env_filter(EnvFilter::from(args.log()))
         .init();
 
-    #[cfg(feature = "fembed")]
-    info!(
+    #[cfg(feature = "fe-local")]
+    tracing::info!(
         "Cuda available: {:?}",
         ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
     );
 
     let postgres = app::repo::pg::init(&db_url).await;
 
-    let fs_store = Arc::new(app::document::store::FsDocumentStore::new(&upload_path));
+    let fs_store = Arc::new(app::document::store::FsDocumentStore::new(
+        &args.upload_path(),
+    ));
 
-    #[cfg(feature = "fembed")]
+    #[cfg(feature = "fe-local")]
     let fastembed = Arc::new(crate::app::embedder::fastembed::init());
+
+    #[cfg(feature = "fe-remote")]
+    let fastembed = Arc::new(crate::app::embedder::fastembed::init(args.fembed_url()));
 
     #[cfg(feature = "openai")]
     let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
