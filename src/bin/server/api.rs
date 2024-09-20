@@ -22,7 +22,8 @@ use super::router::{
     __path_embed,
     __path_search, 
 };
-use crate::{
+use crate::dto::{ChunkPreviewPayload, CreateCollectionPayload, SearchPayload, UploadResult};
+use chonkit::{
     app::service::AppConfig,
     core::{
         chunk::{
@@ -36,7 +37,6 @@ use crate::{
             Pagination,
         },
     },
-    ctrl::http::dto::{ChunkPreviewPayload, CreateCollectionPayload, SearchPayload, UploadResult},
 };
 use utoipa::OpenApi;
 

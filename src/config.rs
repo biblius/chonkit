@@ -35,15 +35,15 @@ pub struct StartArgs {
     #[arg(short, long)]
     pub weaviate_url: Option<String>,
 
-    /// If using the [OpenAiEmbeddings] module, set its endpoint.
-    // #[cfg(feature = "openai")]
+    /// If using the [OpenAiEmbeddings][crate::app::embedder::openai::OpenAiEmbeddings] module, set its endpoint.
+    #[cfg(feature = "openai")]
     #[arg(short, long)]
     pub openai_endpoint: Option<String>,
 
     /// CLI mode execution command
     #[cfg(feature = "cli")]
     #[clap(subcommand)]
-    pub command: crate::ctrl::cli::Execute,
+    pub command: crate::cli::Execute,
 }
 
 impl StartArgs {

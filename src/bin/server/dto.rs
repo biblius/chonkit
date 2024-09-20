@@ -1,6 +1,6 @@
 //! Http specific DTOs.
 
-use crate::core::{
+use chonkit::core::{
     chunk::Chunker, document::parser::ParseConfig, model::document::Document,
     service::vector::dto::CreateCollection,
 };
@@ -103,20 +103,16 @@ pub struct ChunkPreviewPayload {
     pub parser: ParseConfig,
     pub chunker: Chunker,
     pub embedder: Option<String>,
-    pub embedder_model: Option<String>,
 }
 
 impl ChunkPreviewPayload {
     #[schema_validation]
     fn validate(&self) -> Result<(), ValidationErrors> {
-        match (&self.chunker, &self.embedder) {
-            (Chunker::Semantic(_), None) => {
-                schema_err! {
-                    "chunker_params",
-                    "`embedder` must be set when using semantic chunker"
-                };
-            }
-            _ => {}
+        if let (Chunker::Semantic(_), None) = (&self.chunker, &self.embedder) {
+            schema_err! {
+                "chunker_params",
+                "`embedder` must be set when using semantic chunker"
+            };
         }
     }
 }

@@ -1,8 +1,17 @@
+use crate::dto::{ChunkPreviewPayload, UploadResult};
+
 use super::{
     api::ApiDoc,
     dto::{CreateCollectionPayload, SearchPayload},
 };
-use crate::{
+use axum::{
+    extract::{DefaultBodyLimit, Path, Query, State},
+    http::Method,
+    response::IntoResponse,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
+use chonkit::{
     app::service::ServiceState,
     core::{
         chunk::Chunker,
@@ -16,15 +25,7 @@ use crate::{
             },
         },
     },
-    ctrl::http::dto::{ChunkPreviewPayload, UploadResult},
     error::ChonkitError,
-};
-use axum::{
-    extract::{DefaultBodyLimit, Path, Query, State},
-    http::Method,
-    response::IntoResponse,
-    routing::{delete, get, post, put},
-    Json, Router,
 };
 use std::{collections::HashMap, time::Duration};
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
@@ -297,10 +298,10 @@ async fn chunk_preview(
         .await?;
 
     match chunked {
-        crate::core::chunk::ChunkedDocument::Ref(chunked) => {
+        chonkit::core::chunk::ChunkedDocument::Ref(chunked) => {
             Ok(Json(chunked.into_iter().map(String::from).collect()))
         }
-        crate::core::chunk::ChunkedDocument::Owned(chunked) => Ok(Json(chunked)),
+        chonkit::core::chunk::ChunkedDocument::Owned(chunked) => Ok(Json(chunked)),
     }
 }
 
@@ -516,8 +517,10 @@ async fn embed(
         .await?;
 
     let chunks = match chunks {
-        crate::core::chunk::ChunkedDocument::Ref(r) => r,
-        crate::core::chunk::ChunkedDocument::Owned(ref o) => o.iter().map(|s| s.as_str()).collect(),
+        chonkit::core::chunk::ChunkedDocument::Ref(r) => r,
+        chonkit::core::chunk::ChunkedDocument::Owned(ref o) => {
+            o.iter().map(|s| s.as_str()).collect()
+        }
     };
 
     let create = CreateEmbeddings {

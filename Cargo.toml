@@ -3,6 +3,22 @@ edition = "2021"
 name = "chonkit"
 version = "0.1.0"
 
+[lib]
+name = "chonkit"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cli"
+required-features = ["cli"]
+
+[[bin]]
+name = "server"
+required-features = ["http"]
+
+[[bin]]
+name = "fembedder"
+required-features = ["fembed", "cuda"]
+
 [dependencies]
 chrono = { version = "0.4.31", features = ["serde"] }
 clap = { version = "4.5.3", features = ["derive"] }
@@ -91,9 +107,3 @@ weaviate = ["weaviate-community"]
 qdrant = ["qdrant-client"]
 cuda = ["ort?/cuda"]
 
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "z"
-panic = "abort"
-strip = true

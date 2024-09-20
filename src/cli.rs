@@ -227,3 +227,4 @@ fn write_chunks(chunks: Vec<String>, start: usize, end: usize, out: PathBuf) {
 fn csv_to_vec(csv: String) -> Vec<String> {
     csv.split(',').map(String::from).collect()
 }
+

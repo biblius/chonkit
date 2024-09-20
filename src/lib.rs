@@ -1,38 +1,19 @@
-use pdfium_render::prelude::Pdfium;
+use app::service::ServiceState;
+use std::sync::Arc;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 pub mod app;
+pub mod cli;
 pub mod config;
 pub mod core;
-pub mod ctrl;
 pub mod error;
 
 pub const DEFAULT_COLLECTION_NAME: &str = "chonkit_default_0";
 
-#[tokio::main]
-async fn main() {
-    #[cfg(all(feature = "cli", feature = "http"))]
-    compile_error!("cannot run in both cli and http mode");
-
-    #[cfg(not(any(test, feature = "cli", feature = "http")))]
-    compile_error!("execution mode not set; run with `-F cli` or -F `http` to pick one");
-
+pub async fn state(args: &config::StartArgs) -> ServiceState {
     // Ensures the dynamic library is loaded and panics if it isn't
-    Pdfium::default();
-
-    #[cfg(any(feature = "cli", feature = "http"))]
-    run().await;
-}
-
-#[cfg(any(feature = "cli", feature = "http"))]
-async fn run() {
-    use crate::config::StartArgs;
-    use app::{document::store::FsDocumentStore, service::ServiceState};
-    use clap::Parser;
-    use std::sync::Arc;
-    use tracing::info;
-    use tracing_subscriber::EnvFilter;
-
-    let args = StartArgs::parse();
+    pdfium_render::prelude::Pdfium::default();
 
     let db_url = args.db_url();
     let upload_path = args.upload_path();
@@ -48,9 +29,9 @@ async fn run() {
         ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
     );
 
-    let postgres = crate::app::repo::pg::init(&db_url).await;
+    let postgres = app::repo::pg::init(&db_url).await;
 
-    let fs_store = Arc::new(FsDocumentStore::new(&upload_path));
+    let fs_store = Arc::new(app::document::store::FsDocumentStore::new(&upload_path));
 
     #[cfg(feature = "fembed")]
     let fastembed = Arc::new(crate::app::embedder::fastembed::init());
@@ -66,7 +47,7 @@ async fn run() {
     #[cfg(feature = "weaviate")]
     let weaviate = Arc::new(crate::app::vector::weaviate::init(&args.weaviate_url()));
 
-    let services = ServiceState {
+    ServiceState {
         postgres,
 
         fs_store,
@@ -82,16 +63,5 @@ async fn run() {
 
         #[cfg(feature = "weaviate")]
         weaviate,
-    };
-
-    #[cfg(feature = "http")]
-    {
-        let addr = args.address();
-        ctrl::http::server(&addr, services).await;
-    }
-
-    #[cfg(feature = "cli")]
-    {
-        ctrl::cli::run(args.command, services).await;
     }
 }

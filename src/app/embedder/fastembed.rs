@@ -30,7 +30,7 @@ pub fn init() -> FastEmbedder {
 }
 
 pub struct FastEmbedder {
-    models: HashMap<String, fastembed::TextEmbedding>,
+    pub models: HashMap<String, fastembed::TextEmbedding>,
 }
 
 #[async_trait::async_trait]
