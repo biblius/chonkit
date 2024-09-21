@@ -116,6 +116,8 @@ impl std::fmt::Display for Chunker {
     }
 }
 
+/// The result of chunking a document.
+/// Some chunkers do not allocate.
 pub enum ChunkedDocument<'content> {
     Ref(Vec<&'content str>),
     Owned(Vec<String>),
@@ -138,7 +140,7 @@ pub enum ChunkerError {
     #[error("utf-8: {0}")]
     Utf8(#[from] Utf8Error),
 
-    #[error("error in semantic chunker embedder: {0}")]
+    #[error("semantic chunker embedder: {0}")]
     Embedder(String),
 }
 

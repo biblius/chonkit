@@ -1,5 +1,5 @@
 use crate::{
-    app::service::ServiceState,
+    app::service::AppState,
     core::{
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
@@ -117,7 +117,7 @@ pub struct ListArgs {
     offset: usize,
 }
 
-pub async fn run(command: Execute, state: ServiceState) {
+pub async fn run(command: Execute, state: AppState) {
     match command {
         Execute::Doc(doc) => {
             let store = state.store("fs".try_into().unwrap());
@@ -227,4 +227,3 @@ fn write_chunks(chunks: Vec<String>, start: usize, end: usize, out: PathBuf) {
 fn csv_to_vec(csv: String) -> Vec<String> {
     csv.split(',').map(String::from).collect()
 }
-

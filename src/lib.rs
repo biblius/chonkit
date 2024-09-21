@@ -1,4 +1,7 @@
-use app::service::ServiceState;
+use app::{
+    batch::{BatchEmbedder, BatchEmbedderHandle},
+    service::AppState,
+};
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -10,9 +13,15 @@ pub mod error;
 
 pub const DEFAULT_COLLECTION_NAME: &str = "chonkit_default_0";
 
-pub async fn state(args: &config::StartArgs) -> ServiceState {
+pub async fn state(args: &config::StartArgs) -> AppState {
     // Ensures the dynamic library is loaded and panics if it isn't
     pdfium_render::prelude::Pdfium::default();
+
+    #[cfg(all(
+        feature = "fembed",
+        not(any(feature = "fe-local", feature = "fe-remote"))
+    ))]
+    compile_error!("either `fe-local` or `fe-remote` must be enabled when running with `fembed`");
 
     let db_url = args.db_url();
 
@@ -20,17 +29,17 @@ pub async fn state(args: &config::StartArgs) -> ServiceState {
         .with_env_filter(EnvFilter::from(args.log()))
         .init();
 
-    #[cfg(feature = "fe-local")]
-    tracing::info!(
-        "Cuda available: {:?}",
-        ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
-    );
-
     let postgres = app::repo::pg::init(&db_url).await;
 
     let fs_store = Arc::new(app::document::store::FsDocumentStore::new(
         &args.upload_path(),
     ));
+
+    #[cfg(feature = "fe-local")]
+    tracing::info!(
+        "Cuda available: {:?}",
+        ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
+    );
 
     #[cfg(feature = "fe-local")]
     let fastembed = Arc::new(crate::app::embedder::fastembed::init());
@@ -49,7 +58,7 @@ pub async fn state(args: &config::StartArgs) -> ServiceState {
     #[cfg(feature = "weaviate")]
     let weaviate = Arc::new(crate::app::vector::weaviate::init(&args.weaviate_url()));
 
-    ServiceState {
+    AppState {
         postgres,
 
         fs_store,
@@ -66,4 +75,12 @@ pub async fn state(args: &config::StartArgs) -> ServiceState {
         #[cfg(feature = "weaviate")]
         weaviate,
     }
+}
+
+pub fn spawn_batch_embedder(state: AppState) -> BatchEmbedderHandle {
+    let v_service = crate::core::service::vector::VectorService::new(state.postgres.clone());
+    let d_service = crate::core::service::document::DocumentService::new(state.postgres.clone());
+    let (tx, rx) = tokio::sync::mpsc::channel(128);
+    BatchEmbedder::new(d_service, v_service, rx, state).start();
+    tx
 }

@@ -1,18 +1,20 @@
-use crate::dto::{ChunkPreviewPayload, UploadResult};
-
 use super::{
     api::ApiDoc,
     dto::{CreateCollectionPayload, SearchPayload},
 };
+use crate::dto::{ChunkPreviewPayload, EmbeddingJobPayload, UploadResult};
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::Method,
-    response::IntoResponse,
+    response::{sse::Event, IntoResponse, Sse},
     routing::{delete, get, post, put},
     Json, Router,
 };
 use chonkit::{
-    app::service::ServiceState,
+    app::{
+        batch::{BatchEmbedder, BatchEmbedderHandle, EmbeddingJob, EmbeddingResult},
+        service::AppState,
+    },
     core::{
         chunk::Chunker,
         document::parser::ParseConfig,
@@ -27,7 +29,9 @@ use chonkit::{
     },
     error::ChonkitError,
 };
+use futures_util::Stream;
 use std::{collections::HashMap, time::Duration};
+use tokio_stream::StreamExt;
 use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, Span};
 use utoipa::OpenApi;
@@ -35,25 +39,24 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 use validify::{Validate, Validify};
 
-pub fn router(state: ServiceState) -> Router {
-    let router = public_router(state.clone());
-
+pub fn router(state: AppState, batch_embedder: BatchEmbedderHandle) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any)
         .allow_methods([Method::GET, Method::POST]);
 
-    router
+    service_api(state.clone())
+        .merge(batch_api(batch_embedder))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(TraceLayer::new_for_http().on_failure(
             |error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
                 tracing::error!("{error}")
             },
         ))
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors)
 }
 
-fn public_router(state: ServiceState) -> Router {
+fn service_api(state: AppState) -> Router {
     Router::new()
         .route("/_health", get(health_check))
         .route("/info", get(app_config))
@@ -80,6 +83,12 @@ fn public_router(state: ServiceState) -> Router {
         .with_state(state)
 }
 
+fn batch_api(batch_embedder: BatchEmbedderHandle) -> Router {
+    Router::new()
+        .route("/batch/embed", post(batch_embed))
+        .with_state(batch_embedder)
+}
+
 // General app configuration
 
 #[utoipa::path(
@@ -90,7 +99,7 @@ fn public_router(state: ServiceState) -> Router {
         (status = 500, description = "Internal server error")
     )
 )]
-async fn app_config(state: State<ServiceState>) -> Result<impl IntoResponse, ChonkitError> {
+async fn app_config(state: State<AppState>) -> Result<impl IntoResponse, ChonkitError> {
     Ok(Json(state.get_configuration()?))
 }
 
@@ -121,7 +130,7 @@ async fn health_check() -> impl IntoResponse {
     ),
 )]
 async fn list_documents(
-    state: State<ServiceState>,
+    state: State<AppState>,
     pagination: Option<Query<Pagination>>,
     src: Option<Query<String>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -147,7 +156,7 @@ async fn list_documents(
     )
 )]
 async fn get_document(
-    state: axum::extract::State<ServiceState>,
+    state: axum::extract::State<AppState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
@@ -168,7 +177,7 @@ async fn get_document(
     )
 )]
 async fn delete_document(
-    state: axum::extract::State<ServiceState>,
+    state: axum::extract::State<AppState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
@@ -188,7 +197,7 @@ async fn delete_document(
     )
 )]
 async fn upload_documents(
-    state: axum::extract::State<ServiceState>,
+    state: axum::extract::State<AppState>,
     Query(provider): Query<String>,
     mut form: axum::extract::Multipart,
 ) -> Result<Json<UploadResult>, ChonkitError> {
@@ -252,7 +261,7 @@ async fn upload_documents(
     request_body = Chunker
 )]
 async fn update_chunk_config(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(document_id): Path<uuid::Uuid>,
     Json(chunker): Json<Chunker>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -275,7 +284,7 @@ async fn update_chunk_config(
     request_body = ChunkPreviewPayload
 )]
 async fn chunk_preview(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(id): Path<uuid::Uuid>,
     Json(config): Json<ChunkPreviewPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -319,7 +328,7 @@ async fn chunk_preview(
     request_body = ParseConfig
 )]
 async fn update_parse_config(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(document_id): Path<uuid::Uuid>,
     Json(config): Json<ParseConfig>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -342,7 +351,7 @@ async fn update_parse_config(
     request_body(content = ParseConfig, description = "Optional parse configuration for preview")
 )]
 async fn parse_preview(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(id): Path<uuid::Uuid>,
     Json(parser): Json<ParseConfig>,
 ) -> Result<impl IntoResponse, ChonkitError> {
@@ -362,7 +371,7 @@ async fn parse_preview(
     )
 )]
 async fn sync(
-    state: axum::extract::State<ServiceState>,
+    state: axum::extract::State<AppState>,
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
@@ -385,7 +394,7 @@ async fn sync(
     )
 )]
 async fn list_collections(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Query(p): Query<Pagination>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
@@ -403,7 +412,7 @@ async fn list_collections(
     request_body = CreateCollection
 )]
 async fn create_collection(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Json(payload): Json<CreateCollectionPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
@@ -428,7 +437,7 @@ async fn create_collection(
     )
 )]
 async fn get_collection(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(collection_id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
@@ -449,7 +458,7 @@ async fn get_collection(
     )
 )]
 async fn delete_collection(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(collection_id): Path<uuid::Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
@@ -472,7 +481,7 @@ async fn delete_collection(
     )
 )]
 async fn list_embedding_models(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
@@ -498,7 +507,7 @@ async fn list_embedding_models(
     )
 )]
 async fn embed(
-    state: axum::extract::State<ServiceState>,
+    state: axum::extract::State<AppState>,
     Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let d_service = DocumentService::new(state.postgres.clone());
@@ -536,6 +545,41 @@ async fn embed(
     Ok("Successfully created embeddings")
 }
 
+async fn batch_embed(
+    State(batch_embedder): axum::extract::State<BatchEmbedderHandle>,
+    Json(job): Json<EmbeddingJobPayload>,
+) -> Sse<impl Stream<Item = Result<Event, ChonkitError>>> {
+    let EmbeddingJobPayload {
+        collection,
+        documents,
+    } = job;
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<EmbeddingResult>(documents.len());
+
+    let job = EmbeddingJob::new(collection, documents, tx);
+    batch_embedder.send(job).await.unwrap();
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|result| {
+        let event = match result {
+            EmbeddingResult::Ok(report) => {
+                let report = serde_json::to_string(&report)?;
+                let report = format!("data: {report}");
+                Event::default().data(report)
+            }
+            EmbeddingResult::Err(err) => {
+                let err = format!("error: {err}");
+                Event::default().data(err)
+            }
+        };
+        Ok(event)
+    });
+
+    Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(1))
+            .text("keep-alive"),
+    )
+}
+
 #[utoipa::path(
     post,
     path = "/vectors/search", 
@@ -546,7 +590,7 @@ async fn embed(
     request_body = SearchPayload
 )]
 async fn search(
-    state: State<ServiceState>,
+    state: State<AppState>,
     Json(mut search): Json<SearchPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     search.validify()?;

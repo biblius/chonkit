@@ -55,6 +55,7 @@ ort = { version = "2.0.0-rc.5", features = ["load-dynamic"], optional = true }
 tracing-test = "0.2.5"
 testcontainers = "0.22.0"
 testcontainers-modules = { version = "0.10.0", features = ["postgres"] }
+tokio-stream = "0.1.16"
 
 # fembed
 fastembed = { version = "4.0.0", optional = true }
@@ -91,7 +92,7 @@ utoipa-swagger-ui = { version = "7.1.0", features = ["axum"], optional = true }
 
 
 [features]
-default = ["http", "qdrant", "fembed", "fe-remote"]
+default = ["http", "qdrant", "fe-local"]
 cli = []
 http = [
     "axum",
@@ -108,4 +109,3 @@ openai = ["reqwest"]
 weaviate = ["weaviate-community"]
 qdrant = ["qdrant-client"]
 cuda = ["ort?/cuda"]
-

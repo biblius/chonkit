@@ -1,5 +1,5 @@
 use crate::core::embedder::Embedder;
-use crate::core::model::collection::{Collection, CollectionInsert, EmbeddingInsert};
+use crate::core::model::collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert};
 use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
@@ -165,7 +165,7 @@ where
             collection,
             chunks,
         }: CreateEmbeddings<'_>,
-    ) -> Result<(), ChonkitError> {
+    ) -> Result<Embedding, ChonkitError> {
         // Make sure the collection exists.
         let Some(collection) = self.repo.get_collection(collection).await? else {
             return Err(ChonkitError::DoesNotExist(format!(
@@ -206,9 +206,9 @@ where
 
         let insert = EmbeddingInsert::new(id, collection.id);
 
-        self.repo.insert_embeddings(insert).await?;
+        let embeddings = self.repo.insert_embeddings(insert).await?;
 
-        Ok(())
+        Ok(embeddings)
     }
 
     /// Query the vector database (semantic search).

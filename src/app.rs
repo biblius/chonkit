@@ -1,5 +1,6 @@
 //! Module containing concrete implementations from the [core](crate::core) module.
 
+pub mod batch;
 pub mod document;
 pub mod embedder;
 pub mod repo;

@@ -12,73 +12,73 @@ pub mod http;
 
 #[derive(Debug, Error)]
 pub enum ChonkitError {
-    #[error("Does not exist: {0}")]
+    #[error("Does not exist; {0}")]
     DoesNotExist(String),
 
-    #[error("Invalid file name: {0}")]
+    #[error("Invalid file name; {0}")]
     InvalidFileName(String),
 
-    #[error("File exists: {0}")]
+    #[error("Entity already exists; {0}")]
     AlreadyExists(String),
 
-    #[error("Unsupported file type: {0}")]
+    #[error("Unsupported file type; {0}")]
     UnsupportedFileType(String),
 
-    #[error("Invalid embedding model: {0}")]
+    #[error("Invalid embedding model; {0}")]
     InvalidEmbeddingModel(String),
 
-    #[error("Invalid provider: {0}")]
+    #[error("Invalid provider; {0}")]
     InvalidProvider(String),
 
-    #[error("IO: {0}")]
+    #[error("IO; {0}")]
     IO(#[from] std::io::Error),
 
-    #[error("FMT: {0}")]
+    #[error("FMT; {0}")]
     Fmt(#[from] std::fmt::Error),
 
-    #[error("UTF-8: {0}")]
+    #[error("UTF-8; {0}")]
     Utf8(#[from] FromUtf8Error),
 
-    #[error("Parse int: {0}")]
+    #[error("Parse int; {0}")]
     ParseInt(#[from] ParseIntError),
 
-    #[error("SQL: {0}")]
+    #[error("SQL; {0}")]
     Sqlx(#[from] sqlx::Error),
 
-    #[error("JSON error: {0}")]
+    #[error("JSON error; {0}")]
     SerdeJson(#[from] serde_json::Error),
 
-    #[error("Chunking: {0}")]
+    #[error("Chunking; {0}")]
     Chunk(#[from] ChunkerError),
 
-    #[error("Parse pdf: {0}")]
+    #[error("Parse pdf; {0}")]
     ParsePdf(#[from] pdfium_render::prelude::PdfiumError),
 
-    #[error("Docx read: {0}")]
+    #[error("Docx read; {0}")]
     DocxRead(#[from] docx_rs::ReaderError),
 
-    #[error("Fastembed: {0}")]
+    #[error("Fastembed; {0}")]
     Fastembed(String),
 
-    #[error("Validation: {0}")]
+    #[error("Validation; {0}")]
     Validation(#[from] ValidationErrors),
 
-    #[error("Regex: {0}")]
+    #[error("Regex; {0}")]
     Regex(#[from] regex::Error),
 
     #[cfg(feature = "http")]
-    #[error("Http: {0}")]
+    #[error("Http; {0}")]
     Http(#[from] axum::http::Error),
 
     #[cfg(feature = "qdrant")]
-    #[error("Qdrant: {0}")]
+    #[error("Qdrant; {0}")]
     Qdrant(#[from] QdrantError),
 
     #[cfg(feature = "weaviate")]
-    #[error("Weaviate: {0}")]
+    #[error("Weaviate; {0}")]
     Weaviate(String),
 
     #[cfg(any(feature = "openai", feature = "fe-remote"))]
-    #[error("Openai: {0}")]
+    #[error("Openai; {0}")]
     Reqwest(#[from] reqwest::Error),
 }

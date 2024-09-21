@@ -96,12 +96,17 @@ impl SearchPayload {
 }
 
 /// DTO used for previewing chunks.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 #[validate(Self::validate)]
-pub struct ChunkPreviewPayload {
+pub(super) struct ChunkPreviewPayload {
+    /// Parsing configuration.
     pub parser: ParseConfig,
+
+    /// Chunking configuration.
     pub chunker: Chunker,
+
+    /// The embedding provider to use. Necessary
+    /// when using the semantic chunker.
     pub embedder: Option<String>,
 }
 
@@ -115,4 +120,15 @@ impl ChunkPreviewPayload {
             };
         }
     }
+}
+
+/// Used for batch embeddings.
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub(super) struct EmbeddingJobPayload {
+    /// The documents to embed.
+    #[validate(length(min = 1))]
+    pub documents: Vec<Uuid>,
+
+    /// The collection in which to store the embeddings to.
+    pub collection: Uuid,
 }

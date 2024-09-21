@@ -11,7 +11,7 @@ pub mod document;
 pub mod vector;
 
 #[derive(Clone)]
-pub struct ServiceState {
+pub struct AppState {
     pub postgres: PgPool,
 
     pub fs_store: Arc<FsDocumentStore>,
@@ -29,7 +29,7 @@ pub struct ServiceState {
     pub weaviate: Arc<super::vector::weaviate::WeaviateDb>,
 }
 
-impl ServiceState {
+impl AppState {
     pub fn store(&self, provider: DocumentStoreProvider) -> Arc<dyn DocumentStore + Send + Sync> {
         match provider {
             DocumentStoreProvider::Fs => self.fs_store.clone(),
@@ -74,7 +74,7 @@ pub struct AppConfig {
 
 /// Creates a provider enum and its TryFrom <String> and <&str> implementations.
 ///
-/// Implements functions for ServiceState to easily get an instance of whatever
+/// Implements functions for AppState to easily get an instance of whatever
 /// the provider is for.
 ///
 /// Additionally, creates a constant with the given feature literals so we can easily list them
@@ -118,7 +118,7 @@ macro_rules! provider {
                 }
             }
 
-            impl ServiceState {
+            impl AppState {
                 pub fn $fn_name(&self, provider: $name) -> Arc<dyn $return_ty + Send + Sync> {
                     match provider {
                         $(
