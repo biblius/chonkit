@@ -1,7 +1,7 @@
 use fastembed::{EmbeddingModel, ModelInfo};
 
-#[cfg(all(feature = "fe-local", feature = "fe-remote"))]
-compile_error!("only one of 'fe-local' or 'fe-remote' can be enabled");
+#[cfg(all(not(debug_assertions), feature = "fe-local", feature = "fe-remote"))]
+compile_error!("only one of 'fe-local' or 'fe-remote' can be enabled when compiling");
 
 #[cfg(feature = "fe-local")]
 pub mod local;

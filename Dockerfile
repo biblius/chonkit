@@ -10,21 +10,16 @@ COPY sqlx-data.json ./sqlx-data.json
 
 COPY src ./src
 
-RUN cargo build -F http -F ${VEC_DB} --release
+RUN cargo build --bin server -F "http fe-local ${VEC_DB}" --release
 
 FROM debian:latest
-
-RUN apt-get update && \
-    apt-get install -y ca-certificates && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Create upload directory
-
 RUN mkdir upload
-COPY --from=builder /app/target/release/chonkit ./chonkit
+
+COPY --from=builder /app/target/release/server ./chonkit
 COPY --from=builder /app/migrations ./migrations
 
 ENTRYPOINT ["./chonkit"]

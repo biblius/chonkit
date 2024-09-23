@@ -44,7 +44,7 @@ impl DocumentParser for DocxParser {
                     let table = extract_table(*el)?;
                     writeln!(out, "{table}")?;
                 }
-                el => debug!("Unrecognized DOCX element {:?}", el),
+                _ => {}
             }
         }
 
@@ -137,7 +137,7 @@ fn extract_paragraph(p: &Paragraph) -> Result<Vec<&str>, std::fmt::Error> {
                     }
                 }
             }
-            el => debug!("Unrecognized DOCX element {:?}", el),
+            _el => {}
         }
     }
 

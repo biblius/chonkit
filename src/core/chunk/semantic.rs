@@ -6,7 +6,7 @@ use crate::{core::embedder::Embedder, error::ChonkitError};
 use futures_util::future::join_all;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Arc, usize};
+use std::{collections::HashMap, fmt::Debug, sync::Arc, usize};
 
 #[cfg(debug_assertions)]
 use tracing::trace;
@@ -175,6 +175,8 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
         #[cfg(debug_assertions)]
         let mut total_time_spent_embedding_chunks = 0;
 
+        let mut embedding_cache: HashMap<usize, Vec<f64>> = HashMap::new();
+
         loop {
             if start >= total_bytes {
                 break;
@@ -205,14 +207,11 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             #[cfg(debug_assertions)]
             let __current_start = std::time::Instant::now();
 
-            let current = embedder
-                .as_ref()
-                .embed(&[&chunk], &embed_model)
-                .await
-                .unwrap()[0]
-                .iter()
-                .map(|f| *f as f64)
-                .collect::<Vec<_>>();
+            let current_chunk_embeddings = embedder.as_ref().embed(&[&chunk], &embed_model).await?
+                [0]
+            .iter()
+            .map(|f| *f as f64)
+            .collect::<Vec<_>>();
 
             #[cfg(debug_assertions)]
             trace!(
@@ -221,42 +220,71 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             );
 
             // Used for parallel embedding
-            let mut tasks = vec![];
+            let mut tasks = Vec::with_capacity(chunks.len());
+
+            // Used for already calculated embeddings
+            let mut cached = Vec::with_capacity(chunks.len());
 
             #[cfg(debug_assertions)]
             let __start = std::time::Instant::now();
 
             for (i, existing_chunk) in chunks.iter().cloned().enumerate() {
-                let current = current.clone();
                 let embedder = embedder.clone();
                 let embed_model = embed_model.clone();
-                let distance_fn = distance_fn.clone();
+
+                // If the embeddings exist in the cache, use them
+                if let Some(embeddings) = embedding_cache.get(&i) {
+                    #[cfg(debug_assertions)]
+                    trace!("Using cache for chunk {i}");
+
+                    cached.push((embeddings, i));
+                    continue;
+                }
 
                 let task = tokio::spawn(async move {
-                    let embedded = embedder.embed(&[&existing_chunk], &embed_model).await?[0]
+                    let embeddings = embedder.embed(&[&existing_chunk], &embed_model).await?[0]
                         .iter()
                         .map(|f| *f as f64)
                         .collect::<Vec<_>>();
 
-                    let similarity = distance_fn.calculate(&current, &embedded);
-
-                    Result::<(f64, usize), ChonkitError>::Ok((similarity, i))
+                    Result::<(Vec<f64>, usize), ChonkitError>::Ok((embeddings, i))
                 });
 
                 tasks.push(task);
             }
 
-            let Some((max_similarity, chunk_idx)) = join_all(tasks)
+            let (mut max_similarity, mut chunk_idx) = (0.0, 0);
+
+            // Iterating through cache first lets us skip re-caching
+            // the vectors if they are already cached
+            for (emb, idx) in cached {
+                let similarity = distance_fn.calculate(&current_chunk_embeddings, &emb);
+                if similarity > max_similarity {
+                    max_similarity = similarity;
+                    chunk_idx = idx;
+                }
+            }
+
+            // Any chunk embeddings here are guaranteed to not have been cached
+            join_all(tasks)
                 .await
                 .into_iter()
                 // Spawn errors
                 .filter_map(Result::ok)
                 // Embedding errors
                 .filter_map(Result::ok)
-                .reduce(|a, b| if b.0 > a.0 { b } else { a })
-            else {
-                continue;
-            };
+                .map(|(emb, idx)| {
+                    let similarity = distance_fn.calculate(&current_chunk_embeddings, &emb);
+                    (emb, similarity, idx)
+                })
+                .for_each(|(emb, sim, idx)| {
+                    // Update cache
+                    embedding_cache.insert(idx, emb.clone());
+                    if sim > max_similarity {
+                        max_similarity = sim;
+                        chunk_idx = idx;
+                    }
+                });
 
             #[cfg(debug_assertions)]
             {
@@ -277,6 +305,8 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                 );
             } else {
                 chunks[chunk_idx].push_str(chunk);
+                // Invalidate cache
+                embedding_cache.remove(&chunk_idx);
                 #[cfg(debug_assertions)]
                 trace!(
                     "Added to existing chunk (chunk:{chunk_idx}|len:{}|max:{max_similarity:.4}/{threshold}) - total: {}",
