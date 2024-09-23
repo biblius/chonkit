@@ -2,7 +2,7 @@ use super::{
     api::ApiDoc,
     dto::{CreateCollectionPayload, SearchPayload},
 };
-use crate::dto::{ChunkPreviewPayload, EmbeddingJobPayload, UploadResult};
+use crate::dto::{ChunkPreviewPayload, ConfigUpdatePayload, EmbeddingJobPayload, UploadResult};
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::Method,
@@ -12,11 +12,10 @@ use axum::{
 };
 use chonkit::{
     app::{
-        batch::{BatchEmbedder, BatchEmbedderHandle, EmbeddingJob, EmbeddingResult},
+        batch::{BatchEmbedderHandle, EmbeddingJob, EmbeddingResult},
         service::AppState,
     },
     core::{
-        chunk::Chunker,
         document::parser::ParseConfig,
         model::{document::DocumentType, Pagination},
         service::{
@@ -65,10 +64,9 @@ fn service_api(state: AppState) -> Router {
         .layer(DefaultBodyLimit::max(50_000_000))
         .route("/documents/:id", get(get_document))
         .route("/documents/:id", delete(delete_document))
+        .route("/documents/:id/config", put(update_document_config))
         .route("/documents/:id/chunk/preview", post(chunk_preview))
-        .route("/documents/:id/chunk", put(update_chunk_config))
         .route("/documents/:id/parse/preview", post(parse_preview))
-        .route("/documents/:id/parse", put(update_parse_config))
         .route("/documents/sync/:provider", get(sync))
         .route("/vectors/collections", get(list_collections))
         .route("/vectors/collections", post(create_collection))
@@ -85,11 +83,15 @@ fn service_api(state: AppState) -> Router {
 
 fn batch_api(batch_embedder: BatchEmbedderHandle) -> Router {
     Router::new()
-        .route("/batch/embed", post(batch_embed))
+        .route("/vectors/embeddings/batch", post(batch_embed))
         .with_state(batch_embedder)
 }
 
 // General app configuration
+
+async fn health_check() -> impl IntoResponse {
+    "OK"
+}
 
 #[utoipa::path(
     get,
@@ -101,17 +103,6 @@ fn batch_api(batch_embedder: BatchEmbedderHandle) -> Router {
 )]
 async fn app_config(state: State<AppState>) -> Result<impl IntoResponse, ChonkitError> {
     Ok(Json(state.get_configuration()?))
-}
-
-#[utoipa::path(
-    get,
-    path = "/_health",
-    responses(
-        (status = 200, description = "OK")
-    )
-)]
-async fn health_check() -> impl IntoResponse {
-    "OK"
 }
 
 // Document router
@@ -249,9 +240,9 @@ async fn upload_documents(
 
 #[utoipa::path(
     put,
-    path = "/documents/{id}/chunk",
+    path = "/documents/{id}/config",
     responses(
-        (status = 200, description = "Update chunk configuration"),
+        (status = 200, description = "Update parsing and chunking configuration"),
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -260,14 +251,26 @@ async fn upload_documents(
     ),
     request_body = Chunker
 )]
-async fn update_chunk_config(
+async fn update_document_config(
     state: State<AppState>,
     Path(document_id): Path<uuid::Uuid>,
-    Json(chunker): Json<Chunker>,
+    Json(config): Json<ConfigUpdatePayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    let ConfigUpdatePayload { parser, chunker } = config;
+
     let service = DocumentService::new(state.postgres.clone());
-    service.update_chunker(document_id, chunker).await?;
-    Ok(format!("Successfully updated chunker for {document_id}"))
+
+    if let Some(parser) = parser {
+        service.update_parser(document_id, parser).await?;
+    }
+
+    if let Some(chunker) = chunker {
+        service.update_chunker(document_id, chunker).await?;
+    }
+
+    Ok(format!(
+        "Successfully updated configuration for {document_id}"
+    ))
 }
 
 #[utoipa::path(
@@ -312,29 +315,6 @@ async fn chunk_preview(
         }
         chonkit::core::chunk::ChunkedDocument::Owned(chunked) => Ok(Json(chunked)),
     }
-}
-
-#[utoipa::path(
-    put,
-    path = "/documents/{id}/parse",
-    responses(
-        (status = 200, description = "Update parse configuration"),
-        (status = 404, description = "Document not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("id" = Uuid, Path, description = "Document ID"),
-    ),
-    request_body = ParseConfig
-)]
-async fn update_parse_config(
-    state: State<AppState>,
-    Path(document_id): Path<uuid::Uuid>,
-    Json(config): Json<ParseConfig>,
-) -> Result<impl IntoResponse, ChonkitError> {
-    let service = DocumentService::new(state.postgres.clone());
-    service.update_parser(document_id, config).await?;
-    Ok(format!("Successfully updated parser for {document_id}"))
 }
 
 #[utoipa::path(
@@ -548,7 +528,7 @@ async fn embed(
 async fn batch_embed(
     State(batch_embedder): axum::extract::State<BatchEmbedderHandle>,
     Json(job): Json<EmbeddingJobPayload>,
-) -> Sse<impl Stream<Item = Result<Event, ChonkitError>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, ChonkitError>>>, ChonkitError> {
     let EmbeddingJobPayload {
         collection,
         documents,
@@ -557,7 +537,12 @@ async fn batch_embed(
     let (tx, rx) = tokio::sync::mpsc::channel::<EmbeddingResult>(documents.len());
 
     let job = EmbeddingJob::new(collection, documents, tx);
-    batch_embedder.send(job).await.unwrap();
+
+    if let Err(e) = batch_embedder.send(job).await {
+        error!("Error sending embedding job: {:?}", e.0);
+        return Err(ChonkitError::Batch);
+    };
+
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|result| {
         let event = match result {
             EmbeddingResult::Ok(report) => {
@@ -573,11 +558,11 @@ async fn batch_embed(
         Ok(event)
     });
 
-    Sse::new(stream).keep_alive(
+    Ok(Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
             .interval(Duration::from_secs(1))
             .text("keep-alive"),
-    )
+    ))
 }
 
 #[utoipa::path(

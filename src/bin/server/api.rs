@@ -1,7 +1,6 @@
 #[rustfmt::skip]
 use super::router::{
     // App config
-    __path_health_check,
     __path_app_config,
     // Documents
     __path_list_documents,
@@ -10,8 +9,7 @@ use super::router::{
     __path_upload_documents,
     __path_chunk_preview,
     __path_parse_preview,
-    __path_update_chunk_config,
-    __path_update_parse_config,
+    __path_update_document_config,
     __path_sync,
     // Vectors
     __path_list_collections,
@@ -44,7 +42,6 @@ use utoipa::OpenApi;
 #[openapi(
     paths(
         // App config
-        health_check,
         app_config,
         // Documents
         list_documents,
@@ -53,8 +50,7 @@ use utoipa::OpenApi;
         upload_documents,
         chunk_preview,
         parse_preview,
-        update_chunk_config,
-        update_parse_config,
+        update_document_config,
         sync,
         // Vectors
         list_collections,

@@ -15,9 +15,76 @@ Chunk documents.
   - [Local quickstart](#local-quickstart)
 - [Running](#running)
 
+## General information
+
+Chonkit is an application for chunking documents
+whose chunks can then be used for retrieval augmented generation (RAG).
+
+I suggest you read about [text embeddings](https://stackoverflow.blog/2023/11/09/an-intuitive-introduction-to-text-embeddings/) if you don't know what they are.
+It will clarify the following explanation.
+
+RAG is a technique to provide LLMs contextual information about arbitrary data.
+The jist of RAG is the following:
+
+1. User sends a prompt.
+2. Prompt is used for semantic search to retrieve context from the knowledge base.
+3. Context and prompt are sent to LLM, providing it the necessary information to
+   answer the prompt accurately.
+
+Chonkit focuses on problem 2.
+
+### Parsers
+
+Documents come in many different shapes and sizes. A parser is responsible
+for turning its content into bytes (raw text) and forwarding them to the chunkers.
+Parsers can be configured to read only a specific range from the document,
+and they can be configured to skip arbitrary text elements.
+
+Chonkit provides an API to configure parsers for fast iteration.
+
+### Chunkers
+
+Embedding and retrieving whole documents is unfeasible
+as they can be massive, so we need some way to split them up into
+smaller parts, but still retain information clarity.
+
+Chonkit currently offers 3 flavors of chunkers:
+
+- SlidingWindow - the simplest (and worst performing) chunking implementation.
+- SnappingWindow - a better heuristic chunker that retains sentence stops.
+- SemanticWindow - an experimental chunker that uses embeddings and their
+  distances to determine chunk boundaries.
+
+The optimal flavor depends on the document being chunked.
+There is no perfect chunking flavor and finding the best one will be a game of
+trial and error, which is why it is important to get fast feedback when chunking.
+
+Chonkit provides APIs to configure how documents get chunked, as well as a preview
+API for fast iteration.
+
+### Vectors
+
+Once the documents are chunked, we have to store them somehow. We do this by
+embedding them into vectors and storing them to a collection in a
+vector database. Vector databases are specialised software used
+for efficient storage of these vectors and their retrieval.
+
+Chonkit provides APIs to manipulate vector collections and store embeddings
+into them.
+
 ## OpenAPI documentation
 
 OpenAPI documentation is available at any chonker instance at `http://your-address/swagger-ui`.
+
+## Binaries
+
+Chonkit offers the following binaries:
+
+- Server (`--bin server`); exposes an HTTP API around `chonkit`'s core functionality.
+- CLI (`--bin cli`); exposes a CLI interface around `chonkit`'s core functionality.
+- Fastembedder (`--bin fembedder`); A small binary used to initiate fastembed in
+  CUDA mode on a remote machine that can be used as an embedding API,
+  similarly to OpenAI.
 
 ## Building
 
@@ -82,15 +149,17 @@ one of the execution providers and the CPU provider will be used as fallback.
 
 The following is a table of the supported build features.
 
-| Feature    | Configuration      | Description                                                                                      |
-| ---------- | ------------------ | ------------------------------------------------------------------------------------------------ |
-| `http`     | Execution mode     | Build for http (server) execution mode.                                                          |
-| `cli`      | Execution mode     | Build for cli execution mode.                                                                    |
-| `qdrant`   | VectorDb provider  | Enable qdrant as one of the vector database providers.                                           |
-| `weaviate` | VectorDb provider  | Enable weaviate as one of the vector database providers.                                         |
-| `fembed`   | Embedder provider  | Enable fastembed as one of the embedding providers.                                              |
-| `openai`   | Embedder provider  | Enable openai as one of the embedding providers.                                                 |
-| `cuda`     | Execution provider | Available when using `fembed`. When enabled, uses the CUDAExecutionProvider for the onnxruntime. |
+| Feature     | Configuration      | Description                                                                                                                       |
+| ----------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `http`      | Execution mode     | Build for http (server) execution mode.                                                                                           |
+| `cli`       | Execution mode     | Build for cli execution mode.                                                                                                     |
+| `qdrant`    | VectorDb provider  | Enable qdrant as one of the vector database providers.                                                                            |
+| `weaviate`  | VectorDb provider  | Enable weaviate as one of the vector database providers.                                                                          |
+| `fembed`    | Embedder provider  | Enable fastembed as one of the embedding providers. One of either `fe-local` or `fe-remote` is necessary when enabling this flag. |
+| `fe-local`  | Embedder provider  | Use the local implementation of `Embedder` for `FastEmbedder`. Mutually exclusive with `fe-remote`.                               |
+| `fe-remote` | Embedder provider  | Use the remote implementation of `Embedder` for `FastEmbedder`. Mutually exclusive with `fe-local`.                               |
+| `openai`    | Embedder provider  | Enable openai as one of the embedding providers.                                                                                  |
+| `cuda`      | Execution provider | Available when using `fembed`. When enabled, uses the CUDAExecutionProvider for the onnxruntime.                                  |
 
 Full build command example
 
@@ -139,15 +208,16 @@ Starts the app in `http` mode with `qdrant` as the vector database provider.
 
 Chonkit accepts the following arguments:
 
-| Arg              | Flag | Description                                           | Env            | Feature    | Default         |
-| ---------------- | ---- | ----------------------------------------------------- | -------------- | ---------- | --------------- |
-| `--db-url`       | `-d` | The database URL.                                     | `DATABASE_URL` | \*         | -               |
-| `--log`          | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`     | \*         | `info`          |
-| `--upload-path`  | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`  | \*         | `./upload`      |
-| `--address`      | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`      | `http`     | `0.0.0.0:42069` |
-| `--qdrant-url`   | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`   | `qdrant`   | -               |
-| `--weaviate-url` | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL` | `weaviate` | -               |
-| -                | -    | OpenAI API key.                                       | `OPENAI_KEY`   | `openai`   | -               |
+| Arg              | Flag | Description                                           | Env            | Feature     | Default         |
+| ---------------- | ---- | ----------------------------------------------------- | -------------- | ----------- | --------------- |
+| `--db-url`       | `-d` | The database URL.                                     | `DATABASE_URL` | \*          | -               |
+| `--log`          | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`     | \*          | `info`          |
+| `--upload-path`  | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`  | \*          | `./upload`      |
+| `--address`      | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`      | `http`      | `0.0.0.0:42069` |
+| `--qdrant-url`   | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`   | `qdrant`    | -               |
+| `--weaviate-url` | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL` | `weaviate`  | -               |
+| `--fembed-url`   | `-f` | Remote fastembed URL.                                 | `FEMBED_URL`   | `fe-remote` | -               |
+| -                | -    | OpenAI API key.                                       | `OPENAI_KEY`   | `openai`    | -               |
 
 The arguments have priority over the environment variables.
 See `RUST_LOG` syntax [here](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html#configure-logging).

@@ -26,6 +26,7 @@ impl ChonkitError {
             | E::IO(_)
             | E::Fmt(_)
             | E::Utf8(_)
+            | E::Batch
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
 
             #[cfg(any(feature = "openai", feature = "fe-remote"))]
@@ -93,6 +94,10 @@ impl IntoResponse for ChonkitError {
 
             CE::InvalidEmbeddingModel(e) => {
                 (status, ResponseError::new(ET::Api, e)).into_response()
+            }
+
+            CE::Batch => {
+                (status, ResponseError::new(ET::Internal, self.to_string())).into_response()
             }
 
             // TODO

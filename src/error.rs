@@ -12,6 +12,9 @@ pub mod http;
 
 #[derive(Debug, Error)]
 pub enum ChonkitError {
+    #[error("Unable to send job to batch executor")]
+    Batch,
+
     #[error("Does not exist; {0}")]
     DoesNotExist(String),
 

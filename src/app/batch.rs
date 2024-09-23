@@ -196,6 +196,7 @@ impl BatchEmbedder {
 }
 
 /// Used for batch embedding jobs.
+#[derive(Debug)]
 pub struct EmbeddingJob {
     /// Collection ID, i.e. where to store the embeddings.
     collection: Uuid,

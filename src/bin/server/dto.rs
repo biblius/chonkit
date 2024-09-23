@@ -95,6 +95,15 @@ impl SearchPayload {
     }
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub(super) struct ConfigUpdatePayload {
+    /// Parsing configuration.
+    pub parser: Option<ParseConfig>,
+
+    /// Chunking configuration.
+    pub chunker: Option<Chunker>,
+}
+
 /// DTO used for previewing chunks.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[validate(Self::validate)]
