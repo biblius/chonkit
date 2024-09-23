@@ -30,25 +30,14 @@ pub struct BatchEmbedder {
     /// Here solely so we can just clone it for jobs.
     result_tx: mpsc::Sender<JobResult>,
 
-    document_service: DocumentService<PgPool>,
-
-    vector_service: VectorService<PgPool>,
-
     state: AppState,
 }
 
 impl BatchEmbedder {
-    pub fn new(
-        document_service: DocumentService<PgPool>,
-        vector_service: VectorService<PgPool>,
-        job_rx: mpsc::Receiver<EmbeddingJob>,
-        state: AppState,
-    ) -> Self {
+    pub fn new(job_rx: mpsc::Receiver<EmbeddingJob>, state: AppState) -> Self {
         let (result_tx, result_rx) = mpsc::channel(128);
         Self {
             q: HashMap::new(),
-            document_service,
-            vector_service,
             job_rx,
             state,
             result_tx,
@@ -57,6 +46,9 @@ impl BatchEmbedder {
     }
 
     pub fn start(mut self) {
+        let vector_service = VectorService::new(self.state.postgres.clone());
+        let document_service = DocumentService::new(self.state.postgres.clone());
+
         tokio::spawn(async move {
             loop {
                 select! {
@@ -67,8 +59,6 @@ impl BatchEmbedder {
                         };
 
                         let job_id = Uuid::new_v4();
-                        let d_service = self.document_service.clone();
-                        let v_service = self.vector_service.clone();
                         let state = self.state.clone();
                         let result_tx = self.result_tx.clone();
 
@@ -76,7 +66,7 @@ impl BatchEmbedder {
                         self.q.insert(job_id, finished_tx);
                         tracing::info!("Starting job '{job_id}', documents: {}", documents.len());
                         tokio::spawn(
-                            Self::execute_job(job_id, d_service, v_service, state, documents, collection, result_tx)
+                            Self::execute_job(job_id, document_service.clone(), vector_service.clone(), state, documents, collection, result_tx)
                         );
                     }
 
@@ -124,6 +114,7 @@ impl BatchEmbedder {
                 match $e {
                     Ok(v) => v,
                     Err(e) => {
+                        tracing::debug!("Sending error to channel ({e:?})");
                         let result = FinishedEmbedding {
                             job_id,
                             result: EmbeddingResult::Err(e),
@@ -136,6 +127,23 @@ impl BatchEmbedder {
         }
 
         for document_id in documents {
+            tracing::debug!("Processing {document_id}");
+
+            // Map the existence of the embeddings as an error
+            let embeddings = vector_service
+                .get_embeddings(document_id, collection_id)
+                .await?;
+
+            let exists = if embeddings.is_some() {
+                Err(ChonkitError::AlreadyExists(format!(
+                    "Embeddings for '{document_id}' in collection '{collection_id}'"
+                )))
+            } else {
+                Ok(())
+            };
+
+            ok_or_continue!(exists);
+
             let document = ok_or_continue!(document_service.get_document(document_id).await);
             let collection = ok_or_continue!(vector_service.get_collection(collection_id).await);
 

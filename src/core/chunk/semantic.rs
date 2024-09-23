@@ -234,9 +234,6 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
                 // If the embeddings exist in the cache, use them
                 if let Some(embeddings) = embedding_cache.get(&i) {
-                    #[cfg(debug_assertions)]
-                    trace!("Using cache for chunk {i}");
-
                     cached.push((embeddings, i));
                     continue;
                 }
@@ -252,6 +249,9 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
                 tasks.push(task);
             }
+
+            #[cfg(debug_assertions)]
+            trace!("Cache hits: {}", cached.len());
 
             let (mut max_similarity, mut chunk_idx) = (0.0, 0);
 
@@ -306,6 +306,8 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             } else {
                 chunks[chunk_idx].push_str(chunk);
                 // Invalidate cache
+                #[cfg(debug_assertions)]
+                trace!("Invalidating cache for chunk {chunk_idx}");
                 embedding_cache.remove(&chunk_idx);
                 #[cfg(debug_assertions)]
                 trace!(

@@ -78,9 +78,7 @@ pub async fn state(args: &config::StartArgs) -> AppState {
 }
 
 pub fn spawn_batch_embedder(state: AppState) -> BatchEmbedderHandle {
-    let v_service = crate::core::service::vector::VectorService::new(state.postgres.clone());
-    let d_service = crate::core::service::document::DocumentService::new(state.postgres.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(128);
-    BatchEmbedder::new(d_service, v_service, rx, state).start();
+    BatchEmbedder::new(rx, state).start();
     tx
 }
