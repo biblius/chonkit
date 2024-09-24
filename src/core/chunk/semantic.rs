@@ -229,14 +229,14 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             let __start = std::time::Instant::now();
 
             for (i, existing_chunk) in chunks.iter().cloned().enumerate() {
-                let embedder = embedder.clone();
-                let embed_model = embed_model.clone();
-
                 // If the embeddings exist in the cache, use them
                 if let Some(embeddings) = embedding_cache.get(&i) {
                     cached.push((embeddings, i));
                     continue;
                 }
+
+                let embedder = embedder.clone();
+                let embed_model = embed_model.clone();
 
                 let task = tokio::spawn(async move {
                     let embeddings = embedder.embed(&[&existing_chunk], &embed_model).await?[0]
