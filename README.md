@@ -4,6 +4,7 @@ Chunk documents.
 
 ## Contents
 
+- [General information](#general-information)
 - [OpenAPI documentation](#openapi-documentation)
 - [Building](#building)
   - [Prerequisites](#prerequisites)
@@ -129,7 +130,7 @@ actual library files will be different.
 
 #### Fastembed
 
-- Required when compiling with `fembed`.
+- Required when compiling with `fe-local`.
 
 Fastembed models require an [onnxruntime](https://github.com/microsoft/onnxruntime).
 This library can be downloaded from [here](https://github.com/microsoft/onnxruntime/releases),
@@ -137,7 +138,7 @@ or via the system's native package manager.
 
 #### CUDA
 
-- Required when compiling with `fembed` and `cuda`.
+- Required when compiling with `fe-local` and `cuda`.
 
 If using the `cuda` feature flag with `fastembed`, the system will need to have
 the [CUDA toolkit](https://developer.nvidia.com/cuda-downloads) installed.
@@ -196,13 +197,14 @@ for more details.
 
 ```bash
 source setup.sh
-cargo run
+cargo run --bin server
 ```
 
 Creates the 'chunk' directory for storing chunks for inspection.
+Creates the 'upload' directory for storing uploaded documents.
 Starts the infrastructure containers (postgres, qdrant, weaviate).
 Exports the necessary environment variables to run chonkit.
-Starts the app in `http` mode with `qdrant` as the vector database provider.
+Starts the http API with the default features; Qdrant and local fastembed.
 
 ## Running
 

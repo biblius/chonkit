@@ -34,34 +34,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn store(&self, provider: DocumentStoreProvider) -> Arc<dyn DocumentStore + Send + Sync> {
-        match provider {
-            DocumentStoreProvider::Fs => self.fs_store.clone(),
-        }
-    }
-
-    pub fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
-        let mut embedding_providers = HashMap::new();
-        let mut default_chunkers = vec![Chunker::sliding_default(), Chunker::snapping_default()];
-
-        for provider_str in EMBEDDING_PROVIDERS {
-            let provider = (*provider_str).try_into()?;
-            let embedder = self.embedder(provider);
-
-            default_chunkers.push(Chunker::semantic_default(embedder.clone()));
-
-            let models = embedder.list_embedding_models().into_iter().collect();
-            embedding_providers.insert(provider_str.to_string(), models);
-        }
-
-        Ok(AppConfig {
-            vector_providers: VECTOR_PROVIDERS.iter().map(|s| s.to_string()).collect(),
-            embedding_providers,
-            default_chunkers,
-        })
-    }
-
-    pub async fn state(args: &crate::config::StartArgs) -> Self {
+    pub async fn new(args: &crate::config::StartArgs) -> Self {
         // Ensures the dynamic library is loaded and panics if it isn't
         pdfium_render::prelude::Pdfium::default();
 
@@ -127,6 +100,33 @@ impl AppState {
             #[cfg(feature = "weaviate")]
             weaviate,
         }
+    }
+
+    pub fn store(&self, provider: DocumentStoreProvider) -> Arc<dyn DocumentStore + Send + Sync> {
+        match provider {
+            DocumentStoreProvider::Fs => self.fs_store.clone(),
+        }
+    }
+
+    pub fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
+        let mut embedding_providers = HashMap::new();
+        let mut default_chunkers = vec![Chunker::sliding_default(), Chunker::snapping_default()];
+
+        for provider_str in EMBEDDING_PROVIDERS {
+            let provider = (*provider_str).try_into()?;
+            let embedder = self.embedder(provider);
+
+            default_chunkers.push(Chunker::semantic_default(embedder.clone()));
+
+            let models = embedder.list_embedding_models().into_iter().collect();
+            embedding_providers.insert(provider_str.to_string(), models);
+        }
+
+        Ok(AppConfig {
+            vector_providers: VECTOR_PROVIDERS.iter().map(|s| s.to_string()).collect(),
+            embedding_providers,
+            default_chunkers,
+        })
     }
 }
 

@@ -24,7 +24,7 @@ async fn main() {
 
     let addr = &args.address;
 
-    let fastembed = Arc::new(chonkit::app::embedder::fastembed::init());
+    let fastembed = Arc::new(FastEmbedder::new());
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)

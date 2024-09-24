@@ -1,4 +1,3 @@
-use chonkit::app::{batch::BatchEmbedderHandle, state::AppState};
 use clap::Parser;
 use tracing::info;
 
@@ -9,11 +8,11 @@ mod router;
 #[tokio::main]
 async fn main() {
     let args = chonkit::config::StartArgs::parse();
-    let state = chonkit::state(&args).await;
-    let batch_embedder = chonkit::spawn_batch_embedder(state.clone());
+    let state = chonkit::app::state::AppState::new(&args).await;
+    let batch_embedder = chonkit::app::state::spawn_batch_embedder(state.clone());
     let addr = args.address();
 
-    let listener = tokio::net::TcpListener::bind(addr)
+    let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("error while starting TCP listener");
 
