@@ -22,7 +22,7 @@ use super::router::{
 };
 use crate::dto::{ChunkPreviewPayload, CreateCollectionPayload, SearchPayload, UploadResult};
 use chonkit::{
-    app::service::AppConfig,
+    app::state::AppConfig,
     core::{
         chunk::{
             ChunkBaseConfig, Chunker, DistanceFn, SemanticWindow, SemanticWindowConfig,

@@ -4,7 +4,7 @@ pub mod batch;
 pub mod document;
 pub mod embedder;
 pub mod repo;
-pub mod service;
+pub mod state;
 pub mod vector;
 
 #[cfg(test)]

@@ -51,7 +51,7 @@ mod vector_service_integration_tests {
         let (vector_client, v_img) = crate::app::test::init_weaviate().await;
 
         #[cfg(feature = "fembed")]
-        let embedder = crate::app::embedder::fastembed::init();
+        let embedder = crate::app::embedder::fastembed::FastEmbedder::new();
 
         let service = VectorService::new(postgres.clone());
 

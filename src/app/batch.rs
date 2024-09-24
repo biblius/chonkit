@@ -1,4 +1,4 @@
-use super::service::AppState;
+use super::state::AppState;
 use crate::{
     core::service::{
         document::DocumentService,
@@ -110,7 +110,7 @@ impl BatchEmbedder {
     ) -> Result<(), ChonkitError> {
         /// Matches the result and continues on error, sending the error to the result channel.
         macro_rules! ok_or_continue {
-            ($e:expr) => {
+            ($e:expr, $i:ident, $documents_len:ident) => {
                 match $e {
                     Ok(v) => v,
                     Err(e) => {
@@ -120,13 +120,18 @@ impl BatchEmbedder {
                             result: EmbeddingResult::Err(e),
                         };
                         let _ = result_tx.send(JobResult::Embedding(result)).await;
+                        if $i == $documents_len - 1 {
+                            let _ = result_tx.send(JobResult::Done(job_id)).await;
+                        }
                         continue;
                     }
                 }
             };
         }
 
-        for document_id in documents {
+        let len = documents.len();
+
+        for (i, document_id) in documents.into_iter().enumerate() {
             tracing::debug!("Processing {document_id}");
 
             // Map the existence of the embeddings as an error
@@ -142,25 +147,40 @@ impl BatchEmbedder {
                 Ok(())
             };
 
-            ok_or_continue!(exists);
+            ok_or_continue!(exists, i, len);
 
-            let document = ok_or_continue!(document_service.get_document(document_id).await);
-            let collection = ok_or_continue!(vector_service.get_collection(collection_id).await);
+            let document =
+                ok_or_continue!(document_service.get_document(document_id).await, i, len);
+            let collection =
+                ok_or_continue!(vector_service.get_collection(collection_id).await, i, len);
 
             let report = EmbeddingReportBuilder::new(document.id, collection.id);
 
             // Initialize providers
-            let store = state.store(ok_or_continue!(document.src.as_str().try_into()));
-            let vector_db =
-                state.vector_db(ok_or_continue!(collection.provider.as_str().try_into()));
-            let embedder = state.embedder(ok_or_continue!(collection.embedder.as_str().try_into()));
+            let store = state.store(ok_or_continue!(document.src.as_str().try_into(), i, len));
+            let vector_db = state.vector_db(ok_or_continue!(
+                collection.provider.as_str().try_into(),
+                i,
+                len
+            ));
+            let embedder = state.embedder(ok_or_continue!(
+                collection.embedder.as_str().try_into(),
+                i,
+                len
+            ));
 
             // Get the content and chunk it
-            let content = ok_or_continue!(document_service.get_content(&*store, document_id).await);
+            let content = ok_or_continue!(
+                document_service.get_content(&*store, document_id).await,
+                i,
+                len
+            );
             let chunks = ok_or_continue!(
                 document_service
                     .get_chunks(document.id, &content, Some(embedder.clone()))
-                    .await
+                    .await,
+                i,
+                len
             );
 
             let chunks = match chunks {
@@ -179,7 +199,9 @@ impl BatchEmbedder {
             let embeddings = ok_or_continue!(
                 vector_service
                     .create_embeddings(&*vector_db, &*embedder, create)
-                    .await
+                    .await,
+                i,
+                len
             );
 
             let report = report

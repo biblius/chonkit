@@ -13,7 +13,7 @@ use axum::{
 use chonkit::{
     app::{
         batch::{BatchEmbedderHandle, EmbeddingJob, EmbeddingResult},
-        service::AppState,
+        state::AppState,
     },
     core::{
         document::parser::ParseConfig,
