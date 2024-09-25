@@ -13,7 +13,7 @@ use axum::{
 use chonkit::{
     app::{
         batch::{BatchEmbedderHandle, EmbeddingJob, EmbeddingResult},
-        state::AppState,
+        state::{AppState, DocumentStoreProvider},
     },
     core::{
         document::parser::ParseConfig,
@@ -189,14 +189,15 @@ async fn delete_document(
 )]
 async fn upload_documents(
     state: axum::extract::State<AppState>,
-    Query(provider): Query<String>,
     mut form: axum::extract::Multipart,
 ) -> Result<Json<UploadResult>, ChonkitError> {
     let mut documents = vec![];
     let mut errors = HashMap::<String, Vec<String>>::new();
 
     let service = DocumentService::new(state.postgres.clone());
-    let store = state.store(provider.try_into()?);
+
+    // Only store provider that supports upload currently
+    let store = state.store(DocumentStoreProvider::Fs);
 
     while let Ok(Some(field)) = form.next_field().await {
         let Some(name) = field.file_name() else {
