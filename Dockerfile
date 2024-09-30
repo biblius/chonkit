@@ -10,7 +10,7 @@ COPY sqlx-data.json ./sqlx-data.json
 
 COPY src ./src
 
-RUN cargo build --bin server -F "http fe-local ${VEC_DB}" --release
+RUN cargo build --bin server --no-default-features -F "http fe-local ${VEC_DB}" --release
 
 FROM debian:latest
 
