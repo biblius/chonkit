@@ -1,7 +1,9 @@
 //! Http specific DTOs.
 
 use chonkit::core::{
-    chunk::Chunker, document::parser::ParseConfig, model::document::Document,
+    chunk::Chunker,
+    document::parser::ParseConfig,
+    model::{document::Document, Pagination},
     service::vector::dto::CreateCollection,
 };
 use serde::{Deserialize, Serialize};
@@ -96,6 +98,7 @@ impl SearchPayload {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ConfigUpdatePayload {
     /// Parsing configuration.
     pub parser: Option<ParseConfig>,
@@ -106,6 +109,7 @@ pub(super) struct ConfigUpdatePayload {
 
 /// DTO used for previewing chunks.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[serde(rename_all = "camelCase")]
 #[validate(Self::validate)]
 pub(super) struct ChunkPreviewPayload {
     /// Parsing configuration.
@@ -131,13 +135,37 @@ impl ChunkPreviewPayload {
     }
 }
 
+/// Used for single embeddings.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EmbeddingSinglePayload {
+    /// The ID of the document to embed.
+    pub document: Uuid,
+
+    /// The ID of the collection in which to store the embeddings to.
+    pub collection: Uuid,
+}
+
 /// Used for batch embeddings.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
-pub(super) struct EmbeddingJobPayload {
+#[serde(rename_all = "camelCase")]
+pub(super) struct EmbeddingBatchPayload {
     /// The documents to embed.
     #[validate(length(min = 1))]
     pub documents: Vec<Uuid>,
 
-    /// The collection in which to store the embeddings to.
+    /// The ID of the collection in which to store the embeddings to.
     pub collection: Uuid,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ListEmbeddingsPayload {
+    /// Limit and offset
+    #[validate]
+    #[serde(flatten)]
+    pub pagination: Pagination,
+
+    /// Filter by collection.
+    pub collection: Option<Uuid>,
 }

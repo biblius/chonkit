@@ -79,6 +79,15 @@ pub trait VectorRepo<T> {
         collection_id: Uuid,
     ) -> impl Future<Output = Result<Option<Embedding>, ChonkitError>> + Send;
 
+    /// Get a document's embedding information for the given collection.
+    ///
+    /// * `id`: Document ID.
+    fn list_embeddings(
+        &self,
+        pagination: Pagination,
+        collection_id: Option<Uuid>,
+    ) -> impl Future<Output = Result<List<Embedding>, ChonkitError>> + Send;
+
     /// Get a document's embeddings via the collection name and provider
     /// unique combination.
     ///

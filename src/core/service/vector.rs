@@ -248,6 +248,14 @@ where
     ) -> Result<Option<Embedding>, ChonkitError> {
         self.repo.get_embeddings(document_id, collection_id).await
     }
+
+    pub async fn list_embeddings(
+        &self,
+        pagination: Pagination,
+        collection_id: Option<Uuid>,
+    ) -> Result<List<Embedding>, ChonkitError> {
+        self.repo.list_embeddings(pagination, collection_id).await
+    }
 }
 
 /// Vector service DTOs.

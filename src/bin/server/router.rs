@@ -2,7 +2,10 @@ use super::{
     api::ApiDoc,
     dto::{CreateCollectionPayload, SearchPayload},
 };
-use crate::dto::{ChunkPreviewPayload, ConfigUpdatePayload, EmbeddingJobPayload, UploadResult};
+use crate::dto::{
+    ChunkPreviewPayload, ConfigUpdatePayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
+    ListEmbeddingsPayload, UploadResult,
+};
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::Method,
@@ -35,7 +38,6 @@ use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::Tra
 use tracing::{error, Span};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use uuid::Uuid;
 use validify::{Validate, Validify};
 
 pub fn router(state: AppState, batch_embedder: BatchEmbedderHandle) -> Router {
@@ -68,22 +70,20 @@ fn service_api(state: AppState) -> Router {
         .route("/documents/:id/chunk/preview", post(chunk_preview))
         .route("/documents/:id/parse/preview", post(parse_preview))
         .route("/documents/sync/:provider", get(sync))
-        .route("/vectors/collections", get(list_collections))
-        .route("/vectors/collections", post(create_collection))
-        .route("/vectors/collections/:id", get(get_collection))
-        .route("/vectors/collections/:id", delete(delete_collection))
-        .route(
-            "/vectors/embeddings/:provider/models",
-            get(list_embedding_models),
-        )
-        .route("/vectors/collections/:id/embed/:doc_id", post(embed))
-        .route("/vectors/search", post(search))
+        .route("/collections", get(list_collections))
+        .route("/collections", post(create_collection))
+        .route("/collections/:id", get(get_collection))
+        .route("/collections/:id", delete(delete_collection))
+        .route("/embeddings/", get(list_embedded_documents))
+        .route("/embeddings/", post(embed))
+        .route("/embeddings/:provider/models", get(list_embedding_models))
+        .route("/search", post(search))
         .with_state(state)
 }
 
 fn batch_api(batch_embedder: BatchEmbedderHandle) -> Router {
     Router::new()
-        .route("/vectors/embeddings/batch", post(batch_embed))
+        .route("/embeddings/batch", post(batch_embed))
         .with_state(batch_embedder)
 }
 
@@ -365,7 +365,7 @@ async fn sync(
 
 #[utoipa::path(
     get,
-    path = "/vectors/collections", 
+    path = "/collections", 
     responses(
         (status = 200, description = "List collections"),
         (status = 500, description = "Internal server error")
@@ -385,7 +385,7 @@ async fn list_collections(
 
 #[utoipa::path(
     post,
-    path = "/vectors/collections", 
+    path = "/collections", 
     responses(
         (status = 200, description = "Collection created successfully"),
         (status = 500, description = "Internal server error")
@@ -407,7 +407,7 @@ async fn create_collection(
 
 #[utoipa::path(
     get,
-    path = "/vectors/collections/{id}", 
+    path = "/collections/{id}", 
     responses(
         (status = 200, description = "Collection retrieved successfully"),
         (status = 404, description = "Collection not found"),
@@ -428,7 +428,7 @@ async fn get_collection(
 
 #[utoipa::path(
     delete,
-    path = "/vectors/collections/{id}", 
+    path = "/collections/{id}", 
     responses(
         (status = 200, description = "Collection deleted successfully"),
         (status = 404, description = "Collection not found"),
@@ -455,7 +455,7 @@ async fn delete_collection(
 
 #[utoipa::path(
     get,
-    path = "/vectors/embeddings/{provider}/models", 
+    path = "/embeddings/{provider}/models", 
     responses(
         (status = 200, description = "List available embedding models"),
         (status = 500, description = "Internal server error")
@@ -476,26 +476,28 @@ async fn list_embedding_models(
 
 #[utoipa::path(
     post,
-    path = "/vectors/collections/{id}/embed/{doc_id}", 
+    path = "/embeddings", 
     responses(
         (status = 200, description = "Embeddings created successfully"),
         (status = 404, description = "Collection or document not found"),
         (status = 500, description = "Internal server error")
     ),
-    params(
-        ("id" = Uuid, Path, description = "Collection ID"),
-        ("doc_id" = Uuid, Path, description = "Document ID")
-    )
+    request_body = EmbeddingSinglePayload
 )]
 async fn embed(
     state: axum::extract::State<AppState>,
-    Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<EmbeddingSinglePayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    let EmbeddingSinglePayload {
+        document: document_id,
+        collection,
+    } = payload;
+
     let d_service = DocumentService::new(state.postgres.clone());
     let v_service = VectorService::new(state.postgres.clone());
 
     let document = d_service.get_document(document_id).await?;
-    let collection = v_service.get_collection(collection_id).await?;
+    let collection = v_service.get_collection(collection).await?;
 
     let store = state.store(document.src.as_str().try_into()?);
     let vector_db = state.vector_db(collection.provider.as_str().try_into()?);
@@ -514,7 +516,7 @@ async fn embed(
     };
 
     let create = CreateEmbeddings {
-        id: document_id,
+        id: document.id,
         collection: collection.id,
         chunks: &chunks,
     };
@@ -526,11 +528,20 @@ async fn embed(
     Ok("Successfully created embeddings")
 }
 
+#[utoipa::path(
+    post,
+    path = "/embeddings/batch", 
+    responses(
+        (status = 200, description = "Embeddings created successfully"),
+        (status = 500, description = "Internal server error")
+    ),
+    request_body = EmbeddingJobPayload
+)]
 async fn batch_embed(
     State(batch_embedder): axum::extract::State<BatchEmbedderHandle>,
-    Json(job): Json<EmbeddingJobPayload>,
+    Json(job): Json<EmbeddingBatchPayload>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, ChonkitError>>>, ChonkitError> {
-    let EmbeddingJobPayload {
+    let EmbeddingBatchPayload {
         collection,
         documents,
     } = job;
@@ -567,8 +578,34 @@ async fn batch_embed(
 }
 
 #[utoipa::path(
+    get,
+    path = "/embeddings", 
+    responses(
+        (status = 200, description = "List of embedded documents, optionally filtered by collection ID", body = Vec<Embedding>),
+        (status = 500, description = "Internal server error")
+    ),
+    request_body = ListEmbeddingsPayload
+)]
+async fn list_embedded_documents(
+    state: axum::extract::State<AppState>,
+    Query(payload): Query<ListEmbeddingsPayload>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    payload.validate()?;
+
+    let ListEmbeddingsPayload {
+        collection: collection_id,
+        pagination,
+    } = payload;
+
+    let service = VectorService::new(state.postgres.clone());
+    let embeddings = service.list_embeddings(pagination, collection_id).await?;
+
+    Ok(Json(embeddings))
+}
+
+#[utoipa::path(
     post,
-    path = "/vectors/search", 
+    path = "/search", 
     responses(
         (status = 200, description = "Search results returned"),
         (status = 500, description = "Internal server error")

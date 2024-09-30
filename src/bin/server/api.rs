@@ -17,10 +17,15 @@ use super::router::{
     __path_get_collection,
     __path_create_collection,
     __path_delete_collection,
+    __path_list_embedded_documents,
     __path_embed,
+    __path_batch_embed,
     __path_search, 
 };
-use crate::dto::{ChunkPreviewPayload, CreateCollectionPayload, SearchPayload, UploadResult};
+use crate::dto::{
+    ChunkPreviewPayload, CreateCollectionPayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
+    ListEmbeddingsPayload, SearchPayload, UploadResult,
+};
 use chonkit::{
     app::state::AppConfig,
     core::{
@@ -58,7 +63,9 @@ use utoipa::OpenApi;
         create_collection,
         delete_collection,
         list_embedding_models,
+        list_embedded_documents,
         embed,
+        batch_embed,
         search,
     ),
     components(schemas(
@@ -81,6 +88,9 @@ use utoipa::OpenApi;
         Collection,
         VectorCollection,
         AppConfig,
+        EmbeddingBatchPayload,
+        EmbeddingSinglePayload,
+        ListEmbeddingsPayload
     ))
 )]
 pub struct ApiDoc;

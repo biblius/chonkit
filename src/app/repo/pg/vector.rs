@@ -170,6 +170,39 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
         .await?)
     }
 
+    async fn list_embeddings(
+        &self,
+        pagination: Pagination,
+        collection_id: Option<Uuid>,
+    ) -> Result<List<Embedding>, ChonkitError> {
+        let total = sqlx::query!(
+            "SELECT COUNT(id) FROM embeddings WHERE $1::UUID IS NULL OR collection_id = $1",
+            collection_id
+        )
+        .fetch_one(self)
+        .await
+        .map(|row| row.count.map(|count| count as usize))?;
+
+        let (limit, offset) = pagination.to_limit_offset();
+
+        let embeddings = sqlx::query_as!(
+            Embedding,
+            "SELECT id, document_id, collection_id, created_at, updated_at 
+             FROM embeddings
+             WHERE $1::UUID IS NULL OR collection_id = $1
+             LIMIT $2 OFFSET $3",
+            collection_id,
+            limit,
+            offset
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter()
+        .collect();
+
+        Ok(List::new(total, embeddings))
+    }
+
     async fn get_embeddings_by_name(
         &self,
         document_id: Uuid,
