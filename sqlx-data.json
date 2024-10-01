@@ -620,6 +620,26 @@
     },
     "query": "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at\n                   FROM documents\n                   LIMIT $1\n                   OFFSET $2\n                "
   },
+  "c9ac68231870b5a43916eaeafbb2556bce9ae50fc3174c40a6d487a8e93c8eff": {
+    "describe": {
+      "columns": [
+        {
+          "name": "count",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "SELECT COUNT(id) FROM embeddings WHERE $1::UUID IS NULL OR collection_id = $1"
+  },
   "cc4b62f0f945007b688abc41830f0e387fd07458fac073d9da5231b2c8eb2a1e": {
     "describe": {
       "columns": [
@@ -1162,5 +1182,51 @@
       }
     },
     "query": "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at\n             FROM documents \n             WHERE id = $1"
+  },
+  "ffce10591515cf2aca9307aa1d447449e856f859c9761caa4e98038a46bc0de4": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "document_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "collection_id",
+          "ordinal": 2,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "created_at",
+          "ordinal": 3,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "updated_at",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id, document_id, collection_id, created_at, updated_at \n             FROM embeddings\n             WHERE $1::UUID IS NULL OR collection_id = $1\n             LIMIT $2 OFFSET $3"
   }
 }
