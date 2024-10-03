@@ -305,7 +305,16 @@ async fn chunk_preview(
         None
     };
 
-    let content = service.parse_preview(&*store, id, config.parser).await?;
+    let parser = if let Some(parser) = config.parser {
+        parser
+    } else {
+        let config = service.get_config(id).await?;
+        config
+            .parse_config
+            .ok_or_else(|| ChonkitError::DoesNotExist(format!("Parsing configuration for {id}")))?
+    };
+
+    let content = service.parse_preview(&*store, id, parser).await?;
     let chunked = service
         .chunk_preview(&content, config.chunker, embedder)
         .await?;

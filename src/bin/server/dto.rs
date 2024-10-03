@@ -113,7 +113,7 @@ pub(super) struct ConfigUpdatePayload {
 #[validate(Self::validate)]
 pub(super) struct ChunkPreviewPayload {
     /// Parsing configuration.
-    pub parser: ParseConfig,
+    pub parser: Option<ParseConfig>,
 
     /// Chunking configuration.
     pub chunker: Chunker,
