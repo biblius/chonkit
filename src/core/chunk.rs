@@ -4,6 +4,7 @@ use super::embedder::Embedder;
 use serde::{Deserialize, Serialize};
 use std::{future::Future, str::Utf8Error, sync::Arc};
 use thiserror::Error;
+use validify::{schema_err, schema_validation, Validate, ValidationErrors};
 
 mod cursor;
 mod semantic;
@@ -145,10 +146,12 @@ pub enum ChunkerError {
 }
 
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Validate)]
 #[serde(rename_all = "camelCase")]
+#[validate(Self::validate_schema)]
 pub struct ChunkBaseConfig {
     /// Base chunk size.
+    #[validate(range(min = 1.))]
     pub size: usize,
 
     /// The overlap per chunk.
@@ -163,6 +166,13 @@ impl ChunkBaseConfig {
             ));
         }
         Ok(Self { size, overlap })
+    }
+
+    #[schema_validation]
+    fn validate_schema(&self) -> Result<(), ValidationErrors> {
+        if self.overlap >= self.size {
+            schema_err!("size_overlap", "size must be greater than overlap");
+        }
     }
 }
 

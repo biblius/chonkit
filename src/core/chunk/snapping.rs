@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
 use tracing::trace;
+use validify::Validate;
 
 const SNAPPING_WINDOW_DEFAULT_SIZE: usize = 1000;
 const SNAPPING_WINDOW_DEFAULT_OVERLAP: usize = 5;
@@ -111,6 +112,8 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
     type Output = &'a str;
 
     async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
+        self.config.validate()?;
+
         if input.trim().is_empty() {
             return Ok(vec![]);
         }
