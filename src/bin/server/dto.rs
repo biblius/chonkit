@@ -48,7 +48,7 @@ impl From<CreateCollectionPayload> for CreateCollection {
 /// Params for semantic search.
 #[derive(Debug, Deserialize, Validify, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[validate(Self::validate)]
+#[validate(Self::validate_schema)]
 pub(super) struct SearchPayload {
     /// The text to search by.
     #[modify(trim)]
@@ -72,7 +72,7 @@ pub(super) struct SearchPayload {
 
 impl SearchPayload {
     #[schema_validation]
-    fn validate(&self) -> Result<(), ValidationErrors> {
+    fn validate_schema(&self) -> Result<(), ValidationErrors> {
         let SearchPayload {
             collection_id,
             collection_name,
@@ -110,7 +110,7 @@ pub(super) struct ConfigUpdatePayload {
 /// DTO used for previewing chunks.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[validate(Self::validate)]
+#[validate(Self::validate_schema)]
 pub(super) struct ChunkPreviewPayload {
     /// Parsing configuration.
     pub parser: Option<ParseConfig>,
@@ -125,7 +125,7 @@ pub(super) struct ChunkPreviewPayload {
 
 impl ChunkPreviewPayload {
     #[schema_validation]
-    fn validate(&self) -> Result<(), ValidationErrors> {
+    fn validate_schema(&self) -> Result<(), ValidationErrors> {
         if let (Chunker::Semantic(_), None) = (&self.chunker, &self.embedder) {
             schema_err! {
                 "chunker_params",
