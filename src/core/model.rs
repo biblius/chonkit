@@ -1,6 +1,7 @@
 //! Defines application business models.
 
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
 use validify::Validate;
 
 pub mod collection;
@@ -33,15 +34,18 @@ impl<T> std::iter::IntoIterator for List<T> {
 }
 
 /// Used to paginate queries.
+#[serde_as]
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {
     /// The limit.
+    #[serde_as(as = "DisplayFromStr")]
     #[validate(range(min = 1.))]
     pub per_page: usize,
 
     /// The offset.
+    #[serde_as(as = "DisplayFromStr")]
     #[validate(range(min = 1.))]
     pub page: usize,
 }
