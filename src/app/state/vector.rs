@@ -95,7 +95,7 @@ mod vector_service_integration_tests {
             .await
             .unwrap();
 
-        let size = embedder.size(&collection.model).unwrap();
+        let size = embedder.size(&collection.model).await.unwrap().unwrap();
 
         assert_eq!(size, v_collection.size);
 
@@ -110,7 +110,13 @@ mod vector_service_integration_tests {
         vector_db: VectorDatabase,
     ) {
         let name = "test_collection_0";
-        let model = embedder.list_embedding_models().first().cloned().unwrap();
+        let model = embedder
+            .list_embedding_models()
+            .await
+            .unwrap()
+            .first()
+            .cloned()
+            .unwrap();
 
         let params = CreateCollection {
             model: model.0.clone(),
@@ -129,7 +135,7 @@ mod vector_service_integration_tests {
 
         let v_collection = vector_db.get_collection(name).await.unwrap();
 
-        let size = embedder.size(&collection.model).unwrap();
+        let size = embedder.size(&collection.model).await.unwrap().unwrap();
 
         assert_eq!(size, v_collection.size);
     }

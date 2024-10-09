@@ -1,5 +1,3 @@
-use fastembed::{EmbeddingModel, ModelInfo};
-
 #[cfg(all(not(debug_assertions), feature = "fe-local", feature = "fe-remote"))]
 compile_error!("only one of 'fe-local' or 'fe-remote' can be enabled when compiling");
 
@@ -12,27 +10,13 @@ pub use remote::FastEmbedder;
 const DEFAULT_COLLECTION_MODEL: &str = "Xenova/bge-base-en-v1.5";
 const DEFAULT_COLLECTION_SIZE: usize = 768;
 
-fn list_models() -> Vec<ModelInfo<EmbeddingModel>> {
-    const MODEL_LIST: &[EmbeddingModel] = &[
-        EmbeddingModel::BGESmallENV15,
-        EmbeddingModel::BGELargeENV15,
-        EmbeddingModel::BGEBaseENV15,
-        EmbeddingModel::AllMiniLML6V2,
-        EmbeddingModel::AllMiniLML12V2,
-    ];
-
-    fastembed::TextEmbedding::list_supported_models()
-        .into_iter()
-        .filter(|model| MODEL_LIST.contains(&model.model))
-        .collect()
-}
-
 /// Embedder implementation for fastembed when running it
 /// locally.
 #[cfg(feature = "fe-local")]
 pub mod local {
-    use super::{list_models, DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_SIZE};
+    use super::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_SIZE};
     use crate::{core::embedder::Embedder, error::ChonkitError};
+    use fastembed::{EmbeddingModel, ModelInfo};
 
     pub struct FastEmbedder {
         pub models: std::collections::HashMap<String, fastembed::TextEmbedding>,
@@ -64,6 +48,21 @@ pub mod local {
         }
     }
 
+    fn list_models() -> Vec<ModelInfo<EmbeddingModel>> {
+        const MODEL_LIST: &[EmbeddingModel] = &[
+            EmbeddingModel::BGESmallENV15,
+            EmbeddingModel::BGELargeENV15,
+            EmbeddingModel::BGEBaseENV15,
+            EmbeddingModel::AllMiniLML6V2,
+            EmbeddingModel::AllMiniLML12V2,
+        ];
+
+        fastembed::TextEmbedding::list_supported_models()
+            .into_iter()
+            .filter(|model| MODEL_LIST.contains(&model.model))
+            .collect()
+    }
+
     #[async_trait::async_trait]
     impl Embedder for FastEmbedder {
         fn id(&self) -> &'static str {
@@ -77,11 +76,11 @@ pub mod local {
             )
         }
 
-        fn list_embedding_models(&self) -> Vec<(String, usize)> {
-            list_models()
+        async fn list_embedding_models(&self) -> Result<Vec<(String, usize)>, ChonkitError> {
+            Ok(list_models()
                 .into_iter()
                 .map(|model| (model.model_code, model.dim))
-                .collect()
+                .collect())
         }
 
         async fn embed(
@@ -121,7 +120,9 @@ pub mod local {
 /// machine supporting CUDA.
 #[cfg(feature = "fe-remote")]
 pub mod remote {
-    use super::{list_models, DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_SIZE};
+    use std::collections::HashMap;
+
+    use super::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_SIZE};
     use crate::{core::embedder::Embedder, error::ChonkitError};
     use serde::{Deserialize, Serialize};
 
@@ -156,11 +157,15 @@ pub mod remote {
             )
         }
 
-        fn list_embedding_models(&self) -> Vec<(String, usize)> {
-            list_models()
+        async fn list_embedding_models(&self) -> Result<Vec<(String, usize)>, ChonkitError> {
+            let url = self.url("list");
+            let response: HashMap<String, usize> =
+                self.client.get(&url).send().await?.json().await?;
+
+            Ok(response
                 .into_iter()
-                .map(|model| (model.model_code, model.dim))
-                .collect()
+                .map(|(model, size)| (model, size))
+                .collect())
         }
 
         async fn embed(

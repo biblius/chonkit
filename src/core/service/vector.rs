@@ -58,8 +58,11 @@ where
     }
 
     /// Return a list of models supported by this instance's embedder and their respective sizes.
-    pub fn list_embedding_models(&self, embedder: &dyn Embedder) -> Vec<(String, usize)> {
-        embedder.list_embedding_models()
+    pub async fn list_embedding_models(
+        &self,
+        embedder: &(dyn Embedder + Send + Sync),
+    ) -> Result<Vec<(String, usize)>, ChonkitError> {
+        Ok(embedder.list_embedding_models().await?)
     }
 
     /// Create the default vector collection if it doesn't already exist.
@@ -101,7 +104,7 @@ where
 
         let CreateCollection { name, model } = data.clone();
 
-        let size = embedder.size(&model).ok_or_else(|| {
+        let size = embedder.size(&model).await?.ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
                 "Model {model} not supported by embedder '{}'",
                 embedder.id()
@@ -183,7 +186,7 @@ where
 
         let v_collection = vector_db.get_collection(&collection.name).await?;
 
-        let size = embedder.size(&collection.model).ok_or_else(|| {
+        let size = embedder.size(&collection.model).await?.ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
                 "Model '{}' not supported for embedder {}",
                 collection.model,

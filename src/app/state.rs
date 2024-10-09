@@ -108,7 +108,7 @@ impl AppState {
         }
     }
 
-    pub fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
+    pub async fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
         let mut embedding_providers = HashMap::new();
         let mut default_chunkers = vec![Chunker::sliding_default(), Chunker::snapping_default()];
 
@@ -118,7 +118,11 @@ impl AppState {
 
             default_chunkers.push(Chunker::semantic_default(embedder.clone()));
 
-            let models = embedder.list_embedding_models().into_iter().collect();
+            let models = embedder
+                .list_embedding_models()
+                .await?
+                .into_iter()
+                .collect();
             embedding_providers.insert(provider_str.to_string(), models);
         }
 

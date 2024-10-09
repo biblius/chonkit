@@ -170,7 +170,7 @@ impl ChunkBaseConfig {
 
     #[schema_validation]
     fn validate_schema(&self) -> Result<(), ValidationErrors> {
-        if self.overlap >= self.size {
+        if self.size < self.overlap {
             schema_err!("size_overlap", "size must be greater than overlap");
         }
     }

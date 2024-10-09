@@ -102,7 +102,7 @@ async fn health_check() -> impl IntoResponse {
     )
 )]
 async fn app_config(state: State<AppState>) -> Result<impl IntoResponse, ChonkitError> {
-    Ok(Json(state.get_configuration()?))
+    Ok(Json(state.get_configuration().await?))
 }
 
 // Document router
@@ -478,6 +478,7 @@ async fn list_embedding_models(
     let embedder = state.embedder(provider.as_str().try_into()?);
     let models = service
         .list_embedding_models(&*embedder)
+        .await?
         .into_iter()
         .collect::<HashMap<String, usize>>();
     Ok(Json(models))

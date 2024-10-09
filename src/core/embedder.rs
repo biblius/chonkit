@@ -10,17 +10,19 @@ pub trait Embedder {
     fn default_model(&self) -> (String, usize);
 
     /// List all available models in the embedder and their sizes.
-    fn list_embedding_models(&self) -> Vec<(String, usize)>;
+    async fn list_embedding_models(&self) -> Result<Vec<(String, usize)>, ChonkitError>;
 
     /// Return the size of the given model's embeddings
     /// if it is supported by the embedder.
     ///
     /// * `model`:
-    fn size(&self, model: &str) -> Option<usize> {
-        self.list_embedding_models()
+    async fn size(&self, model: &str) -> Result<Option<usize>, ChonkitError> {
+        Ok(self
+            .list_embedding_models()
+            .await?
             .into_iter()
             .find(|m| m.0 == model)
-            .map(|m| m.1)
+            .map(|m| m.1))
     }
 
     /// Get the vectors for the elements in `content`.

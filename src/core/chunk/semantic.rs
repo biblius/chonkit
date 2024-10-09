@@ -152,7 +152,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             .clone()
             .ok_or_else(|| ChunkerError::Embedder("embedder not provided".to_string()))?;
 
-        embedder.size(embed_model).ok_or_else(|| {
+        embedder.size(embed_model).await?.ok_or_else(|| {
             ChunkerError::Embedder(format!(
                 "embedder {} does not support model {}",
                 embedder.id(),
