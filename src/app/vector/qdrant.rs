@@ -1,3 +1,4 @@
+use crate::app::vector::DOCUMENT_ID_PROPERTY;
 use crate::core::model::collection::VectorCollection;
 use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
@@ -5,12 +6,16 @@ use crate::DEFAULT_COLLECTION_NAME;
 use qdrant_client::qdrant::vectors_config::Config;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions;
 use qdrant_client::qdrant::{
-    value, CreateCollection, Distance, GetCollectionInfoResponse, PointStruct, SearchParams,
-    SearchPoints, UpsertPointsBuilder, VectorParams, VectorsConfig, WithPayloadSelector,
+    value, Condition, CreateCollection, DeletePointsBuilder, Distance, Filter,
+    GetCollectionInfoResponse, PointStruct, SearchParams, SearchPoints, UpsertPointsBuilder,
+    VectorParams, VectorsConfig, WithPayloadSelector,
 };
 use qdrant_client::{Payload, Qdrant, QdrantError};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
+use uuid::Uuid;
+
+use super::CONTENT_PROPERTY;
 
 /// Alias for an arced Qdrant instance.
 pub type QdrantDb = Arc<Qdrant>;
@@ -23,8 +28,6 @@ pub fn init(url: &str) -> QdrantDb {
             .expect("error initialising qdrant"),
     )
 }
-
-const CONTENT_PROPERTY: &str = "content";
 
 #[async_trait::async_trait]
 impl VectorDb for Arc<Qdrant> {
@@ -144,13 +147,14 @@ impl VectorDb for Arc<Qdrant> {
         Ok(results)
     }
 
-    async fn store(
+    async fn insert_embeddings(
         &self,
+        document_id: Uuid,
         collection: &str,
         content: &[&str],
         vectors: Vec<Vec<f32>>,
     ) -> Result<(), ChonkitError> {
-        debug!("Storing vectors to {collection}");
+        debug!("Inserting vectors to {collection}");
 
         debug_assert_eq!(
             content.len(),
@@ -163,7 +167,8 @@ impl VectorDb for Arc<Qdrant> {
             .zip(content.iter())
             .map(|(embedding, content)| {
                 let mut payload = Payload::new();
-                payload.insert("content", content.to_string());
+                payload.insert(CONTENT_PROPERTY, content.to_string());
+                payload.insert(DOCUMENT_ID_PROPERTY, document_id.to_string());
                 PointStruct::new(uuid::Uuid::new_v4().to_string(), embedding, payload)
             })
             .collect();
@@ -173,6 +178,48 @@ impl VectorDb for Arc<Qdrant> {
             .unwrap();
 
         Ok(())
+    }
+
+    async fn delete_embeddings(
+        &self,
+        collection: &str,
+        document_id: uuid::Uuid,
+    ) -> Result<(), ChonkitError> {
+        self.delete_points(
+            DeletePointsBuilder::new(collection)
+                .points(Filter::must([Condition::matches(
+                    DOCUMENT_ID_PROPERTY,
+                    document_id.to_string(),
+                )]))
+                .wait(true),
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn count_vectors(
+        &self,
+        collection: &str,
+        document_id: Uuid,
+    ) -> Result<usize, ChonkitError> {
+        use qdrant_client::qdrant::{Condition, Filter, ScrollPointsBuilder};
+
+        let scroll = self
+            .scroll(
+                ScrollPointsBuilder::new(collection)
+                    .filter(Filter::must([Condition::matches(
+                        DOCUMENT_ID_PROPERTY,
+                        document_id.to_string(),
+                    )]))
+                    .with_payload(false)
+                    .with_vectors(false),
+            )
+            .await?;
+
+        dbg!(&scroll);
+
+        Ok(scroll.result.len())
     }
 }
 

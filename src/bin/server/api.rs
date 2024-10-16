@@ -21,6 +21,8 @@ use super::router::{
     __path_embed,
     __path_batch_embed,
     __path_search, 
+    __path_count_embeddings,
+    __path_delete_embeddings
 };
 use crate::dto::{
     ChunkPreviewPayload, CreateCollectionPayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
@@ -67,6 +69,8 @@ use utoipa::OpenApi;
         embed,
         batch_embed,
         search,
+        delete_embeddings,
+        count_embeddings
     ),
     components(schemas(
         Pagination,

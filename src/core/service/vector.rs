@@ -204,7 +204,7 @@ where
         let embeddings = embedder.embed(&chunks, &collection.model).await?;
 
         vector_db
-            .store(&collection.name, &chunks, embeddings)
+            .insert_embeddings(id, &collection.name, &chunks, embeddings)
             .await?;
 
         let insert = EmbeddingInsert::new(id, collection.id);
@@ -258,6 +258,44 @@ where
         collection_id: Option<Uuid>,
     ) -> Result<List<Embedding>, ChonkitError> {
         self.repo.list_embeddings(pagination, collection_id).await
+    }
+
+    pub async fn delete_embeddings(
+        &self,
+        collection_id: Uuid,
+        document_id: Uuid,
+        vector_db: &(dyn VectorDb + Send + Sync),
+    ) -> Result<u64, ChonkitError> {
+        let Some(collection) = self.repo.get_collection(collection_id).await? else {
+            return Err(ChonkitError::DoesNotExist(format!(
+                "Collection with ID '{collection_id}'"
+            )));
+        };
+
+        vector_db
+            .delete_embeddings(&collection.name, document_id)
+            .await?;
+
+        let amount_deleted = self
+            .repo
+            .delete_embeddings(document_id, collection_id)
+            .await?;
+
+        Ok(amount_deleted)
+    }
+
+    pub async fn count_embeddings(
+        &self,
+        collection_id: Uuid,
+        document_id: Uuid,
+        vector_db: &(dyn VectorDb + Send + Sync),
+    ) -> Result<usize, ChonkitError> {
+        let Some(collection) = self.repo.get_collection(collection_id).await? else {
+            return Err(ChonkitError::DoesNotExist(format!(
+                "Collection with ID '{collection_id}'"
+            )));
+        };
+        vector_db.count_vectors(&collection.name, document_id).await
     }
 }
 

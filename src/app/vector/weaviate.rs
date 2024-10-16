@@ -1,4 +1,5 @@
 use crate::{
+    app::vector::DOCUMENT_ID_PROPERTY,
     core::{model::collection::VectorCollection, vector::VectorDb},
     error::ChonkitError,
     DEFAULT_COLLECTION_NAME,
@@ -7,8 +8,10 @@ use dto::{QueryResult, WeaviateError};
 use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
+use uuid::Uuid;
 use weaviate_community::{
     collections::{
+        batch::{BatchDeleteRequest, MatchConfig},
         error::SchemaError,
         objects::{ConsistencyLevel, MultiObjects, Object},
         query::GetQuery,
@@ -17,6 +20,8 @@ use weaviate_community::{
     WeaviateClient,
 };
 
+use super::CONTENT_PROPERTY;
+
 /// Alias for an arced Qdrant instance.
 pub type WeaviateDb = Arc<WeaviateClient>;
 
@@ -24,8 +29,6 @@ pub fn init(url: &str) -> WeaviateDb {
     info!("Connecting to weaviate at {url}");
     Arc::new(WeaviateClient::new(url, None, None).expect("error initialising qdrant"))
 }
-
-const CONTENT_PROPERTY: &str = "content";
 
 #[async_trait::async_trait]
 impl VectorDb for Arc<WeaviateClient> {
@@ -148,8 +151,9 @@ impl VectorDb for Arc<WeaviateClient> {
         Ok(results)
     }
 
-    async fn store(
+    async fn insert_embeddings(
         &self,
+        document_id: Uuid,
         collection: &str,
         content: &[&str],
         vectors: Vec<Vec<f32>>,
@@ -163,7 +167,8 @@ impl VectorDb for Arc<WeaviateClient> {
             .zip(vectors.iter())
             .map(|(content, vector)| {
                 let properties = json!({
-                    "content": content
+                    CONTENT_PROPERTY: content,
+                    DOCUMENT_ID_PROPERTY: document_id
                 });
                 Object::builder(&collection, properties)
                     .with_vector(vector.iter().map(|f| *f as f64).collect())
@@ -180,6 +185,68 @@ impl VectorDb for Arc<WeaviateClient> {
             .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
 
         Ok(())
+    }
+
+    async fn delete_embeddings(
+        &self,
+        collection: &str,
+        document_id: Uuid,
+    ) -> Result<(), ChonkitError> {
+        let collection = to_weaviate_class_name(collection);
+
+        let delete = BatchDeleteRequest::builder(MatchConfig::new(
+            &collection,
+            json!({
+                "path": [DOCUMENT_ID_PROPERTY],
+                "operator": "Equal",
+                "valueText": document_id.to_string()
+            }),
+        ))
+        .build();
+
+        self.batch
+            .objects_batch_delete(delete, Some(ConsistencyLevel::ALL), None)
+            .await
+            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn count_vectors(
+        &self,
+        collection: &str,
+        document_id: Uuid,
+    ) -> Result<usize, ChonkitError> {
+        let collection = to_weaviate_class_name(collection);
+
+        let query = GetQuery::builder(&collection, vec![DOCUMENT_ID_PROPERTY])
+            .with_where(&format!(
+                "{{ 
+                path: [\"{DOCUMENT_ID_PROPERTY}\"],
+                operator: Equal,
+                valueText: \"{document_id}\" 
+                }}"
+            ))
+            .build();
+
+        let response = self
+            .query
+            .get(query)
+            .await
+            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
+
+        let result: QueryResult = serde_json::from_value(response)?;
+
+        let Some(results) = result.data.get.get(&collection) else {
+            return Err(ChonkitError::Weaviate(format!(
+                "Response error - cannot index into '{collection}' in {}",
+                result.data.get
+            )));
+        };
+
+        let amount = serde_json::from_value::<Vec<serde_json::Value>>(results.clone())?.len();
+
+        Ok(amount)
     }
 }
 

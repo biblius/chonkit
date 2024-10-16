@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use crate::{core::model::collection::VectorCollection, error::ChonkitError};
 
 /// Vector database operations.
@@ -55,10 +57,31 @@ pub trait VectorDb {
     /// * `content`: The contents to append to the vectors.
     /// * `vectors`: The vectors to store.
     /// * `collection`: The vector collection to store in.
-    async fn store(
+    async fn insert_embeddings(
         &self,
+        document_id: Uuid,
         collection: &str,
         content: &[&str],
         vectors: Vec<Vec<f32>>,
     ) -> Result<(), ChonkitError>;
+
+    /// Delete the vectors tagged with the given `document_id`.
+    ///
+    /// * `collection`: The collection to delete from.
+    /// * `document_id`: The id of the document whose vectors to delete.
+    async fn delete_embeddings(
+        &self,
+        collection: &str,
+        document_id: Uuid,
+    ) -> Result<(), ChonkitError>;
+
+    /// Returns the amount of vectors tagged with the given `document_id`.
+    ///
+    /// * `collection`: The collection to count in.
+    /// * `document_id`: The id of the document whose vectors to count.
+    async fn count_vectors(
+        &self,
+        collection: &str,
+        document_id: Uuid,
+    ) -> Result<usize, ChonkitError>;
 }

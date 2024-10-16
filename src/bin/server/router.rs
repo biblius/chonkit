@@ -38,6 +38,7 @@ use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::Tra
 use tracing::{error, Span};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use uuid::Uuid;
 use validify::{Validate, Validify};
 
 pub fn router(state: AppState, batch_embedder: BatchEmbedderHandle) -> Router {
@@ -74,6 +75,14 @@ fn service_api(state: AppState) -> Router {
         .route("/collections", post(create_collection))
         .route("/collections/:id", get(get_collection))
         .route("/collections/:id", delete(delete_collection))
+        .route(
+            "/collections/:collection_id/documents/:document_id",
+            delete(delete_embeddings),
+        )
+        .route(
+            "/collections/:collection_id/documents/:document_id/count",
+            get(count_embeddings),
+        )
         .route("/embeddings", get(list_embedded_documents))
         .route("/embeddings", post(embed))
         .route("/embeddings/:provider/models", get(list_embedding_models))
@@ -148,7 +157,7 @@ async fn list_documents(
 )]
 async fn get_document(
     state: axum::extract::State<AppState>,
-    Path(id): Path<uuid::Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
     let document = service.get_config(id).await?;
@@ -660,4 +669,63 @@ async fn search(
     let chunks = service.search(&*vector_db, &*embedder, search).await?;
 
     Ok(Json(chunks))
+}
+
+#[utoipa::path(
+    get,
+    path = "/collections/{collection_id}/documents/{document_id}/count",
+    responses(
+        (status = 200, description = "Count of embeddings for a given document in a given collection."),
+        (status = 500, description = "Internal server error")
+    )
+)]
+async fn count_embeddings(
+    state: State<AppState>,
+    Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let service = VectorService::new(state.postgres.clone());
+    let embeddings = service
+        .get_embeddings(document_id, collection_id)
+        .await?
+        .ok_or_else(|| {
+            ChonkitError::DoesNotExist(format!(
+                "Embeddings for document '{document_id}' in collection '{collection_id}'"
+            ))
+        })?;
+    let collection = service.get_collection(embeddings.collection_id).await?;
+    let vector_db = state.vector_db(collection.provider.as_str().try_into()?);
+    let amount = service
+        .count_embeddings(collection_id, document_id, &*vector_db)
+        .await?;
+
+    Ok(Json(amount))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/collections/{collection_id}/documents/{document_id}",
+    responses(
+        (status = 200, description = "Delete embeddings for a given document in a given collection."),
+        (status = 500, description = "Internal server error")
+    )
+)]
+async fn delete_embeddings(
+    state: State<AppState>,
+    Path((collection_id, document_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ChonkitError> {
+    let service = VectorService::new(state.postgres.clone());
+    let embeddings = service
+        .get_embeddings(document_id, collection_id)
+        .await?
+        .ok_or_else(|| {
+            ChonkitError::DoesNotExist(format!(
+                "Embeddings for document '{document_id}' in collection '{collection_id}'"
+            ))
+        })?;
+    let collection = service.get_collection(embeddings.collection_id).await?;
+    let vector_db = state.vector_db(collection.provider.as_str().try_into()?);
+    let amount = service
+        .delete_embeddings(collection_id, document_id, &*vector_db)
+        .await?;
+    Ok(format!("Successfully deleted {amount} embedding(s)"))
 }
