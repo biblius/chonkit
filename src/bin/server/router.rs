@@ -45,7 +45,13 @@ pub fn router(state: AppState, batch_embedder: BatchEmbedderHandle) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any)
-        .allow_methods([Method::GET, Method::POST]);
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::DELETE,
+            Method::PUT,
+            Method::PATCH,
+        ]);
 
     service_api(state.clone())
         .merge(batch_api(batch_embedder))
