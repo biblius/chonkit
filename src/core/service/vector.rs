@@ -316,8 +316,12 @@ pub mod dto {
         Ok(())
     }
 
-    fn begins_with_ascii_char(s: &str) -> Result<(), ValidationError> {
-        if s.starts_with('_') || s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+    fn begins_with_capital_ascii_letter(s: &str) -> Result<(), ValidationError> {
+        if s.starts_with('_')
+            || s.chars()
+                .next()
+                .is_some_and(|c| !c.is_ascii_alphabetic() || c.is_lowercase())
+        {
             return Err(field_err!(
                 "begins_with_ascii_char",
                 "field must start with a characer [a-zA-Z]"
