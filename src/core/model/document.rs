@@ -1,9 +1,11 @@
+use super::collection::CollectionDisplay;
 use crate::{
     core::{chunk::Chunker, document::parser::ParseConfig},
     error::ChonkitError,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use sqlx::prelude::FromRow;
 
 pub mod config;
 
@@ -25,7 +27,7 @@ pub struct DocumentConfig {
 /// Holds document metadata.
 /// Main document model for the `documents` table.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize, Default, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     /// Primary key.
@@ -54,6 +56,24 @@ pub struct Document {
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Aggregate version of [Document] with the collections that contain it.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentDisplay {
+    pub document: Document,
+    pub collections: Vec<CollectionDisplay>,
+}
+
+impl DocumentDisplay {
+    pub fn new(document: Document, collections: Vec<CollectionDisplay>) -> Self {
+        Self {
+            document,
+            collections,
+        }
+    }
 }
 
 /// All possible file types chonkit can process.

@@ -4,6 +4,7 @@ use super::router::{
     __path_app_config,
     // Documents
     __path_list_documents,
+    __path_list_documents_display,
     __path_get_document,
     __path_delete_document,
     __path_upload_documents,
@@ -26,7 +27,7 @@ use super::router::{
 };
 use crate::dto::{
     ChunkPreviewPayload, CreateCollectionPayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
-    ListEmbeddingsPayload, SearchPayload, UploadResult,
+    ListDocumentsPayload, ListEmbeddingsPayload, SearchPayload, UploadResult,
 };
 use chonkit::{
     app::state::AppConfig,
@@ -37,9 +38,9 @@ use chonkit::{
         },
         document::parser::ParseConfig,
         model::{
-            collection::{Collection, Embedding, VectorCollection},
-            document::{Document, DocumentConfig},
-            Pagination,
+            collection::{Collection, CollectionDisplay, Embedding, VectorCollection},
+            document::{Document, DocumentConfig, DocumentDisplay},
+            List, Pagination,
         },
     },
 };
@@ -52,6 +53,7 @@ use utoipa::OpenApi;
         app_config,
         // Documents
         list_documents,
+        list_documents_display,
         get_document,
         delete_document,
         upload_documents,
@@ -73,6 +75,9 @@ use utoipa::OpenApi;
         count_embeddings
     ),
     components(schemas(
+        List<Collection>,
+        List<Document>,
+        List<DocumentDisplay>,
         Pagination,
         Document,
         DocumentConfig,
@@ -94,7 +99,10 @@ use utoipa::OpenApi;
         AppConfig,
         EmbeddingBatchPayload,
         EmbeddingSinglePayload,
-        ListEmbeddingsPayload
+        ListEmbeddingsPayload,
+        ListDocumentsPayload,
+        DocumentDisplay,
+        CollectionDisplay,
     ))
 )]
 pub struct ApiDoc;

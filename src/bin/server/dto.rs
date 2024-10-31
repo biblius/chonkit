@@ -8,7 +8,7 @@ use chonkit::core::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validify::{schema_err, schema_validation, Validate, ValidationErrors, Validify};
 
@@ -158,14 +158,31 @@ pub(super) struct EmbeddingBatchPayload {
     pub collection: Uuid,
 }
 
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+#[derive(Debug, Deserialize, Validate, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ListEmbeddingsPayload {
     /// Limit and offset
     #[validate]
     #[serde(flatten)]
+    #[param(inline)]
     pub pagination: Pagination,
 
     /// Filter by collection.
     pub collection: Option<Uuid>,
+}
+
+#[derive(Debug, Default, Deserialize, Validate, ToSchema, IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ListDocumentsPayload {
+    /// Limit and offset
+    #[validate]
+    #[serde(flatten)]
+    #[param(inline)]
+    pub pagination: Pagination,
+
+    /// Filter by file source.
+    pub src: Option<String>,
+
+    /// Filter by document ID.
+    pub document_id: Option<Uuid>,
 }

@@ -5,13 +5,14 @@ use crate::{
         model::{
             document::{
                 config::{DocumentChunkConfig, DocumentParseConfig},
-                Document, DocumentConfig, DocumentInsert, DocumentUpdate,
+                Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentUpdate,
             },
             List, Pagination,
         },
     },
     error::ChonkitError,
 };
+use uuid::Uuid;
 
 /// Keep tracks of documents and their chunking/parsing configurations.
 /// Info obtained from here is usually used to load files.
@@ -50,6 +51,18 @@ pub trait DocumentRepo {
     ///
     /// * `p`: Pagination params.
     async fn list(&self, p: Pagination, src: Option<&str>) -> Result<List<Document>, ChonkitError>;
+
+    /// List documents with limit and offset with additional relations for embeddings.
+    ///
+    /// * `p`: Pagination params.
+    /// * `src`: Optional source to filter by.
+    /// * `document_id`: Optional document ID to filter by.
+    async fn list_with_collections(
+        &self,
+        p: Pagination,
+        src: Option<&str>,
+        document_id: Option<Uuid>,
+    ) -> Result<List<DocumentDisplay>, ChonkitError>;
 
     /// Insert document metadata.
     ///

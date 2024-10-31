@@ -4,7 +4,7 @@ use super::{
 };
 use crate::dto::{
     ChunkPreviewPayload, ConfigUpdatePayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
-    ListEmbeddingsPayload, UploadResult,
+    ListDocumentsPayload, ListEmbeddingsPayload, UploadResult,
 };
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -20,7 +20,11 @@ use chonkit::{
     },
     core::{
         document::parser::ParseConfig,
-        model::{document::DocumentType, Pagination},
+        model::{
+            collection::{Collection, Embedding},
+            document::{Document, DocumentDisplay, DocumentType},
+            List, Pagination,
+        },
         service::{
             document::{dto::DocumentUpload, DocumentService},
             vector::{
@@ -93,6 +97,7 @@ fn service_api(state: AppState) -> Router {
         .route("/embeddings", post(embed))
         .route("/embeddings/:provider/models", get(list_embedding_models))
         .route("/search", post(search))
+        .route("/display/documents", get(list_documents_display))
         .with_state(state)
 }
 
@@ -126,25 +131,56 @@ async fn app_config(state: State<AppState>) -> Result<impl IntoResponse, Chonkit
     get,
     path = "/documents",
     responses(
-        (status = 200, description = "List documents", body = [Document]),
+        (status = 200, description = "List documents", body = inline(List<Document>)),
         (status = 400, description = "Invalid pagination parameters"),
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("pagination" = Pagination, Query, description = "Pagination parameters"),
-        ("src" = String, Query, description = "Filter documents by source")
+        ("pagination" = ListDocumentsPayload, Query, description = "Query parameters"),
     ),
 )]
 async fn list_documents(
     state: State<AppState>,
-    pagination: Option<Query<Pagination>>,
-    src: Option<Query<String>>,
-) -> Result<impl IntoResponse, ChonkitError> {
-    let Query(pagination) = pagination.unwrap_or_default();
-    pagination.validate()?;
+    payload: Option<Query<ListDocumentsPayload>>,
+) -> Result<Json<List<Document>>, ChonkitError> {
+    let Query(pagination) = payload.unwrap_or_default();
+
+    pagination.pagination.validate()?;
+
     let service = DocumentService::new(state.postgres.clone());
     let documents = service
-        .list_documents(pagination, src.map(|s| s.0).as_deref())
+        .list_documents(pagination.pagination, pagination.src.as_deref())
+        .await?;
+    Ok(Json(documents))
+}
+
+#[utoipa::path(
+    get,
+    path = "/display/documents",
+    responses(
+        (status = 200, description = "List documents with additional info for display purposes.", body = inline(List<DocumentDisplay>)),
+        (status = 400, description = "Invalid pagination parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("pagination" = ListDocumentsPayload, Query, description = "Query parameters"),
+    ),
+)]
+async fn list_documents_display(
+    state: State<AppState>,
+    payload: Option<Query<ListDocumentsPayload>>,
+) -> Result<Json<List<DocumentDisplay>>, ChonkitError> {
+    let Query(payload) = payload.unwrap_or_default();
+
+    payload.pagination.validate()?;
+
+    let service = DocumentService::new(state.postgres.clone());
+    let documents = service
+        .list_documents_display(
+            payload.pagination,
+            payload.src.as_deref(),
+            payload.document_id,
+        )
         .await?;
     Ok(Json(documents))
 }
@@ -200,7 +236,8 @@ async fn delete_document(
         (status = 200, description = "Upload documents", body = UploadResult),
         (status = 400, description = "Bad request"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    request_body = axum::extract::Multipart
 )]
 async fn upload_documents(
     state: axum::extract::State<AppState>,
@@ -258,14 +295,14 @@ async fn upload_documents(
     put,
     path = "/documents/{id}/config",
     responses(
-        (status = 200, description = "Update parsing and chunking configuration"),
+        (status = 200, description = "Update parsing and chunking configuration", body = String),
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
     params(
         ("id" = Uuid, Path, description = "Document ID"),
     ),
-    request_body = Chunker
+    request_body = ConfigUpdatePayload
 )]
 async fn update_document_config(
     state: State<AppState>,
@@ -346,7 +383,7 @@ async fn chunk_preview(
     post,
     path = "/documents/{id}/parse/preview",
     responses(
-        (status = 200, description = "Preview document parse result"),
+        (status = 200, description = "Preview document parse result", body = String),
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -371,9 +408,12 @@ async fn parse_preview(
     get,
     path = "/documents/sync/{provider}", 
     responses(
-        (status = 200, description = "Successfully synced"),
+        (status = 200, description = "Successfully synced", body = String),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    params(
+        ("id" = String, Path, description = "Storage provider")
+    ),
 )]
 async fn sync(
     state: axum::extract::State<AppState>,
@@ -391,7 +431,7 @@ async fn sync(
     get,
     path = "/collections", 
     responses(
-        (status = 200, description = "List collections"),
+        (status = 200, description = "List collections", body = inline(List<Collection>)),
         (status = 500, description = "Internal server error")
     ),
     params(
@@ -411,10 +451,10 @@ async fn list_collections(
     post,
     path = "/collections", 
     responses(
-        (status = 200, description = "Collection created successfully"),
+        (status = 200, description = "Collection created successfully", body = Collection),
         (status = 500, description = "Internal server error")
     ),
-    request_body = CreateCollection
+    request_body = CreateCollectionPayload
 )]
 async fn create_collection(
     state: State<AppState>,
@@ -433,7 +473,7 @@ async fn create_collection(
     get,
     path = "/collections/{id}", 
     responses(
-        (status = 200, description = "Collection retrieved successfully"),
+        (status = 200, description = "Collection retrieved successfully", body = Collection),
         (status = 404, description = "Collection not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -444,7 +484,7 @@ async fn create_collection(
 async fn get_collection(
     state: State<AppState>,
     Path(collection_id): Path<uuid::Uuid>,
-) -> Result<impl IntoResponse, ChonkitError> {
+) -> Result<Json<Collection>, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
     let collection = service.get_collection(collection_id).await?;
     Ok(Json(collection))
@@ -454,7 +494,7 @@ async fn get_collection(
     delete,
     path = "/collections/{id}", 
     responses(
-        (status = 200, description = "Collection deleted successfully"),
+        (status = 200, description = "Collection deleted successfully", body = String),
         (status = 404, description = "Collection not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -465,7 +505,7 @@ async fn get_collection(
 async fn delete_collection(
     state: State<AppState>,
     Path(collection_id): Path<uuid::Uuid>,
-) -> Result<impl IntoResponse, ChonkitError> {
+) -> Result<String, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
     let collection = service.get_collection(collection_id).await?;
     let vector_db = state.vector_db(collection.provider.try_into()?);
@@ -481,14 +521,17 @@ async fn delete_collection(
     get,
     path = "/embeddings/{provider}/models", 
     responses(
-        (status = 200, description = "List available embedding models"),
+        (status = 200, description = "List available embedding models", body = HashMap<String, usize>),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    params(
+        ("provider" = String, Path, description = "Vector database provider"),
+    ),
 )]
 async fn list_embedding_models(
     state: State<AppState>,
     Path(provider): Path<String>,
-) -> Result<impl IntoResponse, ChonkitError> {
+) -> Result<Json<HashMap<String, usize>>, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
     let embedder = state.embedder(provider.as_str().try_into()?);
     let models = service
@@ -503,7 +546,7 @@ async fn list_embedding_models(
     post,
     path = "/embeddings", 
     responses(
-        (status = 200, description = "Embeddings created successfully"),
+        (status = 200, description = "Embeddings created successfully", body = String),
         (status = 404, description = "Collection or document not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -512,7 +555,7 @@ async fn list_embedding_models(
 async fn embed(
     state: axum::extract::State<AppState>,
     Json(payload): Json<EmbeddingSinglePayload>,
-) -> Result<impl IntoResponse, ChonkitError> {
+) -> Result<&'static str, ChonkitError> {
     let EmbeddingSinglePayload {
         document: document_id,
         collection,
@@ -560,7 +603,7 @@ async fn embed(
         (status = 200, description = "Embeddings created successfully"),
         (status = 500, description = "Internal server error")
     ),
-    request_body = EmbeddingJobPayload
+    request_body = EmbeddingBatchPayload
 )]
 async fn batch_embed(
     State(batch_embedder): axum::extract::State<BatchEmbedderHandle>,
@@ -606,15 +649,17 @@ async fn batch_embed(
     get,
     path = "/embeddings", 
     responses(
-        (status = 200, description = "List of embedded documents, optionally filtered by collection ID", body = Vec<Embedding>),
+        (status = 200, description = "List of embedded documents, optionally filtered by collection ID", body = inline(List<Embedding>)),
         (status = 500, description = "Internal server error")
     ),
-    request_body = ListEmbeddingsPayload
+    params(
+        ("payload" = ListEmbeddingsPayload, Query, description = "List parameters"),
+    ),
 )]
 async fn list_embedded_documents(
     state: axum::extract::State<AppState>,
     Query(payload): Query<ListEmbeddingsPayload>,
-) -> Result<impl IntoResponse, ChonkitError> {
+) -> Result<Json<List<Embedding>>, ChonkitError> {
     payload.validate()?;
 
     let ListEmbeddingsPayload {
@@ -681,9 +726,13 @@ async fn search(
     get,
     path = "/collections/{collection_id}/documents/{document_id}/count",
     responses(
-        (status = 200, description = "Count of embeddings for a given document in a given collection."),
+        (status = 200, description = "Count of embeddings for a given document in a given collection.", body = Json<usize>),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    params(
+        ("collection_id" = Uuid, Path, description = "Collection ID"),
+        ("document_id" = Uuid, Path, description = "Document ID"),
+    ),
 )]
 async fn count_embeddings(
     state: State<AppState>,
@@ -711,9 +760,13 @@ async fn count_embeddings(
     delete,
     path = "/collections/{collection_id}/documents/{document_id}",
     responses(
-        (status = 200, description = "Delete embeddings for a given document in a given collection."),
+        (status = 200, description = "Delete embeddings for a given document in a given collection.", body = String),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    params(
+        ("collection_id" = Uuid, Path, description = "Collection ID"),
+        ("document_id" = Uuid, Path, description = "Document ID"),
+    ),
 )]
 async fn delete_embeddings(
     state: State<AppState>,

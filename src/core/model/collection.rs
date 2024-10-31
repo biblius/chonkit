@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
-/// Used by vector stores.
+/// Used by vector databases.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +47,30 @@ pub struct Collection {
     pub provider: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Collection struct for display purposes.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionDisplay {
+    pub id: Uuid,
+    pub name: String,
+    pub model: String,
+    pub embedder: String,
+    pub provider: String,
+}
+
+impl CollectionDisplay {
+    pub fn new(id: Uuid, name: String, model: String, embedder: String, provider: String) -> Self {
+        Self {
+            id,
+            name,
+            model,
+            embedder,
+            provider,
+        }
+    }
 }
 
 pub struct CollectionInsert<'a> {

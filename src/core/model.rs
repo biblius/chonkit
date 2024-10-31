@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
+use utoipa::{openapi::RefOr, ToSchema};
 use validify::Validate;
 
 pub mod collection;
@@ -9,12 +10,43 @@ pub mod document;
 
 /// Used to obtain paginated lists with a total number of items in
 /// the tables.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct List<T> {
     pub total: Option<usize>,
     pub items: Vec<T>,
+}
+
+#[cfg(feature = "http")]
+impl<'__s, T> ToSchema<'__s> for List<T>
+where
+    T: ToSchema<'__s>,
+{
+    fn schema() -> (
+        &'__s str,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    ) {
+        let (_, item_schema) = T::schema();
+
+        let list_schema = utoipa::openapi::schema::ObjectBuilder::new()
+            .title(Some("List"))
+            .property(
+                "total",
+                utoipa::openapi::schema::ObjectBuilder::new()
+                    .title(Some("total"))
+                    .schema_type(utoipa::openapi::SchemaType::Integer),
+            )
+            .property(
+                "items",
+                utoipa::openapi::schema::ArrayBuilder::new().items(item_schema),
+            )
+            .build();
+
+        (
+            "List",
+            RefOr::T(utoipa::openapi::Schema::Object(list_schema)),
+        )
+    }
 }
 
 impl<T> List<T> {
@@ -35,7 +67,7 @@ impl<T> std::iter::IntoIterator for List<T> {
 
 /// Used to paginate queries.
 #[serde_as]
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema, utoipa::IntoParams))]
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {

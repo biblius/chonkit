@@ -8,7 +8,7 @@ use crate::{
         },
         embedder::Embedder,
         model::{
-            document::{Document, DocumentConfig, DocumentInsert, DocumentType},
+            document::{Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType},
             List, Pagination,
         },
         repo::document::DocumentRepo,
@@ -44,6 +44,18 @@ where
         src: Option<&str>,
     ) -> Result<List<Document>, ChonkitError> {
         self.repo.list(p, src).await
+    }
+
+    /// Get a paginated list of documents from the repository with additional info for each.
+    ///
+    /// * `p`: Pagination.
+    pub async fn list_documents_display(
+        &self,
+        p: Pagination,
+        src: Option<&str>,
+        document_id: Option<Uuid>,
+    ) -> Result<List<DocumentDisplay>, ChonkitError> {
+        self.repo.list_with_collections(p, src, document_id).await
     }
 
     /// Get a document from the repository.
@@ -208,10 +220,10 @@ where
     /// for the repo for a configured one. If it still doesn't exist, uses the default
     /// snapping window chunker.
     ///
-    /// * `store`: Document store where the file is found.
-    /// * `id`: Document ID. Used to obtain parser/chunking info.
-    /// * `config`: If given, uses the chunking/parsing config, otherwise use the default chunker/parser for
-    ///             the file type.
+    /// * `content`: Document content.
+    /// * `chunker`: The chunker to chunk the content with.
+    /// * `embedder`: The embedder to use for semantic chunking. Required only when using the
+    ///               semantic chunker.
     pub async fn chunk_preview<'content>(
         &self,
         content: &'content str,

@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
 use crate::core::{
     chunk::Chunker,
     document::parser::ParseConfig,
     model::{
+        collection::CollectionDisplay,
         document::{
             config::{DocumentChunkConfig, DocumentParseConfig},
-            Document, DocumentConfig, DocumentInsert, DocumentUpdate,
+            Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentUpdate,
         },
         List, Pagination,
     },
@@ -13,7 +16,8 @@ use crate::core::{
 use crate::error::ChonkitError;
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
-use sqlx::{types::Json, PgPool};
+use sqlx::{types::Json, FromRow, PgPool, Postgres, Row};
+use uuid::Uuid;
 
 #[async_trait::async_trait]
 impl DocumentRepo for PgPool {
@@ -89,33 +93,157 @@ impl DocumentRepo for PgPool {
         .map_err(ChonkitError::from)
     }
 
-    async fn list(
-        &self,
-        p: Pagination,
-        _src: Option<&str>,
-    ) -> Result<List<Document>, ChonkitError> {
-        // TODO: implement `src` filter
-        let total = sqlx::query!("SELECT COUNT(id) FROM documents")
+    async fn list(&self, p: Pagination, src: Option<&str>) -> Result<List<Document>, ChonkitError> {
+        let mut query =
+            sqlx::query_builder::QueryBuilder::<Postgres>::new("SELECT COUNT(id) FROM documents");
+
+        if let Some(src) = src {
+            query.push(" WHERE src = ").push_bind(src);
+        }
+
+        let total = query
+            .build()
             .fetch_one(self)
             .await
-            .map(|row| row.count.map(|count| count as usize))?;
+            .map(|row| row.get::<i64, usize>(0))?;
 
         let (limit, offset) = p.to_limit_offset();
 
-        let documents = sqlx::query_as!(
-            Document,
-            r#"SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at
-                   FROM documents
-                   LIMIT $1
-                   OFFSET $2
-                "#,
-            limit,
-            offset,
-        )
-        .fetch_all(self)
-        .await?;
+        let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
+            r#"SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at FROM documents"#,
+        );
 
-        Ok(List::new(total, documents))
+        if let Some(src) = src {
+            query.push(" WHERE src = ").push_bind(src);
+        }
+
+        query
+            .push(" LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
+
+        let documents: Vec<Document> = query.build_query_as().fetch_all(self).await?;
+
+        Ok(List::new(Some(total as usize), documents))
+    }
+
+    async fn list_with_collections(
+        &self,
+        p: Pagination,
+        src: Option<&str>,
+        document_id: Option<Uuid>,
+    ) -> Result<List<DocumentDisplay>, ChonkitError> {
+        let mut query =
+            sqlx::query_builder::QueryBuilder::<Postgres>::new("SELECT COUNT(id) FROM documents");
+
+        match (src, document_id) {
+            (Some(src), None) => {
+                query.push(" WHERE src = ").push_bind(src);
+            }
+            (None, Some(document_id)) => {
+                query.push(" WHERE id = ").push_bind(document_id);
+            }
+            (Some(src), Some(document_id)) => {
+                query
+                    .push(" WHERE id = ")
+                    .push_bind(document_id)
+                    .push(" AND src = ")
+                    .push_bind(src);
+            }
+            (None, None) => (),
+        }
+
+        let total = query
+            .build()
+            .fetch_one(self)
+            .await
+            .map(|row| row.get::<i64, usize>(0))?;
+
+        let (limit, offset) = p.to_limit_offset();
+
+        let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
+            r#"
+                WITH emb AS (SELECT document_id, collection_id FROM embeddings)
+                SELECT
+                        documents.id,
+                        documents.name,
+                        documents.path,
+                        documents.ext,
+                        documents.hash,
+                        documents.src,
+                        documents.label,
+                        documents.tags,
+                        documents.created_at,
+                        documents.updated_at,
+                        collections.id AS collection_id,
+                        collections.name AS collection_name,
+                        collections.model AS collection_model,
+                        collections.embedder AS collection_embedder,
+                        collections.provider AS collection_provider
+                FROM documents
+                LEFT JOIN emb ON emb.document_id = documents.id
+                LEFT JOIN collections ON collections.id = emb.collection_id
+            "#,
+        );
+
+        match (src, document_id) {
+            (Some(src), None) => {
+                query.push(" WHERE src = ").push_bind(src);
+            }
+            (None, Some(document_id)) => {
+                query.push(" WHERE documents.id = ").push_bind(document_id);
+            }
+            (Some(src), Some(document_id)) => {
+                query
+                    .push(" WHERE documents.id = ")
+                    .push_bind(document_id)
+                    .push(" AND src = ")
+                    .push_bind(src);
+            }
+            (None, None) => (),
+        }
+
+        query
+            .push(" LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
+
+        let rows: Vec<DocumentCollectionJoin> = query.build_query_as().fetch_all(self).await?;
+
+        let mut result = HashMap::new();
+
+        for row in rows {
+            // Each row is a document entry. If the entry does not have a collection ID,
+            // it is not embedded yet and it's guaranteed that it is the only entry with this ID
+            if row.collection_id.is_none() {
+                result.insert(row.document.id, DocumentDisplay::new(row.document, vec![]));
+                continue;
+            }
+
+            // Safe to unwrap since the fields are guaranteed to exist by their constraints
+            let collection = CollectionDisplay::new(
+                row.collection_id.unwrap(),
+                row.collection_name.unwrap(),
+                row.collection_model.unwrap(),
+                row.collection_embedder.unwrap(),
+                row.collection_provider.unwrap(),
+            );
+
+            if let Some(doc) = result.get_mut(&row.document.id) {
+                doc.collections.push(collection);
+            } else {
+                result.insert(
+                    row.document.id,
+                    DocumentDisplay::new(row.document, vec![collection]),
+                );
+            }
+        }
+
+        let documents = result.drain().map(|(_, v)| v).collect();
+
+        Ok(List::new(Some(total as usize), documents))
     }
 
     async fn insert(&self, params: DocumentInsert<'_>) -> Result<Document, ChonkitError> {
@@ -298,6 +426,18 @@ impl DocumentRepo for PgPool {
 }
 
 // Private dtos.
+
+#[derive(Debug, FromRow)]
+struct DocumentCollectionJoin {
+    #[sqlx(flatten)]
+    document: Document,
+    // Collection params optional since the document may not be in a collection
+    collection_id: Option<Uuid>,
+    collection_name: Option<String>,
+    collection_embedder: Option<String>,
+    collection_model: Option<String>,
+    collection_provider: Option<String>,
+}
 
 struct InsertConfig<T: Serialize> {
     id: uuid::Uuid,
