@@ -303,16 +303,15 @@ where
 
 /// Vector service DTOs.
 pub mod dto {
+    use crate::core::model::collection::Collection;
     use uuid::Uuid;
     use validify::{field_err, ValidationError, Validify};
-
-    use crate::core::model::collection::Collection;
 
     fn ascii_alphanumeric_underscored(s: &str) -> Result<(), ValidationError> {
         if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return Err(field_err!(
-                "ascii_alphanumeric_underscored",
-                "must be alphanumeric with underscores [a-z A-Z 0-9 _]"
+                "collection_name",
+                "collection name must be alphanumeric with underscores [a-z A-Z 0-9 _]"
             ));
         }
         Ok(())
@@ -325,15 +324,11 @@ pub mod dto {
                 .is_some_and(|c| !c.is_ascii_alphabetic() || c.is_lowercase())
         {
             return Err(field_err!(
-                "begins_with_ascii_char",
-                "field must start with a characer [a-zA-Z]"
+                "collection_name",
+                "collection name must start with a capital characer [A-Z]"
             ));
         }
         Ok(())
-    }
-
-    fn underscore_spaces(s: &mut String) {
-        *s = s.replace(' ', "_")
     }
 
     /// Params for creating collections.
@@ -341,10 +336,9 @@ pub mod dto {
     pub struct CreateCollection {
         /// Collection name. Cannot contain special characters.
         #[validate(custom(ascii_alphanumeric_underscored))]
-        #[validate(custom(begins_with_ascii_char))]
+        #[validate(custom(begins_with_capital_ascii_letter))]
         #[validate(length(min = 1))]
         #[modify(trim)]
-        #[modify(custom(underscore_spaces))]
         pub name: String,
 
         /// Collection model.

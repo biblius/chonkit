@@ -57,9 +57,8 @@ impl VectorDb for Arc<WeaviateClient> {
 
     async fn create_vector_collection(&self, name: &str, size: usize) -> Result<(), ChonkitError> {
         let props = create_properties(name, size);
-        let class_name = to_weaviate_class_name(name);
 
-        let class = Class::builder(&class_name).with_properties(props).build();
+        let class = Class::builder(name).with_properties(props).build();
 
         self.schema
             .create_class(&class)
@@ -70,7 +69,6 @@ impl VectorDb for Arc<WeaviateClient> {
     }
 
     async fn get_collection(&self, name: &str) -> Result<VectorCollection, ChonkitError> {
-        let name = to_weaviate_class_name(name);
         self.schema
             .get_class(&name)
             .await
@@ -79,7 +77,6 @@ impl VectorDb for Arc<WeaviateClient> {
     }
 
     async fn delete_vector_collection(&self, name: &str) -> Result<(), ChonkitError> {
-        let name = to_weaviate_class_name(name);
         self.schema
             .delete(&name)
             .await
@@ -89,9 +86,7 @@ impl VectorDb for Arc<WeaviateClient> {
 
     async fn create_default_collection(&self, size: usize) {
         let props = create_properties(DEFAULT_COLLECTION_NAME, size);
-        let class_name = to_weaviate_class_name(DEFAULT_COLLECTION_NAME);
-
-        let class = Class::builder(&class_name)
+        let class = Class::builder(DEFAULT_COLLECTION_NAME)
             .with_description("Default vector collection")
             .with_properties(props)
             .build();
@@ -117,8 +112,6 @@ impl VectorDb for Arc<WeaviateClient> {
         collection: &str,
         limit: u32,
     ) -> Result<Vec<String>, ChonkitError> {
-        let collection = to_weaviate_class_name(collection);
-
         // God help us all
         let near_vector = &format!("{{ vector: {search:?} }}");
         let query = GetQuery::builder(&collection, vec![CONTENT_PROPERTY])
@@ -160,8 +153,6 @@ impl VectorDb for Arc<WeaviateClient> {
     ) -> Result<(), ChonkitError> {
         debug_assert_eq!(content.len(), vectors.len());
 
-        let collection = to_weaviate_class_name(collection);
-
         let objects = content
             .iter()
             .zip(vectors.iter())
@@ -192,8 +183,6 @@ impl VectorDb for Arc<WeaviateClient> {
         collection: &str,
         document_id: Uuid,
     ) -> Result<(), ChonkitError> {
-        let collection = to_weaviate_class_name(collection);
-
         let delete = BatchDeleteRequest::builder(MatchConfig::new(
             &collection,
             json!({
@@ -217,8 +206,6 @@ impl VectorDb for Arc<WeaviateClient> {
         collection: &str,
         document_id: Uuid,
     ) -> Result<usize, ChonkitError> {
-        let collection = to_weaviate_class_name(collection);
-
         let query = GetQuery::builder(&collection, vec![DOCUMENT_ID_PROPERTY])
             .with_where(&format!(
                 "{{ 
@@ -250,25 +237,17 @@ impl VectorDb for Arc<WeaviateClient> {
     }
 }
 
-/// Since Weaviate classes must start with a capital letter and
-/// cannot contain any special characters, we hash the input to
-/// hex values and use that as the class name and
-/// store the original collection name as a property inside the class.
-fn to_weaviate_class_name(s: &str) -> String {
-    format!("{}{}", s[0..1].to_uppercase(), &s[1..])
-}
-
 /// Create properties for a collection (weaviate class).
 fn create_properties(name: &str, size: usize) -> Properties {
     let size = PropertyBuilder::new("size", vec!["int"])
         .with_description(&size.to_string())
         .build();
 
-    let original_name = PropertyBuilder::new("original_name", vec!["text"])
+    let name = PropertyBuilder::new("name", vec!["text"])
         .with_description(name)
         .build();
 
-    Properties::new(vec![size, original_name])
+    Properties::new(vec![size, name])
 }
 
 /// Attempt to parse Weaviate GraphQL data to a [dto::WeaviateError].
@@ -388,7 +367,7 @@ mod weaviate_tests {
 
     #[test]
     async fn creates_collection(weaver: WeaviateDb) {
-        let name = "my_collection_0";
+        let name = "My_collection_0";
 
         weaver.create_vector_collection(name, 420).await.unwrap();
 

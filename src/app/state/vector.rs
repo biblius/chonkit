@@ -109,7 +109,7 @@ mod vector_service_integration_tests {
         embedder: FastEmbedder,
         vector_db: VectorDatabase,
     ) {
-        let name = "test_collection_0";
+        let name = "Test_collection_0";
         let model = embedder
             .list_embedding_models()
             .await
@@ -146,7 +146,7 @@ mod vector_service_integration_tests {
         vector_db: VectorDatabase,
         embedder: FastEmbedder,
     ) {
-        let name = "test_collection_0";
+        let name = "Test_collection_0";
 
         let params = CreateCollection {
             model: "invalid_model".to_string(),
@@ -248,7 +248,7 @@ mod vector_service_integration_tests {
         vector_db: VectorDatabase,
         embedder: FastEmbedder,
     ) {
-        let collection_name = "test_collection_delete_embeddings";
+        let collection_name = "Test_collection_delete_embeddings";
 
         let create = CreateCollection {
             name: collection_name.to_string(),
