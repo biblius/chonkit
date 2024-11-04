@@ -11,12 +11,13 @@ async fn main() {
     let state = chonkit::app::state::AppState::new(&args).await;
     let batch_embedder = chonkit::app::state::spawn_batch_embedder(state.clone());
     let addr = args.address();
+    let origins = args.allowed_origins();
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("error while starting TCP listener");
 
-    let router = router::router(state, batch_embedder);
+    let router = router::router(state, batch_embedder, origins);
 
     info!("Listening on {addr}");
 

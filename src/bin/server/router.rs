@@ -8,7 +8,7 @@ use crate::dto::{
 };
 use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
-    http::Method,
+    http::{HeaderValue, Method},
     response::{sse::Event, IntoResponse, Sse},
     routing::{delete, get, post, put},
     Json, Router,
@@ -45,9 +45,21 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 use validify::{Validate, Validify};
 
-pub fn router(state: AppState, batch_embedder: BatchEmbedderHandle) -> Router {
+pub fn router(
+    state: AppState,
+    batch_embedder: BatchEmbedderHandle,
+    origins: Vec<String>,
+) -> Router {
+    let origins = origins
+        .into_iter()
+        .map(|origin| {
+            tracing::debug!("Adding {origin} to allowed origins");
+            HeaderValue::from_str(&origin)
+        })
+        .map(Result::unwrap);
+
     let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
+        .allow_origin(tower_http::cors::AllowOrigin::list(origins))
         .allow_headers(tower_http::cors::Any)
         .allow_methods([
             Method::GET,

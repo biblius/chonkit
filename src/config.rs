@@ -25,6 +25,11 @@ pub struct StartArgs {
     #[arg(short, long)]
     address: Option<String>,
 
+    /// CORS allowed origins.
+    #[cfg(feature = "http")]
+    #[arg(short = 'c', long)]
+    allowed_origins: Option<String>,
+
     /// Qdrant URL.
     #[cfg(feature = "qdrant")]
     #[arg(short, long)]
@@ -115,6 +120,19 @@ impl StartArgs {
             None => match std::env::var("ADDRESS") {
                 Ok(addr) => addr,
                 Err(_) => DEFAULT_ADDRESS.to_string(),
+            },
+        }
+    }
+
+    #[cfg(feature = "http")]
+    pub fn allowed_origins(&self) -> Vec<String> {
+        match &self.allowed_origins {
+            Some(origins) => origins.split(',').map(String::from).collect(),
+            None => match std::env::var("ALLOWED_ORIGINS") {
+                Ok(origins) => origins.split(',').map(String::from).collect(),
+                Err(_) => panic!(
+                    "Allowed origins not found; Pass --allowed-origins (-c) or set ALLOWED_ORIGINS as a comma separated list"
+                ),
             },
         }
     }
