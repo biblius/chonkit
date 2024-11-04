@@ -38,7 +38,7 @@ use chonkit::{
         },
         document::parser::ParseConfig,
         model::{
-            collection::{Collection, CollectionDisplay, Embedding, VectorCollection},
+            collection::{Collection, CollectionShort, Embedding, VectorCollection},
             document::{Document, DocumentConfig, DocumentDisplay},
             List, Pagination,
         },
@@ -102,7 +102,7 @@ use utoipa::OpenApi;
         ListEmbeddingsPayload,
         ListDocumentsPayload,
         DocumentDisplay,
-        CollectionDisplay,
+        CollectionShort,
     ))
 )]
 pub struct ApiDoc;

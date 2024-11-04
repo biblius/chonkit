@@ -1,4 +1,4 @@
-use super::collection::CollectionDisplay;
+use super::collection::CollectionShort;
 use crate::{
     core::{chunk::Chunker, document::parser::ParseConfig},
     error::ChonkitError,
@@ -58,17 +58,26 @@ pub struct Document {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Document struct for display purposes when listing collections.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentShort {
+    pub id: uuid::Uuid,
+    pub name: String,
+}
+
 /// Aggregate version of [Document] with the collections that contain it.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentDisplay {
     pub document: Document,
-    pub collections: Vec<CollectionDisplay>,
+    pub collections: Vec<CollectionShort>,
 }
 
 impl DocumentDisplay {
-    pub fn new(document: Document, collections: Vec<CollectionDisplay>) -> Self {
+    pub fn new(document: Document, collections: Vec<CollectionShort>) -> Self {
         Self {
             document,
             collections,

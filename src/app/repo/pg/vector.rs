@@ -1,7 +1,10 @@
 use crate::{
     core::{
         model::{
-            collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert},
+            collection::{
+                Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert,
+            },
+            document::DocumentShort,
             List, Pagination,
         },
         repo::{vector::VectorRepo, Atomic},
@@ -35,6 +38,13 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
         .collect();
 
         Ok(List::new(total, collections))
+    }
+
+    async fn list_collections_display(
+        &self,
+        p: Pagination,
+    ) -> Result<List<CollectionDisplay>, ChonkitError> {
+        todo!()
     }
 
     async fn insert_collection(
@@ -95,6 +105,36 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
         )
         .fetch_optional(self)
         .await?)
+    }
+
+    async fn get_collection_display(
+        &self,
+        collection_id: Uuid,
+    ) -> Result<Option<CollectionDisplay>, ChonkitError> {
+        let collection = sqlx::query_as!(
+            Collection,
+            "SELECT id, name, model, embedder, provider, created_at, updated_at FROM collections WHERE id = $1",
+            collection_id
+        )
+        .fetch_optional(self)
+        .await?;
+
+        let Some(collection) = collection else {
+            return Ok(None);
+        };
+
+        let documents = sqlx::query_as!(
+            DocumentShort,
+            r#"
+                WITH embeddings AS (SELECT document_id FROM embeddings WHERE collection_id = $1) 
+                SELECT documents.id, documents.name FROM documents RIGHT JOIN embeddings ON documents.id = embeddings.document_id
+            "#,
+            collection_id
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(Some(CollectionDisplay::new(collection, documents)))
     }
 
     async fn get_collection_by_name(

@@ -4,7 +4,7 @@ use crate::core::{
     chunk::Chunker,
     document::parser::ParseConfig,
     model::{
-        collection::CollectionDisplay,
+        collection::CollectionShort,
         document::{
             config::{DocumentChunkConfig, DocumentParseConfig},
             Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentUpdate,
@@ -223,7 +223,7 @@ impl DocumentRepo for PgPool {
             }
 
             // Safe to unwrap since the fields are guaranteed to exist by their constraints
-            let collection = CollectionDisplay::new(
+            let collection = CollectionShort::new(
                 row.collection_id.unwrap(),
                 row.collection_name.unwrap(),
                 row.collection_model.unwrap(),

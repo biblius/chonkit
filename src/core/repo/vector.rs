@@ -1,6 +1,6 @@
 use crate::{
     core::model::{
-        collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert},
+        collection::{Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert},
         List, Pagination,
     },
     error::ChonkitError,
@@ -10,13 +10,21 @@ use uuid::Uuid;
 
 /// Keeps track of vector collections and vector related metadata.
 pub trait VectorRepo<T> {
-    /// List collections with limit and offset
+    /// List collections with limit and offset.
     ///
     /// * `p`: Pagination params.
     fn list_collections(
         &self,
         p: Pagination,
     ) -> impl Future<Output = Result<List<Collection>, ChonkitError>> + Send;
+
+    /// List collections with limit and offset for display purposes.
+    ///
+    /// * `p`: Pagination params.
+    fn list_collections_display(
+        &self,
+        p: Pagination,
+    ) -> impl Future<Output = Result<List<CollectionDisplay>, ChonkitError>> + Send;
 
     /// Insert collection metadata.
     ///
@@ -43,6 +51,14 @@ pub trait VectorRepo<T> {
         &self,
         collection_id: Uuid,
     ) -> impl Future<Output = Result<Option<Collection>, ChonkitError>> + Send;
+
+    /// Get collection metadata.
+    ///
+    /// * `collection_id`: Collection ID.
+    fn get_collection_display(
+        &self,
+        collection_id: Uuid,
+    ) -> impl Future<Output = Result<Option<CollectionDisplay>, ChonkitError>> + Send;
 
     /// Get collection metadata by name and provider.
     ///

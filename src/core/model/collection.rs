@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
+use super::document::DocumentShort;
+
 /// Used by vector databases.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
@@ -49,30 +51,6 @@ pub struct Collection {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Collection struct for display purposes.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionDisplay {
-    pub id: Uuid,
-    pub name: String,
-    pub model: String,
-    pub embedder: String,
-    pub provider: String,
-}
-
-impl CollectionDisplay {
-    pub fn new(id: Uuid, name: String, model: String, embedder: String, provider: String) -> Self {
-        Self {
-            id,
-            name,
-            model,
-            embedder,
-            provider,
-        }
-    }
-}
-
 pub struct CollectionInsert<'a> {
     pub id: Uuid,
     pub name: &'a str,
@@ -90,6 +68,45 @@ impl<'a> CollectionInsert<'a> {
             embedder,
             provider,
         }
+    }
+}
+
+/// Collection struct for display purposes when listing documents.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionShort {
+    pub id: Uuid,
+    pub name: String,
+    pub model: String,
+    pub embedder: String,
+    pub provider: String,
+}
+
+impl CollectionShort {
+    pub fn new(id: Uuid, name: String, model: String, embedder: String, provider: String) -> Self {
+        Self {
+            id,
+            name,
+            model,
+            embedder,
+            provider,
+        }
+    }
+}
+
+/// Aggregate version of [Collection] with the documents it contains.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionDisplay {
+    pub id: Collection,
+    pub documents: Vec<DocumentShort>,
+}
+
+impl CollectionDisplay {
+    pub fn new(id: Collection, documents: Vec<DocumentShort>) -> Self {
+        Self { id, documents }
     }
 }
 

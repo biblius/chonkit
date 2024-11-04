@@ -58,6 +58,8 @@ where
     }
 
     /// Return a list of models supported by this instance's embedder and their respective sizes.
+    ///
+    /// * `embedder`: The embedder to use.
     pub async fn list_embedding_models(
         &self,
         embedder: &(dyn Embedder + Send + Sync),
@@ -157,8 +159,8 @@ where
     /// for the document to prevent duplication in semantic search.
     ///
     /// * `id`: Document ID.
-    /// * `collection`: The collection to store the vectors in.
-    /// * `chunks`: The chunked document.
+    /// * `vector_db`: The vector DB implementation to use.
+    /// * `embedder`: The embedder to use.
     pub async fn create_embeddings(
         &self,
         vector_db: &(dyn VectorDb + Send + Sync),
