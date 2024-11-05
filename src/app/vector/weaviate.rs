@@ -22,12 +22,12 @@ use weaviate_community::{
 
 use super::CONTENT_PROPERTY;
 
-/// Alias for an arced Qdrant instance.
+/// Alias for an arced Weaviate instance.
 pub type WeaviateDb = Arc<WeaviateClient>;
 
 pub fn init(url: &str) -> WeaviateDb {
     info!("Connecting to weaviate at {url}");
-    Arc::new(WeaviateClient::new(url, None, None).expect("error initialising qdrant"))
+    Arc::new(WeaviateClient::new(url, None, None).expect("error initialising weaviate"))
 }
 
 #[async_trait::async_trait]

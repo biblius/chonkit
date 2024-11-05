@@ -81,6 +81,10 @@ pub enum ChonkitError {
     #[error("Weaviate; {0}")]
     Weaviate(String),
 
+    #[cfg(feature = "http")]
+    #[error("Axum; {0}")]
+    Axum(#[from] axum::Error),
+
     #[cfg(any(feature = "openai", feature = "fe-remote"))]
     #[error("Openai; {0}")]
     Reqwest(#[from] reqwest::Error),

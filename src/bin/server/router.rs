@@ -686,11 +686,7 @@ async fn batch_embed(
 
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|result| {
         let event = match result {
-            EmbeddingResult::Ok(report) => {
-                let report = serde_json::to_string(&report)?;
-                let report = format!("data: {report}");
-                Event::default().data(report)
-            }
+            EmbeddingResult::Ok(report) => Event::default().json_data(report)?,
             EmbeddingResult::Err(err) => {
                 let err = format!("error: {err}");
                 Event::default().data(err)

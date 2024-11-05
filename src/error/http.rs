@@ -37,6 +37,9 @@ impl ChonkitError {
 
             #[cfg(feature = "weaviate")]
             E::Weaviate(_) => SC::INTERNAL_SERVER_ERROR,
+
+            #[cfg(feature = "http")]
+            E::Axum(_) => SC::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -131,6 +134,9 @@ impl IntoResponse for ChonkitError {
 
             #[cfg(feature = "qdrant")]
             CE::Qdrant(_) => (status, self.to_string()).into_response(),
+
+            #[cfg(feature = "http")]
+            CE::Axum(_) => (status, self.to_string()).into_response(),
         }
     }
 }

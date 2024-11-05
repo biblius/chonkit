@@ -210,16 +210,17 @@ Starts the http API with the default features; Qdrant and local fastembed.
 
 Chonkit accepts the following arguments:
 
-| Arg              | Flag | Description                                           | Env            | Feature     | Default         |
-| ---------------- | ---- | ----------------------------------------------------- | -------------- | ----------- | --------------- |
-| `--db-url`       | `-d` | The database URL.                                     | `DATABASE_URL` | \*          | -               |
-| `--log`          | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`     | \*          | `info`          |
-| `--upload-path`  | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`  | \*          | `./upload`      |
-| `--address`      | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`      | `http`      | `0.0.0.0:42069` |
-| `--qdrant-url`   | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`   | `qdrant`    | -               |
-| `--weaviate-url` | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL` | `weaviate`  | -               |
-| `--fembed-url`   | `-f` | Remote fastembed URL.                                 | `FEMBED_URL`   | `fe-remote` | -               |
-| -                | -    | OpenAI API key.                                       | `OPENAI_KEY`   | `openai`    | -               |
+| Arg                 | Flag | Description                                           | Env               | Feature     | Default         |
+| ------------------- | ---- | ----------------------------------------------------- | ----------------- | ----------- | --------------- |
+| `--db-url`          | `-d` | The database URL.                                     | `DATABASE_URL`    | \*          | -               |
+| `--log`             | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`        | \*          | `info`          |
+| `--upload-path`     | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`     | \*          | `./upload`      |
+| `--address`         | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`         | `http`      | `0.0.0.0:42069` |
+| `--allowed-origins` | `-c` | Comma separated list of origins allowed to connect.   | `ALLOWED_ORIGINS` | `http`      | -               |
+| `--qdrant-url`      | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`      | `qdrant`    | -               |
+| `--weaviate-url`    | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL`    | `weaviate`  | -               |
+| `--fembed-url`      | `-f` | Remote fastembed URL.                                 | `FEMBED_URL`      | `fe-remote` | -               |
+| -                   | -    | OpenAI API key.                                       | `OPENAI_KEY`      | `openai`    | -               |
 
 The arguments have priority over the environment variables.
 See `RUST_LOG` syntax [here](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html#configure-logging).

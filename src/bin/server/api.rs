@@ -23,7 +23,9 @@ use super::router::{
     __path_batch_embed,
     __path_search, 
     __path_count_embeddings,
-    __path_delete_embeddings
+    __path_delete_embeddings,
+    __path_list_collections_display,
+    __path_collection_display
 };
 use crate::dto::{
     ChunkPreviewPayload, CreateCollectionPayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
@@ -38,8 +40,10 @@ use chonkit::{
         },
         document::parser::ParseConfig,
         model::{
-            collection::{Collection, CollectionShort, Embedding, VectorCollection},
-            document::{Document, DocumentConfig, DocumentDisplay},
+            collection::{
+                Collection, CollectionDisplay, CollectionShort, Embedding, VectorCollection,
+            },
+            document::{Document, DocumentConfig, DocumentDisplay, DocumentShort},
             List, Pagination,
         },
     },
@@ -72,7 +76,9 @@ use utoipa::OpenApi;
         batch_embed,
         search,
         delete_embeddings,
-        count_embeddings
+        count_embeddings,
+        list_collections_display,
+        collection_display,
     ),
     components(schemas(
         List<Collection>,
@@ -101,7 +107,10 @@ use utoipa::OpenApi;
         EmbeddingSinglePayload,
         ListEmbeddingsPayload,
         ListDocumentsPayload,
+        // Display
         DocumentDisplay,
+        DocumentShort,
+        CollectionDisplay,
         CollectionShort,
     ))
 )]

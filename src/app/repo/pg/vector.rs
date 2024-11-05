@@ -49,14 +49,10 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
     ) -> Result<List<CollectionDisplay>, ChonkitError> {
         let (limit, offset) = p.to_limit_offset();
 
-        let total = sqlx::query!(
-            "SELECT COUNT(id) FROM collections LIMIT $1 OFFSET $2",
-            limit,
-            offset
-        )
-        .fetch_one(self)
-        .await
-        .map(|row| row.count)?;
+        let total = sqlx::query!("SELECT COUNT(id) FROM collections")
+            .fetch_one(self)
+            .await
+            .map(|row| row.count)?;
 
         let collections = sqlx::query_as!(
             CollectionDocumentJoin,
