@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     core::{
         model::{
@@ -11,6 +13,7 @@ use crate::{
     },
     error::ChonkitError,
 };
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -44,7 +47,118 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
         &self,
         p: Pagination,
     ) -> Result<List<CollectionDisplay>, ChonkitError> {
-        todo!()
+        let (limit, offset) = p.to_limit_offset();
+
+        let total = sqlx::query!(
+            "SELECT COUNT(id) FROM collections LIMIT $1 OFFSET $2",
+            limit,
+            offset
+        )
+        .fetch_one(self)
+        .await
+        .map(|row| row.count)?;
+
+        let collections = sqlx::query_as!(
+            CollectionDocumentJoin,
+            r#"
+                WITH emb AS (
+                        SELECT 
+                                id,
+                                collection_id,
+                                document_id
+                        FROM embeddings
+                ),
+                docs AS (
+                        SELECT
+                                emb.collection_id,
+                                documents.id AS document_id,
+                                documents.name AS document_name
+                        FROM documents 
+                        RIGHT JOIN emb ON documents.id = emb.document_id
+                ),
+                counts AS (
+                        SELECT
+                                emb.collection_id,
+                                COUNT(DISTINCT emb.document_id) AS count
+                        FROM emb
+                        GROUP BY emb.collection_id
+                ),
+                cols AS (
+                        SELECT 
+                                id,
+                                name,
+                                model,
+                                embedder,
+                                provider,
+                                created_at,
+                                updated_at
+                        FROM collections
+                        LIMIT $1
+                        OFFSET $2
+                )
+                SELECT
+                        cols.id AS "id!",
+                        cols.name AS "name!",
+                        cols.model AS "model!",
+                        cols.embedder AS "embedder!",
+                        cols.provider AS "provider!",
+                        cols.created_at AS "created_at!",
+                        cols.updated_at AS "updated_at!",
+                        docs.document_id,
+                        docs.document_name,
+                        COALESCE(counts.count, 0) AS "document_count!"
+                FROM cols
+                LEFT JOIN docs ON cols.id = docs.collection_id
+                LEFT JOIN counts ON cols.id = counts.collection_id
+        "#,
+            limit,
+            offset
+        )
+        .fetch_all(self)
+        .await?;
+
+        let mut result: HashMap<Uuid, CollectionDisplay> = HashMap::new();
+
+        for collection_row in collections {
+            let collection = Collection {
+                id: collection_row.id,
+                name: collection_row.name,
+                model: collection_row.model,
+                embedder: collection_row.embedder,
+                provider: collection_row.provider,
+                created_at: collection_row.created_at,
+                updated_at: collection_row.updated_at,
+            };
+
+            if let Some(collection) = result.get_mut(&collection.id) {
+                let (Some(document_id), Some(document_name)) =
+                    (collection_row.document_id, collection_row.document_name)
+                else {
+                    continue;
+                };
+                let document = DocumentShort::new(document_id, document_name);
+                collection.documents.push(document);
+            } else {
+                let mut collection = CollectionDisplay::new(
+                    collection,
+                    collection_row.document_count as usize,
+                    vec![],
+                );
+
+                if let Some(document_id) = collection_row.document_id {
+                    let document =
+                        DocumentShort::new(document_id, collection_row.document_name.unwrap());
+                    collection.documents.push(document);
+                }
+
+                result.insert(collection.collection.id, collection);
+            }
+        }
+
+        Ok(List::new(
+            total.map(|total| total as usize),
+            result.drain().map(|(_, v)| v).collect(),
+        ))
     }
 
     async fn insert_collection(
@@ -134,7 +248,11 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(Some(CollectionDisplay::new(collection, documents)))
+        Ok(Some(CollectionDisplay::new(
+            collection,
+            documents.len(),
+            documents,
+        )))
     }
 
     async fn get_collection_by_name(
@@ -286,4 +404,18 @@ impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
         .await?
         .rows_affected())
     }
+}
+
+/// Private DTO for joining collections and the documents they contain.
+struct CollectionDocumentJoin {
+    id: Uuid,
+    name: String,
+    model: String,
+    embedder: String,
+    provider: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    document_id: Option<Uuid>,
+    document_name: Option<String>,
+    document_count: i64,
 }

@@ -108,6 +108,81 @@
     },
     "query": "SELECT COUNT(name) FROM collections"
   },
+  "1f859d1de7a6a1ea377fe5965b685aa7dc0ecffb8dca9d1b5584ecbc4706d58a": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id!",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name!",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "model!",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "embedder!",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "provider!",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "created_at!",
+          "ordinal": 5,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "updated_at!",
+          "ordinal": 6,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "document_id",
+          "ordinal": 7,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "document_name",
+          "ordinal": 8,
+          "type_info": "Text"
+        },
+        {
+          "name": "document_count!",
+          "ordinal": 9,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n                WITH emb AS (\n                        SELECT \n                                id,\n                                collection_id,\n                                document_id\n                        FROM embeddings\n                ),\n                docs AS (\n                        SELECT\n                                emb.collection_id,\n                                documents.id AS document_id,\n                                documents.name AS document_name\n                        FROM documents \n                        RIGHT JOIN emb ON documents.id = emb.document_id\n                ),\n                counts AS (\n                        SELECT\n                                emb.collection_id,\n                                COUNT(DISTINCT emb.document_id) AS count\n                        FROM emb\n                        GROUP BY emb.collection_id\n                ),\n                cols AS (\n                        SELECT \n                                id,\n                                name,\n                                model,\n                                embedder,\n                                provider,\n                                created_at,\n                                updated_at\n                        FROM collections\n                        LIMIT $1\n                        OFFSET $2\n                )\n                SELECT\n                        cols.id AS \"id!\",\n                        cols.name AS \"name!\",\n                        cols.model AS \"model!\",\n                        cols.embedder AS \"embedder!\",\n                        cols.provider AS \"provider!\",\n                        cols.created_at AS \"created_at!\",\n                        cols.updated_at AS \"updated_at!\",\n                        docs.document_id,\n                        docs.document_name,\n                        COALESCE(counts.count, 0) AS \"document_count!\"\n                FROM cols\n                LEFT JOIN docs ON cols.id = docs.collection_id\n                LEFT JOIN counts ON cols.id = counts.collection_id\n        "
+  },
   "3a4d13874245944429bafa08d719b9dcaf920ca8a356049ccc276fa628da796f": {
     "describe": {
       "columns": [],
@@ -354,24 +429,6 @@
     },
     "query": "DELETE FROM collections WHERE id = $1"
   },
-  "7e2a4628401f56715bf7ffeccc362b97d9fde9a444dd2f9fd36c5e2d2cc4ffbb": {
-    "describe": {
-      "columns": [
-        {
-          "name": "count",
-          "ordinal": 0,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        null
-      ],
-      "parameters": {
-        "Left": []
-      }
-    },
-    "query": "SELECT COUNT(id) FROM documents"
-  },
   "843c76dd68d9231af5b04d8fa1bce79b72ce24f5e2f5fb368d85d4f237f21888": {
     "describe": {
       "columns": [],
@@ -545,71 +602,17 @@
     },
     "query": "SELECT id, name, model, embedder, provider, created_at, updated_at FROM collections WHERE id = $1"
   },
-  "bac68c85e5d226da0cb094674f8d0fb414dc4df902ad37330439f6ae288625cd": {
+  "c021bfaf2cfb985fd99c670980be8a763eddf1c7228cefa43bf4a4c4876002c3": {
     "describe": {
       "columns": [
         {
-          "name": "id",
+          "name": "count",
           "ordinal": 0,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "path",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "ext",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "hash",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "src",
-          "ordinal": 5,
-          "type_info": "Text"
-        },
-        {
-          "name": "label",
-          "ordinal": 6,
-          "type_info": "Text"
-        },
-        {
-          "name": "tags",
-          "ordinal": 7,
-          "type_info": "TextArray"
-        },
-        {
-          "name": "created_at",
-          "ordinal": 8,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "updated_at",
-          "ordinal": 9,
-          "type_info": "Timestamptz"
+          "type_info": "Int8"
         }
       ],
       "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        false
+        null
       ],
       "parameters": {
         "Left": [
@@ -618,7 +621,7 @@
         ]
       }
     },
-    "query": "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at\n                   FROM documents\n                   LIMIT $1\n                   OFFSET $2\n                "
+    "query": "SELECT COUNT(id) FROM collections LIMIT $1 OFFSET $2"
   },
   "c9ac68231870b5a43916eaeafbb2556bce9ae50fc3174c40a6d487a8e93c8eff": {
     "describe": {
@@ -816,6 +819,32 @@
       }
     },
     "query": "INSERT INTO chunkers\n                (id, document_id, config)\n             VALUES\n                ($1, $2, $3)\n             ON CONFLICT(document_id) DO UPDATE SET config = $3\n             RETURNING\n                id, document_id, config AS \"config: _\", created_at, updated_at\n            "
+  },
+  "dcc8a02ed06e2079a4d959443976da7db5a5e7df9de81b66f1ae42b59e1a07c3": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n                WITH embeddings AS (SELECT document_id FROM embeddings WHERE collection_id = $1) \n                SELECT documents.id, documents.name FROM documents RIGHT JOIN embeddings ON documents.id = embeddings.document_id\n            "
   },
   "e3379a354c06bea7d9c2c8842255f01b02dae9655b0e733c615d11cba412c886": {
     "describe": {

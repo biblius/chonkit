@@ -43,6 +43,7 @@ where
         p: Pagination,
         src: Option<&str>,
     ) -> Result<List<Document>, ChonkitError> {
+        p.validate()?;
         self.repo.list(p, src).await
     }
 
@@ -55,6 +56,7 @@ where
         src: Option<&str>,
         document_id: Option<Uuid>,
     ) -> Result<List<DocumentDisplay>, ChonkitError> {
+        p.validate()?;
         self.repo.list_with_collections(p, src, document_id).await
     }
 

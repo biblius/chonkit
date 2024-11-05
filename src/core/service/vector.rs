@@ -1,5 +1,7 @@
 use crate::core::embedder::Embedder;
-use crate::core::model::collection::{Collection, CollectionInsert, Embedding, EmbeddingInsert};
+use crate::core::model::collection::{
+    Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert,
+};
 use crate::core::model::{List, Pagination};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
@@ -36,11 +38,30 @@ where
         self.repo.list_collections(p).await
     }
 
+    pub async fn list_collections_display(
+        &self,
+        p: Pagination,
+    ) -> Result<List<CollectionDisplay>, ChonkitError> {
+        p.validate()?;
+        self.repo.list_collections_display(p).await
+    }
+
     /// Get the collection for the given ID.
     ///
     /// * `id`: Collection ID.
     pub async fn get_collection(&self, id: Uuid) -> Result<Collection, ChonkitError> {
         let collection = self.repo.get_collection(id).await?;
+        collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID '{id}'")))
+    }
+
+    /// Get the collection for the given ID with additional info for display purposes.
+    ///
+    /// * `id`: Collection ID.
+    pub async fn get_collection_display(
+        &self,
+        id: Uuid,
+    ) -> Result<CollectionDisplay, ChonkitError> {
+        let collection = self.repo.get_collection_display(id).await?;
         collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID '{id}'")))
     }
 

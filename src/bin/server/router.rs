@@ -21,7 +21,7 @@ use chonkit::{
     core::{
         document::parser::ParseConfig,
         model::{
-            collection::{Collection, Embedding},
+            collection::{Collection, CollectionDisplay, Embedding},
             document::{Document, DocumentDisplay, DocumentType},
             List, Pagination,
         },
@@ -110,6 +110,8 @@ fn service_api(state: AppState) -> Router {
         .route("/embeddings/:provider/models", get(list_embedding_models))
         .route("/search", post(search))
         .route("/display/documents", get(list_documents_display))
+        .route("/display/collections", get(list_collections_display))
+        .route("/display/collections/:id", get(collection_display))
         .with_state(state)
 }
 
@@ -118,7 +120,6 @@ fn batch_api(batch_embedder: BatchEmbedderHandle) -> Router {
         .route("/embeddings/batch", post(batch_embed))
         .with_state(batch_embedder)
 }
-
 // General app configuration
 
 async fn health_check() -> impl IntoResponse {
@@ -157,12 +158,12 @@ async fn list_documents(
 ) -> Result<Json<List<Document>>, ChonkitError> {
     let Query(pagination) = payload.unwrap_or_default();
 
-    pagination.pagination.validate()?;
-
     let service = DocumentService::new(state.postgres.clone());
+
     let documents = service
         .list_documents(pagination.pagination, pagination.src.as_deref())
         .await?;
+
     Ok(Json(documents))
 }
 
@@ -184,9 +185,8 @@ async fn list_documents_display(
 ) -> Result<Json<List<DocumentDisplay>>, ChonkitError> {
     let Query(payload) = payload.unwrap_or_default();
 
-    payload.pagination.validate()?;
-
     let service = DocumentService::new(state.postgres.clone());
+
     let documents = service
         .list_documents_display(
             payload.pagination,
@@ -194,7 +194,56 @@ async fn list_documents_display(
             payload.document_id,
         )
         .await?;
+
     Ok(Json(documents))
+}
+
+#[utoipa::path(
+    get,
+    path = "/display/collections",
+    responses(
+        (status = 200, description = "List collections with additional info for display purposes.", body = inline(List<CollectionDisplay>)),
+        (status = 400, description = "Invalid pagination parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("pagination" = Pagination, Query, description = "Query parameters"),
+    ),
+)]
+async fn list_collections_display(
+    state: State<AppState>,
+    payload: Option<Query<Pagination>>,
+) -> Result<Json<List<CollectionDisplay>>, ChonkitError> {
+    let Query(pagination) = payload.unwrap_or_default();
+
+    let service = VectorService::new(state.postgres.clone());
+
+    let collections = service.list_collections_display(pagination).await?;
+
+    Ok(Json(collections))
+}
+
+#[utoipa::path(
+    get,
+    path = "/display/collections/{id}",
+    responses(
+        (status = 200, description = "Get collection by id", body = CollectionDisplay),
+        (status = 404, description = "Collection not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Collection ID")        
+    ) 
+)]
+async fn collection_display(
+    state: State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<CollectionDisplay>, ChonkitError> {
+    let service = VectorService::new(state.postgres.clone());
+
+    let collection = service.get_collection_display(id).await?;
+
+    Ok(Json(collection))
 }
 
 #[utoipa::path(
@@ -232,7 +281,7 @@ async fn get_document(
 )]
 async fn delete_document(
     state: axum::extract::State<AppState>,
-    Path(id): Path<uuid::Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
     let document = service.get_document(id).await?;
@@ -318,7 +367,7 @@ async fn upload_documents(
 )]
 async fn update_document_config(
     state: State<AppState>,
-    Path(document_id): Path<uuid::Uuid>,
+    Path(document_id): Path<Uuid>,
     Json(config): Json<ConfigUpdatePayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let ConfigUpdatePayload { parser, chunker } = config;
@@ -353,7 +402,7 @@ async fn update_document_config(
 )]
 async fn chunk_preview(
     state: State<AppState>,
-    Path(id): Path<uuid::Uuid>,
+    Path(id): Path<Uuid>,
     Json(config): Json<ChunkPreviewPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     config.validate()?;
@@ -406,7 +455,7 @@ async fn chunk_preview(
 )]
 async fn parse_preview(
     state: State<AppState>,
-    Path(id): Path<uuid::Uuid>,
+    Path(id): Path<Uuid>,
     Json(parser): Json<ParseConfig>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
@@ -495,7 +544,7 @@ async fn create_collection(
 )]
 async fn get_collection(
     state: State<AppState>,
-    Path(collection_id): Path<uuid::Uuid>,
+    Path(collection_id): Path<Uuid>,
 ) -> Result<Json<Collection>, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
     let collection = service.get_collection(collection_id).await?;
@@ -516,7 +565,7 @@ async fn get_collection(
 )]
 async fn delete_collection(
     state: State<AppState>,
-    Path(collection_id): Path<uuid::Uuid>,
+    Path(collection_id): Path<Uuid>,
 ) -> Result<String, ChonkitError> {
     let service = VectorService::new(state.postgres.clone());
     let collection = service.get_collection(collection_id).await?;

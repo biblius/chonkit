@@ -67,6 +67,12 @@ pub struct DocumentShort {
     pub name: String,
 }
 
+impl DocumentShort {
+    pub fn new(id: uuid::Uuid, name: String) -> Self {
+        Self { id, name }
+    }
+}
+
 /// Aggregate version of [Document] with the collections that contain it.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Default)]
@@ -125,7 +131,7 @@ impl TryFrom<&str> for DocumentType {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "txt" | "md" | "xml" | "json" => Ok(Self::Text),
+            "txt" | "md" | "xml" | "json" | "csv" => Ok(Self::Text),
             "pdf" => Ok(Self::Pdf),
             "docx" => Ok(Self::Docx),
             _ => Err(ChonkitError::UnsupportedFileType(value.to_owned())),

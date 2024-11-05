@@ -28,8 +28,8 @@ pub trait VectorRepo<T> {
 
     /// Insert collection metadata.
     ///
-    /// * `name`: Collection name.
-    /// * `model`: Collection embedding model.
+    /// * `insert`: Collection insert DTO.
+    /// * `tx`: Optional transaction to insert in.
     fn insert_collection(
         &self,
         insert: CollectionInsert<'_>,

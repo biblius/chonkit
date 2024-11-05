@@ -100,13 +100,22 @@ impl CollectionShort {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionDisplay {
-    pub id: Collection,
+    pub collection: Collection,
+    pub total_documents: usize,
     pub documents: Vec<DocumentShort>,
 }
 
 impl CollectionDisplay {
-    pub fn new(id: Collection, documents: Vec<DocumentShort>) -> Self {
-        Self { id, documents }
+    pub fn new(
+        collection: Collection,
+        total_documents: usize,
+        documents: Vec<DocumentShort>,
+    ) -> Self {
+        Self {
+            collection,
+            total_documents,
+            documents,
+        }
     }
 }
 
