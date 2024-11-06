@@ -226,13 +226,16 @@ where
 
         let embeddings = embedder.embed(&chunks, &collection.model).await?;
 
+        debug_assert_eq!(chunks.len(), embeddings.len());
+
         vector_db
             .insert_embeddings(id, &collection.name, &chunks, embeddings)
             .await?;
 
-        let insert = EmbeddingInsert::new(id, collection.id);
-
-        let embeddings = self.repo.insert_embeddings(insert).await?;
+        let embeddings = self
+            .repo
+            .insert_embeddings(EmbeddingInsert::new(id, collection.id))
+            .await?;
 
         Ok(embeddings)
     }

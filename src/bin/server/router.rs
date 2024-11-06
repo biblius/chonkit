@@ -15,7 +15,7 @@ use axum::{
 };
 use chonkit::{
     app::{
-        batch::{BatchEmbedderHandle, EmbeddingJob, EmbeddingResult},
+        batch::{BatchEmbedderHandle, BatchJob, JobResult},
         state::{AppState, DocumentStoreProvider},
     },
     core::{
@@ -670,14 +670,17 @@ async fn batch_embed(
     State(batch_embedder): axum::extract::State<BatchEmbedderHandle>,
     Json(job): Json<EmbeddingBatchPayload>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, ChonkitError>>>, ChonkitError> {
+    job.validate()?;
+
     let EmbeddingBatchPayload {
         collection,
-        documents,
+        add,
+        remove
     } = job;
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<EmbeddingResult>(documents.len());
+    let (tx, rx) = tokio::sync::mpsc::channel::<JobResult>(add.len() + remove.len());
 
-    let job = EmbeddingJob::new(collection, documents, tx);
+    let job = BatchJob::new(collection, add, remove, tx);
 
     if let Err(e) = batch_embedder.send(job).await {
         error!("Error sending embedding job: {:?}", e.0);
@@ -686,8 +689,9 @@ async fn batch_embed(
 
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|result| {
         let event = match result {
-            EmbeddingResult::Ok(report) => Event::default().json_data(report)?,
-            EmbeddingResult::Err(err) => {
+            JobResult::Ok(report) => Event::default().json_data(report)?,
+            JobResult::Err(err) => {
+                tracing::error!("Received error in batch embedder: {err}");
                 let err = format!("error: {err}");
                 Event::default().data(err)
             }

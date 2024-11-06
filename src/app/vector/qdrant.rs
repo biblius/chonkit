@@ -129,7 +129,7 @@ impl VectorDb for Arc<Qdrant> {
             ..Default::default()
         };
 
-        let search_result = self.search_points(search_points).await.unwrap();
+        let search_result = self.search_points(search_points).await?;
 
         let results = search_result
             .result
@@ -174,8 +174,7 @@ impl VectorDb for Arc<Qdrant> {
             .collect();
 
         self.upsert_points(UpsertPointsBuilder::new(collection, points).wait(true))
-            .await
-            .unwrap();
+            .await?;
 
         Ok(())
     }
@@ -216,8 +215,6 @@ impl VectorDb for Arc<Qdrant> {
                     .with_vectors(false),
             )
             .await?;
-
-        dbg!(&scroll);
 
         Ok(scroll.result.len())
     }

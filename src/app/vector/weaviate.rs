@@ -193,7 +193,8 @@ impl VectorDb for Arc<WeaviateClient> {
         ))
         .build();
 
-        self.batch
+        let response = self
+            .batch
             .objects_batch_delete(delete, Some(ConsistencyLevel::ALL), None)
             .await
             .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
@@ -209,9 +210,9 @@ impl VectorDb for Arc<WeaviateClient> {
         let query = GetQuery::builder(&collection, vec![DOCUMENT_ID_PROPERTY])
             .with_where(&format!(
                 "{{ 
-                path: [\"{DOCUMENT_ID_PROPERTY}\"],
-                operator: Equal,
-                valueText: \"{document_id}\" 
+                    path: [\"{DOCUMENT_ID_PROPERTY}\"],
+                    operator: Equal,
+                    valueText: \"{document_id}\" 
                 }}"
             ))
             .build();

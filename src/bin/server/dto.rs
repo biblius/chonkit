@@ -149,13 +149,28 @@ pub(super) struct EmbeddingSinglePayload {
 /// Used for batch embeddings.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[validate(Self::validate_schema)]
 pub(super) struct EmbeddingBatchPayload {
-    /// The documents to embed.
-    #[validate(length(min = 1))]
-    pub documents: Vec<Uuid>,
+    /// The documents to embed and add to the collection.
+    pub add: Vec<Uuid>,
+
+    /// The documents to remove from the collection.
+    pub remove: Vec<Uuid>,
 
     /// The ID of the collection in which to store the embeddings to.
     pub collection: Uuid,
+}
+
+impl EmbeddingBatchPayload {
+    #[schema_validation]
+    fn validate_schema(&self) -> Result<(), ValidationErrors> {
+        if self.add.is_empty() && self.remove.is_empty() {
+            schema_err! {
+                "no_documents",
+                "either `add` or `remove` must contain document IDs"
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema, IntoParams)]
