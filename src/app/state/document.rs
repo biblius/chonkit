@@ -1,5 +1,6 @@
 #[cfg(test)]
 #[suitest::suite(integration_tests)]
+#[suitest::suite_cfg(sequential = true)]
 mod document_service_integration_tests {
     use crate::{
         app::{
@@ -122,6 +123,7 @@ mod document_service_integration_tests {
             ty: DocumentType::Pdf,
             file: content,
         };
+
         let document = service.upload(store, upload).await.unwrap();
 
         let config = ParseConfig::new(10, 20)

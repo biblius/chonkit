@@ -108,7 +108,7 @@ impl VectorDb for Arc<WeaviateClient> {
 
     async fn query(
         &self,
-        search: Vec<f32>,
+        search: Vec<f64>,
         collection: &str,
         limit: u32,
     ) -> Result<Vec<String>, ChonkitError> {
@@ -149,20 +149,20 @@ impl VectorDb for Arc<WeaviateClient> {
         document_id: Uuid,
         collection: &str,
         content: &[&str],
-        vectors: Vec<Vec<f32>>,
+        vectors: Vec<Vec<f64>>,
     ) -> Result<(), ChonkitError> {
         debug_assert_eq!(content.len(), vectors.len());
 
         let objects = content
             .iter()
-            .zip(vectors.iter())
+            .zip(vectors.into_iter())
             .map(|(content, vector)| {
                 let properties = json!({
                     CONTENT_PROPERTY: content,
                     DOCUMENT_ID_PROPERTY: document_id
                 });
                 Object::builder(&collection, properties)
-                    .with_vector(vector.iter().map(|f| *f as f64).collect())
+                    .with_vector(vector)
                     .with_id(uuid::Uuid::new_v4())
                     .build()
             })
@@ -193,8 +193,7 @@ impl VectorDb for Arc<WeaviateClient> {
         ))
         .build();
 
-        let response = self
-            .batch
+        self.batch
             .objects_batch_delete(delete, Some(ConsistencyLevel::ALL), None)
             .await
             .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;

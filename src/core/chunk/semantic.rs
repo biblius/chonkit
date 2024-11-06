@@ -3,13 +3,9 @@ use super::{
     ChunkerError, DocumentChunker,
 };
 use crate::{core::embedder::Embedder, error::ChonkitError};
-use futures_util::future::join_all;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, sync::Arc, usize};
-
-#[cfg(debug_assertions)]
-use tracing::trace;
+use std::{fmt::Debug, sync::Arc, usize};
 
 /// Semantic similarity chunker implementation.
 ///
@@ -130,8 +126,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
     type Output = String;
 
     async fn chunk(&self, input: &'a str) -> Result<Vec<Self::Output>, ChonkitError> {
-        #[cfg(debug_assertions)]
-        let __chunk_start = std::time::Instant::now();
+        let __chunking_start = std::time::Instant::now();
 
         let Self {
             embedder,
@@ -162,20 +157,16 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
         let total_bytes = byte_count(input);
 
-        let mut chunks: Vec<String> = vec![];
-
+        let mut chunks: Vec<&str> = vec![];
         let mut cursor = Cursor::new(input, *delim);
-
-        // Everything before this index in `input` is processed.
-        let mut start = 0;
 
         // Amount of sentences processed in the current chunk.
         let mut amount = 0;
 
-        #[cfg(debug_assertions)]
-        let mut total_time_spent_embedding_chunks = 0;
+        // Everything before this index in `input` is processed.
+        let mut start = 0;
 
-        let mut embedding_cache: HashMap<usize, Vec<f64>> = HashMap::new();
+        let __chunking_start = std::time::Instant::now();
 
         loop {
             if start >= total_bytes {
@@ -183,6 +174,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             }
 
             cursor.advance();
+
             if cursor.advance_if_peek(skip_forward, skip_back) {
                 continue;
             }
@@ -196,141 +188,94 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             amount = 0;
 
             let chunk = cursor.get_slice();
+
             start += byte_count(chunk);
+
             cursor = Cursor::new(&input[start..], *delim);
 
-            if chunks.is_empty() {
-                chunks.push(chunk.to_string());
+            chunks.push(chunk);
+        }
+
+        tracing::trace!(
+            "Chunking document took {}ms | {} chunks",
+            __chunking_start.elapsed().as_millis(),
+            chunks.len()
+        );
+
+        // Skip everything if no chunks
+        if chunks.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let __embedding_start = std::time::Instant::now();
+
+        let embedded_chunks = embedder.as_ref().embed(&chunks, &embed_model).await?;
+
+        debug_assert_eq!(embedded_chunks.len(), chunks.len());
+
+        tracing::trace!(
+            "Embedding chunks took {}ms",
+            __embedding_start.elapsed().as_millis()
+        );
+
+        let __process_start = std::time::Instant::now();
+
+        let mut out: Vec<(String, Vec<f64>)> =
+            vec![(chunks[0].to_string(), embedded_chunks[0].clone())];
+
+        for (chunk_text, chunk_embedding) in chunks.iter().zip(embedded_chunks).skip(1) {
+            if chunk_text.trim().is_empty() {
                 continue;
             }
 
-            #[cfg(debug_assertions)]
-            let __current_start = std::time::Instant::now();
+            let mut max_similarity = 0.0;
+            let mut idx = None;
 
-            let current_chunk_embeddings = embedder.as_ref().embed(&[&chunk], &embed_model).await?
-                [0]
-            .iter()
-            .map(|f| *f as f64)
-            .collect::<Vec<_>>();
+            for (i, (_, processed_chunk_embedding)) in out.iter().enumerate() {
+                let similarity =
+                    distance_fn.calculate(&chunk_embedding, &processed_chunk_embedding);
 
-            #[cfg(debug_assertions)]
-            trace!(
-                "Embedding current chunk took {}ms",
-                __current_start.elapsed().as_millis()
-            );
+                if similarity > max_similarity {
+                    max_similarity = similarity;
+                }
 
-            // Used for parallel embedding
-            let mut tasks = Vec::with_capacity(chunks.len());
-
-            // Used for already calculated embeddings
-            let mut cached = Vec::with_capacity(chunks.len());
-
-            #[cfg(debug_assertions)]
-            let __start = std::time::Instant::now();
-
-            for (i, existing_chunk) in chunks.iter().cloned().enumerate() {
-                // If the embeddings exist in the cache, use them
-                if let Some(embeddings) = embedding_cache.get(&i) {
-                    cached.push((embeddings, i));
+                // Skip if too different
+                if similarity < *threshold {
                     continue;
                 }
 
-                let embedder = embedder.clone();
-                let embed_model = embed_model.clone();
-
-                let task = tokio::spawn(async move {
-                    let embeddings = embedder.embed(&[&existing_chunk], &embed_model).await?[0]
-                        .iter()
-                        .map(|f| *f as f64)
-                        .collect::<Vec<_>>();
-
-                    Result::<(Vec<f64>, usize), ChonkitError>::Ok((embeddings, i))
-                });
-
-                tasks.push(task);
-            }
-
-            #[cfg(debug_assertions)]
-            trace!("Cache hits: {}", cached.len());
-
-            let (mut max_similarity, mut chunk_idx) = (0.0, 0);
-
-            // Iterating through cache first lets us skip re-caching
-            // the vectors if they are already cached
-            for (emb, idx) in cached {
-                let similarity = distance_fn.calculate(&current_chunk_embeddings, &emb);
-                if similarity > max_similarity {
-                    max_similarity = similarity;
-                    chunk_idx = idx;
+                // Skip if there is already a chunk with greater similarity
+                if idx.is_some() && similarity <= max_similarity {
+                    continue;
                 }
+
+                idx = Some(i);
             }
 
-            // Any chunk embeddings here are guaranteed to not have been cached
-            join_all(tasks)
-                .await
-                .into_iter()
-                // Spawn errors
-                .filter_map(Result::ok)
-                // Embedding errors
-                .filter_map(Result::ok)
-                .map(|(emb, idx)| {
-                    let similarity = distance_fn.calculate(&current_chunk_embeddings, &emb);
-                    (emb, similarity, idx)
-                })
-                .for_each(|(emb, sim, idx)| {
-                    // Update cache
-                    embedding_cache.insert(idx, emb.clone());
-                    if sim > max_similarity {
-                        max_similarity = sim;
-                        chunk_idx = idx;
-                    }
-                });
-
-            #[cfg(debug_assertions)]
-            {
-                total_time_spent_embedding_chunks += __start.elapsed().as_millis();
-                trace!(
-                    "Embedding existing chunks took {}ms",
-                    __start.elapsed().as_millis()
-                );
-            }
-
-            if max_similarity < *threshold {
-                chunks.push(chunk.trim().to_string());
-                #[cfg(debug_assertions)]
-                trace!(
-                    "Added new chunk (candidate:{chunk_idx}|len:{}|max:{max_similarity:.4}/{threshold}) - total: {}",
-                    chunk.trim().len(),
-                    chunks.len(),
-                );
-            } else {
-                chunks[chunk_idx].push_str(chunk);
-                // Invalidate cache
-                #[cfg(debug_assertions)]
-                trace!("Invalidating cache for chunk {chunk_idx}");
-                embedding_cache.remove(&chunk_idx);
-                #[cfg(debug_assertions)]
-                trace!(
-                    "Added to existing chunk (chunk:{chunk_idx}|len:{}|max:{max_similarity:.4}/{threshold}) - total: {}",
-                    chunks[chunk_idx].len(),
-                    chunks.len(),
-                );
-            }
-
-            #[cfg(debug_assertions)]
-            trace!(
-                "Processed {start}/{total_bytes} bytes, elapsed: {}ms",
-                __chunk_start.elapsed().as_millis()
+            tracing::trace!(
+                "Maximum similarity: {max_similarity} | Threshold: {threshold} | Index: {idx:?}"
             );
+
+            if let Some(i) = idx {
+                out[i].0.push_str(chunk_text)
+            } else {
+                out.push((chunk_text.trim().to_string(), chunk_embedding));
+            }
         }
 
-        #[cfg(debug_assertions)]
-        trace!(
-            "Total time spent embedding chunks: {}ms",
-            total_time_spent_embedding_chunks
+        tracing::trace!(
+            "Processing embeddings took {}ms",
+            __process_start.elapsed().as_millis()
         );
 
-        Ok(chunks)
+        tracing::trace!(
+            "Total chunks: {} | Average size: {} | Elapsed: {}ms",
+            out.len(),
+            out.iter().map(|(c, _)| byte_count(c)).sum::<usize>() / out.len(),
+            __chunking_start.elapsed().as_millis()
+        );
+
+        Ok(out.into_iter().map(|(c, _)| c).collect())
     }
 }
 
@@ -447,7 +392,7 @@ mod tests {
         let input = r#"Leverage agile frameworks to provide robust synopses for high level overviews. Pee, AKA urine is stored in the testicles. SCRUM is one of the agile frameworks used to facilitate the robust synopses. The testicles, do in fact, facilitate urine. SCRUM, an agile framework, is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations. This is about pee, i.e. urine."#;
 
         let model = embedder.default_model().0;
-        let chunker = SemanticWindow::new(1, 0.64, DistanceFn::Cosine, embedder.clone(), model);
+        let chunker = SemanticWindow::new(1, 0.58, DistanceFn::Cosine, embedder.clone(), model);
 
         let chunks = chunker.chunk(input).await.unwrap();
 

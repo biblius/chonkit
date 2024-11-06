@@ -31,5 +31,5 @@ pub trait Embedder {
     ///
     /// * `content`: The text to embed.
     /// * `model`: The embedding model to use.
-    async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f32>>, ChonkitError>;
+    async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f64>>, ChonkitError>;
 }

@@ -83,13 +83,14 @@ async fn embed(
 
 async fn list_embedding_models(
     state: axum::extract::State<Arc<FastEmbedder>>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, ChonkitError> {
     let models = state
         .list_embedding_models()
+        .await?
         .into_iter()
         .collect::<HashMap<String, usize>>();
 
-    (StatusCode::OK, Json(json! { models }))
+    Ok((StatusCode::OK, Json(json! { models })))
 }
 
 async fn default_model(state: State<Arc<FastEmbedder>>) -> impl IntoResponse {
@@ -103,6 +104,7 @@ async fn size(
 ) -> Result<impl IntoResponse, ChonkitError> {
     let size = state
         .size(&req.model)
+        .await?
         .ok_or_else(|| ChonkitError::InvalidEmbeddingModel(req.model))?;
     Ok(Json(SizeResponse { size }))
 }
@@ -126,7 +128,7 @@ pub struct SizeRequest {
 
 #[derive(Debug, Serialize)]
 pub struct EmbedResponse {
-    embeddings: Vec<Vec<f32>>,
+    embeddings: Vec<Vec<f64>>,
 }
 
 #[derive(Debug, Serialize)]

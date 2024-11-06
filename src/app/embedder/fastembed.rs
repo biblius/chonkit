@@ -87,7 +87,7 @@ pub mod local {
             &self,
             content: &[&str],
             model: &str,
-        ) -> Result<Vec<Vec<f32>>, ChonkitError> {
+        ) -> Result<Vec<Vec<f64>>, ChonkitError> {
             let embedder = self.models.get(model).ok_or_else(|| {
                 ChonkitError::InvalidEmbeddingModel(format!(
                     "Model '{model}' not supported by embedder '{}'",
@@ -105,7 +105,10 @@ pub mod local {
                 "Content length is different from embeddings!"
             );
 
-            Ok(embeddings)
+            Ok(embeddings
+                .into_iter()
+                .map(|e| e.into_iter().map(|e| e as f64).collect())
+                .collect())
         }
     }
 
@@ -172,7 +175,7 @@ pub mod remote {
             &self,
             content: &[&str],
             model: &str,
-        ) -> Result<Vec<Vec<f32>>, ChonkitError> {
+        ) -> Result<Vec<Vec<f64>>, ChonkitError> {
             let url = self.url("embed");
             let request = EmbedRequest {
                 model: model.to_string(),
@@ -200,7 +203,7 @@ pub mod remote {
 
     #[derive(Debug, Deserialize)]
     pub struct EmbedResponse {
-        embeddings: Vec<Vec<f32>>,
+        embeddings: Vec<Vec<f64>>,
     }
 
     impl std::fmt::Debug for FastEmbedder {

@@ -113,13 +113,13 @@ impl VectorDb for Arc<Qdrant> {
 
     async fn query(
         &self,
-        search: Vec<f32>,
+        search: Vec<f64>,
         collection: &str,
         limit: u32,
     ) -> Result<Vec<String>, ChonkitError> {
         let search_points = SearchPoints {
             collection_name: collection.to_string(),
-            vector: search,
+            vector: search.into_iter().map(|x| x as f32).collect(),
             filter: None,
             limit: limit as u64,
             with_payload: Some(WithPayloadSelector {
@@ -152,7 +152,7 @@ impl VectorDb for Arc<Qdrant> {
         document_id: Uuid,
         collection: &str,
         content: &[&str],
-        vectors: Vec<Vec<f32>>,
+        vectors: Vec<Vec<f64>>,
     ) -> Result<(), ChonkitError> {
         debug!("Inserting vectors to {collection}");
 
@@ -169,7 +169,14 @@ impl VectorDb for Arc<Qdrant> {
                 let mut payload = Payload::new();
                 payload.insert(CONTENT_PROPERTY, content.to_string());
                 payload.insert(DOCUMENT_ID_PROPERTY, document_id.to_string());
-                PointStruct::new(uuid::Uuid::new_v4().to_string(), embedding, payload)
+                PointStruct::new(
+                    uuid::Uuid::new_v4().to_string(),
+                    embedding
+                        .into_iter()
+                        .map(|x| x as f32)
+                        .collect::<Vec<f32>>(),
+                    payload,
+                )
             })
             .collect();
 

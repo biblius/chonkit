@@ -39,7 +39,7 @@ impl Embedder for OpenAiEmbeddings {
         ])
     }
 
-    async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f32>>, ChonkitError> {
+    async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f64>>, ChonkitError> {
         let request = EmbeddingRequest {
             model: model.to_string(),
             input: content.iter().map(|s| s.to_string()).collect(),
@@ -86,7 +86,7 @@ struct EmbeddingResponse {
 #[derive(Debug, Deserialize)]
 struct EmbeddingObject {
     object: String,
-    embedding: Vec<f32>,
+    embedding: Vec<f64>,
     index: usize,
 }
 

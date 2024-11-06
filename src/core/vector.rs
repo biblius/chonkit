@@ -44,7 +44,7 @@ pub trait VectorDb {
     /// * `limit`: Amount of results to return.
     async fn query(
         &self,
-        search: Vec<f32>,
+        search: Vec<f64>,
         collection: &str,
         limit: u32,
     ) -> Result<Vec<String>, ChonkitError>;
@@ -62,7 +62,7 @@ pub trait VectorDb {
         document_id: Uuid,
         collection: &str,
         content: &[&str],
-        vectors: Vec<Vec<f32>>,
+        vectors: Vec<Vec<f64>>,
     ) -> Result<(), ChonkitError>;
 
     /// Delete the vectors tagged with the given `document_id`.
