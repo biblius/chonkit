@@ -27,7 +27,7 @@ impl<R> VectorService<R> {
 
 impl<Repo> VectorService<Repo>
 where
-    Repo: VectorRepo<Repo::Tx> + Atomic + Send + Sync,
+    Repo: VectorRepo + Atomic + Send + Sync,
     Repo::Tx: Send + Sync,
 {
     /// List vector collections.

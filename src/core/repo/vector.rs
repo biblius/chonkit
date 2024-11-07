@@ -8,8 +8,10 @@ use crate::{
 use std::future::Future;
 use uuid::Uuid;
 
+use super::Atomic;
+
 /// Keeps track of vector collections and vector related metadata.
-pub trait VectorRepo<T> {
+pub trait VectorRepo {
     /// List collections with limit and offset.
     ///
     /// * `p`: Pagination params.
@@ -33,8 +35,10 @@ pub trait VectorRepo<T> {
     fn insert_collection(
         &self,
         insert: CollectionInsert<'_>,
-        tx: Option<&mut T>,
-    ) -> impl Future<Output = Result<Collection, ChonkitError>> + Send;
+        tx: Option<&mut Self::Tx>,
+    ) -> impl Future<Output = Result<Collection, ChonkitError>> + Send
+    where
+        Self: Atomic;
 
     /// Delete a vector collection.
     ///

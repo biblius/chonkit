@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-impl VectorRepo<<PgPool as Atomic>::Tx> for PgPool {
+impl VectorRepo for PgPool {
     async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
         let total = sqlx::query!("SELECT COUNT(name) FROM collections")
             .fetch_one(self)
