@@ -14,6 +14,8 @@ use crate::{
 };
 use uuid::Uuid;
 
+use super::Atomic;
+
 /// Keep tracks of documents and their chunking/parsing configurations.
 /// Info obtained from here is usually used to load files.
 #[async_trait::async_trait]
@@ -106,15 +108,39 @@ pub trait DocumentRepo {
         id: uuid::Uuid,
     ) -> Result<Option<DocumentParseConfig>, ChonkitError>;
 
+    /// Insert or update the document's configuration for chunking.
+    ///
+    /// * `document_id`: Document ID.
+    /// * `chunker`: Chunking configuration.
     async fn upsert_chunk_config(
         &self,
         document_id: uuid::Uuid,
         chunker: Chunker,
     ) -> Result<DocumentChunkConfig, ChonkitError>;
 
+    /// Insert or update the document's configuration for parsing.
+    ///
+    /// * `document_id`: Document ID.
+    /// * `config`: Parsing configuration.
     async fn upsert_parse_config(
         &self,
         document_id: uuid::Uuid,
         config: ParseConfig,
     ) -> Result<DocumentParseConfig, ChonkitError>;
+
+    /// Insert document metadata and default configurations for parsing and chunking.
+    ///
+    /// * `document`: Document insert payload.
+    /// * `parse_config`: Parsing configuration.
+    /// * `chunk_config`: Chunking configuration.
+    /// * `tx`: The transaction to run in.
+    async fn insert_with_defaults(
+        &self,
+        document: DocumentInsert<'_>,
+        parse_config: ParseConfig,
+        chunk_config: Chunker,
+        tx: &mut <Self as Atomic>::Tx,
+    ) -> Result<DocumentConfig, ChonkitError>
+    where
+        Self: Atomic;
 }

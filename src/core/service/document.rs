@@ -4,16 +4,17 @@ use crate::{
         document::{
             parser::{ParseConfig, Parser},
             sha256,
-            store::DocumentStore,
+            store::{DocumentStore, DocumentSync},
         },
         embedder::Embedder,
         model::{
             document::{Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType},
             List, Pagination,
         },
-        repo::document::DocumentRepo,
+        repo::{document::DocumentRepo, Atomic},
     },
     error::ChonkitError,
+    transaction,
 };
 use dto::DocumentUpload;
 use std::sync::Arc;
@@ -29,7 +30,7 @@ pub struct DocumentService<R> {
 
 impl<R> DocumentService<R>
 where
-    R: DocumentRepo + Send + Sync,
+    R: DocumentRepo + Clone + Atomic + Send + Sync,
 {
     pub fn new(repo: R) -> Self {
         Self { repo }
@@ -141,12 +142,13 @@ where
     /// Insert the document metadata to the repository and persist it
     /// in the underlying storage implementation.
     ///
+    /// * `store`: The storage implementation.
     /// * `params`: Upload params.
     pub async fn upload(
         &self,
         store: &(dyn DocumentStore + Sync + Send),
         mut params: DocumentUpload<'_>,
-    ) -> Result<Document, ChonkitError> {
+    ) -> Result<DocumentConfig, ChonkitError> {
         params.validify()?;
 
         let DocumentUpload { ref name, ty, file } = params;
@@ -161,9 +163,20 @@ where
         };
 
         let path = store.write(name, file).await?;
+
         let insert = DocumentInsert::new(name, &path, ty, &hash, store.id());
-        let document = self.repo.insert(insert).await?;
-        Ok(document)
+        let parse_config = ParseConfig::default();
+        let chunk_config = Chunker::snapping_default();
+
+        let document_config = transaction!(self.repo, |tx| async move {
+            let document = self
+                .repo
+                .insert_with_defaults(insert, parse_config, chunk_config, tx)
+                .await?;
+            Ok(document)
+        })?;
+
+        Ok(document_config)
     }
 
     /// Remove the document from the repo and delete it from the storage.
@@ -183,10 +196,10 @@ where
     }
 
     /// Sync storage contents with the repo.
-    pub async fn sync(
-        &self,
-        store: &(dyn DocumentStore + Send + Sync),
-    ) -> Result<(), ChonkitError> {
+    pub async fn sync<T>(&self, store: &T) -> Result<(), ChonkitError>
+    where
+        T: DocumentSync<R> + Send + Sync + ?Sized,
+    {
         store.sync(&self.repo).await
     }
 
@@ -244,6 +257,10 @@ where
         Ok(chunker.chunk(&content).await?)
     }
 
+    /// Update a document's parsing configuration.
+    ///
+    /// * `id`: Document ID.
+    /// * `config`: Parsing configuration.
     pub async fn update_parser(&self, id: Uuid, config: ParseConfig) -> Result<(), ChonkitError> {
         config.validate()?;
 
@@ -258,6 +275,10 @@ where
         Ok(())
     }
 
+    /// Update a document's chunking configuration.
+    ///
+    /// * `id`: Document ID.
+    /// * `config`: Chunking configuration.
     pub async fn update_chunker(&self, id: Uuid, config: Chunker) -> Result<(), ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
@@ -270,6 +291,10 @@ where
         Ok(())
     }
 
+    /// Get a parser for a document, or a default parser if the document has no configuration.
+    ///
+    /// * `id`: Document ID.
+    /// * `ext`: Document extension.
     async fn get_parser(&self, id: Uuid, ext: DocumentType) -> Result<Parser, ChonkitError> {
         let config = self.repo.get_parse_config(id).await?;
         match config {

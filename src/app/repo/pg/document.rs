@@ -11,7 +11,7 @@ use crate::core::{
         },
         List, Pagination,
     },
-    repo::document::DocumentRepo,
+    repo::{document::DocumentRepo, Atomic},
 };
 use crate::error::ChonkitError;
 use chrono::{DateTime, Utc};
@@ -422,6 +422,89 @@ impl DocumentRepo for PgPool {
         .await?;
 
         Ok(DocumentParseConfig::from(config))
+    }
+
+    async fn insert_with_defaults(
+        &self,
+        document: DocumentInsert<'_>,
+        parse_config: ParseConfig,
+        chunk_config: Chunker,
+        tx: &mut <Self as Atomic>::Tx,
+    ) -> Result<DocumentConfig, ChonkitError>
+    where
+        Self: Atomic,
+    {
+        let DocumentInsert {
+            id,
+            name,
+            path,
+            ext,
+            src,
+            hash,
+            label,
+            tags,
+        } = document;
+
+        let document = sqlx::query_as!(
+            Document,
+            "INSERT INTO documents(id, name, path, ext, hash, src, label, tags)
+             VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, name, path, ext, hash, src, label, tags, created_at, updated_at",
+            id,
+            name,
+            path,
+            ext.to_string(),
+            hash,
+            src,
+            label,
+            tags.as_deref(),
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(ChonkitError::from)?;
+
+        let parse_insert = InsertConfig::new(document.id, parse_config);
+
+        let parse_config = sqlx::query_as!(
+            SelectConfig::<ParseConfig>,
+            r#"INSERT INTO parsers
+                (id, document_id, config)
+             VALUES
+                ($1, $2, $3)
+             ON CONFLICT(document_id) DO UPDATE SET config = $3
+             RETURNING
+                id, document_id, config AS "config: _", created_at, updated_at"#,
+            parse_insert.id,
+            parse_insert.document_id,
+            parse_insert.config as Json<ParseConfig>,
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let chunk_insert = InsertConfig::new(document.id, chunk_config);
+
+        let chunk_config = sqlx::query_as!(
+            SelectConfig::<Chunker>,
+            r#"INSERT INTO chunkers
+                (id, document_id, config)
+             VALUES
+                ($1, $2, $3)
+             ON CONFLICT(document_id) DO UPDATE SET config = $3
+             RETURNING
+                id, document_id, config AS "config: _", created_at, updated_at
+            "#,
+            chunk_insert.id,
+            chunk_insert.document_id,
+            chunk_insert.config as Json<Chunker>,
+        )
+        .fetch_one(tx)
+        .await?;
+
+        Ok(DocumentConfig::new(
+            document,
+            chunk_config.config.0,
+            parse_config.config.0,
+        ))
     }
 }
 

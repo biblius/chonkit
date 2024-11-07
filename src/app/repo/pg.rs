@@ -26,11 +26,11 @@ impl Atomic for PgPool {
         self.begin().await.map_err(ChonkitError::from)
     }
 
-    async fn commit_tx(tx: Self::Tx) -> Result<(), ChonkitError> {
+    async fn commit_tx(&self, tx: Self::Tx) -> Result<(), ChonkitError> {
         tx.commit().await.map_err(ChonkitError::from)
     }
 
-    async fn abort_tx(tx: Self::Tx) -> Result<(), ChonkitError> {
+    async fn abort_tx(&self, tx: Self::Tx) -> Result<(), ChonkitError> {
         tx.rollback().await.map_err(ChonkitError::from)
     }
 }

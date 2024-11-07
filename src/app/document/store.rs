@@ -1,6 +1,10 @@
 use crate::{
     core::{
-        document::{parser::DocumentParser, sha256, store::DocumentStore},
+        document::{
+            parser::DocumentParser,
+            sha256,
+            store::{DocumentStore, DocumentSync},
+        },
         model::{
             document::{Document, DocumentInsert, DocumentType},
             Pagination,
@@ -92,8 +96,14 @@ impl DocumentStore for FsDocumentStore {
         debug!("Removing {path}");
         Ok(tokio::fs::remove_file(path).await?)
     }
+}
 
-    async fn sync(&self, repo: &(dyn DocumentRepo + Sync)) -> Result<(), ChonkitError> {
+#[async_trait::async_trait]
+impl<T> DocumentSync<T> for FsDocumentStore
+where
+    T: DocumentRepo + Send + Sync,
+{
+    async fn sync(&self, repo: &T) -> Result<(), ChonkitError> {
         let __start = Instant::now();
         info!("Syncing documents with {}", self.id());
 

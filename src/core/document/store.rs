@@ -4,7 +4,8 @@ use crate::{
     error::ChonkitError,
 };
 
-/// Reads documents' content. Serves as indirection to decouple the documents from their source.
+/// Manipulates documents' content.
+/// Serves as indirection to decouple the documents from their source.
 #[async_trait::async_trait]
 pub trait DocumentStore {
     fn id(&self) -> &'static str;
@@ -31,9 +32,15 @@ pub trait DocumentStore {
     /// * `name`: Document name.
     /// * `content`: What to write.
     async fn write(&self, name: &str, content: &[u8]) -> Result<String, ChonkitError>;
+}
 
+#[async_trait::async_trait]
+pub trait DocumentSync<T>
+where
+    T: DocumentRepo + Send + Sync,
+{
     /// Sync the storage client's contents with the repository.
     ///
     /// * `repo`: Document repository.
-    async fn sync(&self, repo: &(dyn DocumentRepo + Sync)) -> Result<(), ChonkitError>;
+    async fn sync(&self, repo: &T) -> Result<(), ChonkitError>;
 }

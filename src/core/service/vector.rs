@@ -138,18 +138,15 @@ where
 
         let CreateCollection { name, model } = data;
 
-        let mut tx = self.repo.start_tx().await?;
-
-        let collection: Collection = transaction!(Repo, tx, async {
+        let collection: Collection = transaction!(self.repo, |tx| async move {
             vector_db.create_vector_collection(&name, size).await?;
 
             let insert = CollectionInsert::new(&name, &model, embedder.id(), vector_db.id());
 
-            let collection = self.repo.insert_collection(insert, Some(&mut tx)).await?;
+            let collection = self.repo.insert_collection(insert, Some(tx)).await?;
 
             Ok(collection)
-        })
-        .await?;
+        })?;
 
         Ok(collection)
     }

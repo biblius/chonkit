@@ -3,7 +3,7 @@
 use chonkit::core::{
     chunk::Chunker,
     document::parser::ParseConfig,
-    model::{document::Document, Pagination},
+    model::{document::DocumentConfig, Pagination},
     service::vector::dto::CreateCollection,
 };
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use validify::{schema_err, schema_validation, Validate, ValidationErrors, Validi
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct UploadResult {
-    pub documents: Vec<Document>,
+    pub documents: Vec<DocumentConfig>,
     /// Map form keys to errors
     pub errors: HashMap<String, Vec<String>>,
 }

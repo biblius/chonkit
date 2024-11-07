@@ -24,6 +24,21 @@ pub struct DocumentConfig {
     pub parse_config: Option<ParseConfig>,
 }
 
+impl DocumentConfig {
+    pub fn new(document: Document, chunk_config: Chunker, parse_config: ParseConfig) -> Self {
+        Self {
+            id: document.id,
+            name: document.name,
+            path: document.path,
+            ext: document.ext,
+            hash: document.hash,
+            src: document.src,
+            chunk_config: Some(chunk_config),
+            parse_config: Some(parse_config),
+        }
+    }
+}
+
 /// Holds document metadata.
 /// Main document model for the `documents` table.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]

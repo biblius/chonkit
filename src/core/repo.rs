@@ -13,29 +13,29 @@ pub trait Atomic {
     fn start_tx(&self) -> impl Future<Output = Result<Self::Tx, ChonkitError>>;
 
     /// Commit a database transaction.
-    fn commit_tx(tx: Self::Tx) -> impl Future<Output = Result<(), ChonkitError>>;
+    fn commit_tx(&self, tx: Self::Tx) -> impl Future<Output = Result<(), ChonkitError>>;
 
     /// Abort a database transaction.
-    fn abort_tx(tx: Self::Tx) -> impl Future<Output = Result<(), ChonkitError>>;
+    fn abort_tx(&self, tx: Self::Tx) -> impl Future<Output = Result<(), ChonkitError>>;
 }
 
-/// Helper for executing started transactions.
+/// Uses `$repo` to start a transaction, passing it to the provided `$op`.
+/// The provided `$op` must return a result.
 /// Aborts the transaction on error and commits on success.
 #[macro_export]
 macro_rules! transaction {
-    ($t:ty, $tx:ident, $op:expr) => {
-        async {
-            let result = { $op }.await;
-            match result {
-                Ok(out) => {
-                    <$t as Atomic>::commit_tx($tx).await?;
-                    Result::<_, ChonkitError>::Ok(out)
-                }
-                Err(err) => {
-                    <$t as Atomic>::abort_tx($tx).await?;
-                    return Err(err);
-                }
+    ($repo:expr, $op:expr) => {{
+        let mut tx = $repo.start_tx().await?;
+        let result = { $op(&mut tx) }.await;
+        match result {
+            Ok(out) => {
+                $repo.commit_tx(tx).await?;
+                Result::<_, ChonkitError>::Ok(out)
+            }
+            Err(err) => {
+                $repo.abort_tx(tx).await?;
+                return Err(err);
             }
         }
-    };
+    }};
 }

@@ -128,7 +128,7 @@ pub async fn run(command: Execute, state: AppState) {
                     let doc = service.get_config(id).await.unwrap();
                     println!("{:#?}", doc);
                 }
-                DocumentExec::Sync => service.sync(&*store).await.unwrap(),
+                DocumentExec::Sync => {}
                 DocumentExec::List(ListArgs { limit, offset }) => {
                     let p = Pagination::new(limit, offset);
                     p.validate().unwrap();

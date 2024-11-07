@@ -481,7 +481,7 @@ async fn sync(
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ChonkitError> {
     let service = DocumentService::new(state.postgres.clone());
-    let store = state.store(provider.try_into()?);
+    let store = state.syncer(provider.try_into()?);
     service.sync(&*store).await?;
     Ok("Successfully synced")
 }
