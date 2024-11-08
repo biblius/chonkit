@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use sqlx::prelude::FromRow;
 use uuid::Uuid;
 
 use super::document::DocumentShort;
@@ -34,7 +35,7 @@ impl VectorCollection {
 
 /// Vector collection model.
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Collection {
     /// Primary key.

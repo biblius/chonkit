@@ -44,7 +44,7 @@ use chonkit::{
                 Collection, CollectionDisplay, CollectionShort, Embedding, VectorCollection,
             },
             document::{Document, DocumentConfig, DocumentDisplay, DocumentShort},
-            List, Pagination,
+            List, Pagination, PaginationSort,
         },
     },
 };
@@ -85,6 +85,7 @@ use utoipa::OpenApi;
         List<Document>,
         List<DocumentDisplay>,
         Pagination,
+        PaginationSort,
         Document,
         DocumentConfig,
         UploadResult,

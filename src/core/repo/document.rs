@@ -7,7 +7,7 @@ use crate::{
                 config::{DocumentChunkConfig, DocumentParseConfig},
                 Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentUpdate,
             },
-            List, Pagination,
+            List, PaginationSort,
         },
     },
     error::ChonkitError,
@@ -52,7 +52,11 @@ pub trait DocumentRepo {
     /// List documents with limit and offset
     ///
     /// * `p`: Pagination params.
-    async fn list(&self, p: Pagination, src: Option<&str>) -> Result<List<Document>, ChonkitError>;
+    async fn list(
+        &self,
+        p: PaginationSort,
+        src: Option<&str>,
+    ) -> Result<List<Document>, ChonkitError>;
 
     /// List documents with limit and offset with additional relations for embeddings.
     ///
@@ -61,7 +65,7 @@ pub trait DocumentRepo {
     /// * `document_id`: Optional document ID to filter by.
     async fn list_with_collections(
         &self,
-        p: Pagination,
+        p: PaginationSort,
         src: Option<&str>,
         document_id: Option<Uuid>,
     ) -> Result<List<DocumentDisplay>, ChonkitError>;
@@ -128,13 +132,13 @@ pub trait DocumentRepo {
         config: ParseConfig,
     ) -> Result<DocumentParseConfig, ChonkitError>;
 
-    /// Insert document metadata and default configurations for parsing and chunking.
+    /// Insert document metadata and the configurations for parsing and chunking in a transaction.
     ///
     /// * `document`: Document insert payload.
     /// * `parse_config`: Parsing configuration.
     /// * `chunk_config`: Chunking configuration.
     /// * `tx`: The transaction to run in.
-    async fn insert_with_defaults(
+    async fn insert_with_configs(
         &self,
         document: DocumentInsert<'_>,
         parse_config: ParseConfig,

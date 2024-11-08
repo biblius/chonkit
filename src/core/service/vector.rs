@@ -2,7 +2,7 @@ use crate::core::embedder::Embedder;
 use crate::core::model::collection::{
     Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert,
 };
-use crate::core::model::{List, Pagination};
+use crate::core::model::{List, Pagination, PaginationSort};
 use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
 use crate::core::vector::VectorDb;
@@ -33,14 +33,17 @@ where
     /// List vector collections.
     ///
     /// * `p`: Pagination params.
-    pub async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
+    pub async fn list_collections(
+        &self,
+        p: PaginationSort,
+    ) -> Result<List<Collection>, ChonkitError> {
         p.validate()?;
         self.repo.list_collections(p).await
     }
 
     pub async fn list_collections_display(
         &self,
-        p: Pagination,
+        p: PaginationSort,
     ) -> Result<List<CollectionDisplay>, ChonkitError> {
         p.validate()?;
         self.repo.list_collections_display(p).await

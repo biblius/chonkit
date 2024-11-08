@@ -3,7 +3,7 @@
 use chonkit::core::{
     chunk::Chunker,
     document::parser::ParseConfig,
-    model::{document::DocumentConfig, Pagination},
+    model::{document::DocumentConfig, Pagination, PaginationSort},
     service::vector::dto::CreateCollection,
 };
 use serde::{Deserialize, Serialize};
@@ -107,34 +107,6 @@ pub(super) struct ConfigUpdatePayload {
     pub chunker: Option<Chunker>,
 }
 
-/// DTO used for previewing chunks.
-#[derive(Debug, Deserialize, Validate, ToSchema)]
-#[serde(rename_all = "camelCase")]
-#[validate(Self::validate_schema)]
-pub(super) struct ChunkPreviewPayload {
-    /// Parsing configuration.
-    pub parser: Option<ParseConfig>,
-
-    /// Chunking configuration.
-    pub chunker: Chunker,
-
-    /// The embedding provider to use. Necessary
-    /// when using the semantic chunker.
-    pub embedder: Option<String>,
-}
-
-impl ChunkPreviewPayload {
-    #[schema_validation]
-    fn validate_schema(&self) -> Result<(), ValidationErrors> {
-        if let (Chunker::Semantic(_), None) = (&self.chunker, &self.embedder) {
-            schema_err! {
-                "chunker_params",
-                "`embedder` must be set when using semantic chunker"
-            };
-        }
-    }
-}
-
 /// Used for single embeddings.
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -193,7 +165,7 @@ pub(super) struct ListDocumentsPayload {
     #[validate]
     #[serde(flatten)]
     #[param(inline)]
-    pub pagination: Pagination,
+    pub pagination: PaginationSort,
 
     /// Filter by file source.
     pub src: Option<String>,

@@ -2,10 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use utoipa::{openapi::RefOr, ToSchema};
-use validify::Validate;
+use validify::{field_err, Validate, ValidationError};
 
+/// Vector collection models.
 pub mod collection;
+
+/// Document models.
 pub mod document;
 
 /// Used to obtain paginated lists with a total number of items in
@@ -18,12 +20,12 @@ pub struct List<T> {
 }
 
 #[cfg(feature = "http")]
-impl<'__s, T> ToSchema<'__s> for List<T>
+impl<'s, T> utoipa::ToSchema<'s> for List<T>
 where
-    T: ToSchema<'__s>,
+    T: utoipa::ToSchema<'s>,
 {
     fn schema() -> (
-        &'__s str,
+        &'s str,
         utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     ) {
         let (_, item_schema) = T::schema();
@@ -44,7 +46,7 @@ where
 
         (
             "List",
-            RefOr::T(utoipa::openapi::Schema::Object(list_schema)),
+            utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(list_schema)),
         )
     }
 }
@@ -66,6 +68,9 @@ impl<T> std::iter::IntoIterator for List<T> {
 }
 
 /// Used to paginate queries.
+///
+/// `page` defaults to 1 (which results in offset 0).
+/// `per_page` defaults to 10.
 #[serde_as]
 #[cfg_attr(feature = "http", derive(utoipa::ToSchema, utoipa::IntoParams))]
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
@@ -74,12 +79,12 @@ pub struct Pagination {
     /// The limit.
     #[serde_as(as = "DisplayFromStr")]
     #[validate(range(min = 1.))]
-    pub per_page: usize,
+    per_page: usize,
 
     /// The offset.
     #[serde_as(as = "DisplayFromStr")]
     #[validate(range(min = 1.))]
-    pub page: usize,
+    page: usize,
 }
 
 impl Pagination {
@@ -102,4 +107,95 @@ impl Default for Pagination {
             page: 1,
         }
     }
+}
+
+/// Used to paginate queries and sort the rows.
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema, utoipa::IntoParams))]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationSort {
+    /// See [Pagination].
+    #[validate]
+    #[serde(flatten)]
+    pub pagination: Option<Pagination>,
+
+    /// The column to sort by.
+    /// Default: `updated_at`
+    // # WARNING
+    // Highly important to validate this field since it can be used for SQL injection.
+    // Prepared statements do not support placeholders in ORDER BY clauses because they
+    // they use column names and not values.
+    #[validate(length(min = 1, max = 64))]
+    #[validate(custom(ascii_alphanumeric_underscored))]
+    pub sort_by: Option<String>,
+
+    /// The direction to sort in.
+    /// Default: `DESC`
+    pub sort_dir: Option<SortDirection>,
+}
+
+impl PaginationSort {
+    pub fn new(pagination: Pagination, sort_by: String, sort_dir: SortDirection) -> Self {
+        Self {
+            pagination: Some(pagination),
+            sort_by: Some(sort_by),
+            sort_dir: Some(sort_dir),
+        }
+    }
+
+    pub fn new_default_sort(pagination: Pagination) -> Self {
+        Self {
+            pagination: Some(pagination),
+            sort_by: Some("updated_at".to_string()),
+            sort_dir: Some(SortDirection::Desc),
+        }
+    }
+
+    /// Returns a tuple whose first element is the sort column and
+    /// second the sort direction ASC/DESC.
+    pub fn to_sort(&self) -> (&str, &str) {
+        let direction = match self.sort_dir {
+            Some(SortDirection::Asc) => "ASC",
+            Some(SortDirection::Desc) | None => "DESC",
+        };
+
+        (self.sort_by.as_deref().unwrap_or("updated_at"), direction)
+    }
+
+    /// See [Pagination::to_limit_offset].
+    pub fn to_limit_offset(&self) -> (i64, i64) {
+        self.pagination
+            .map(|pagination| pagination.to_limit_offset())
+            .unwrap_or(Pagination::default().to_limit_offset())
+    }
+}
+
+impl Default for PaginationSort {
+    fn default() -> Self {
+        Self {
+            pagination: Some(Pagination::default()),
+            sort_by: Some("updated_at".to_string()),
+            sort_dir: Some(SortDirection::Desc),
+        }
+    }
+}
+
+#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Deserialize)]
+//#[serde(untagged)]
+pub enum SortDirection {
+    #[serde(rename = "asc")]
+    Asc,
+    #[serde(rename = "desc")]
+    Desc,
+}
+
+fn ascii_alphanumeric_underscored(s: &str) -> Result<(), ValidationError> {
+    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(field_err!(
+            "ascii_alphanumeric_underscored",
+            "parameter must be alphanumeric with underscores [a-z A-Z 0-9 _]"
+        ));
+    }
+    Ok(())
 }

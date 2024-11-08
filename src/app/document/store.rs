@@ -7,7 +7,7 @@ use crate::{
         },
         model::{
             document::{Document, DocumentInsert, DocumentType},
-            Pagination,
+            Pagination, PaginationSort,
         },
         repo::document::DocumentRepo,
     },
@@ -109,7 +109,10 @@ where
 
         // Prune
         let documents = repo
-            .list(Pagination::new(10_000, 1), Some(self.id()))
+            .list(
+                PaginationSort::new_default_sort(Pagination::new(10_000, 1)),
+                Some(self.id()),
+            )
             .await?;
 
         for document in documents {

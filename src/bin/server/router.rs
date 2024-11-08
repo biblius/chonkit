@@ -3,7 +3,7 @@ use super::{
     dto::{CreateCollectionPayload, SearchPayload},
 };
 use crate::dto::{
-    ChunkPreviewPayload, ConfigUpdatePayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
+    ConfigUpdatePayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
     ListDocumentsPayload, ListEmbeddingsPayload, UploadResult,
 };
 use axum::{
@@ -23,10 +23,10 @@ use chonkit::{
         model::{
             collection::{Collection, CollectionDisplay, Embedding},
             document::{Document, DocumentDisplay, DocumentType},
-            List, Pagination,
+            List, PaginationSort,
         },
         service::{
-            document::{dto::DocumentUpload, DocumentService},
+            document::{dto::{DocumentUpload, ChunkPreviewPayload}, DocumentService},
             vector::{
                 dto::{CreateEmbeddings, Search},
                 VectorService,
@@ -200,54 +200,6 @@ async fn list_documents_display(
 
 #[utoipa::path(
     get,
-    path = "/display/collections",
-    responses(
-        (status = 200, description = "List collections with additional info for display purposes.", body = inline(List<CollectionDisplay>)),
-        (status = 400, description = "Invalid pagination parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("pagination" = Pagination, Query, description = "Query parameters"),
-    ),
-)]
-async fn list_collections_display(
-    state: State<AppState>,
-    payload: Option<Query<Pagination>>,
-) -> Result<Json<List<CollectionDisplay>>, ChonkitError> {
-    let Query(pagination) = payload.unwrap_or_default();
-
-    let service = VectorService::new(state.postgres.clone());
-
-    let collections = service.list_collections_display(pagination).await?;
-
-    Ok(Json(collections))
-}
-
-#[utoipa::path(
-    get,
-    path = "/display/collections/{id}",
-    responses(
-        (status = 200, description = "Get collection by id", body = CollectionDisplay),
-        (status = 404, description = "Collection not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("id" = Uuid, Path, description = "Collection ID")        
-    ) 
-)]
-async fn collection_display(
-    state: State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<CollectionDisplay>, ChonkitError> {
-    let service = VectorService::new(state.postgres.clone());
-
-    let collection = service.get_collection_display(id).await?;
-
-    Ok(Json(collection))
-}
-
-#[utoipa::path(
-    get,
     path = "/documents/{id}",
     responses(
         (status = 200, description = "Get document by id", body = Document),
@@ -405,39 +357,20 @@ async fn chunk_preview(
     Path(id): Path<Uuid>,
     Json(config): Json<ChunkPreviewPayload>,
 ) -> Result<impl IntoResponse, ChonkitError> {
-    config.validate()?;
 
     let service = DocumentService::new(state.postgres.clone());
     let document = service.get_document(id).await?;
 
     let store = state.store(document.src.as_str().try_into()?);
-
     let embedder = if let Some(embedder) = &config.embedder {
         Some(state.embedder(embedder.as_str().try_into()?))
     } else {
         None
     };
 
-    let parser = if let Some(parser) = config.parser {
-        parser
-    } else {
-        let config = service.get_config(id).await?;
-        config
-            .parse_config
-            .ok_or_else(|| ChonkitError::DoesNotExist(format!("Parsing configuration for {id}")))?
-    };
+    let chunks = service.chunk_preview(document.id, config, &*store, embedder).await?;
 
-    let content = service.parse_preview(&*store, id, parser).await?;
-    let chunked = service
-        .chunk_preview(&content, config.chunker, embedder)
-        .await?;
-
-    match chunked {
-        chonkit::core::chunk::ChunkedDocument::Ref(chunked) => {
-            Ok(Json(chunked.into_iter().map(String::from).collect()))
-        }
-        chonkit::core::chunk::ChunkedDocument::Owned(chunked) => Ok(Json(chunked)),
-    }
+    Ok(Json(chunks))
 }
 
 #[utoipa::path(
@@ -496,16 +429,70 @@ async fn sync(
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("pagination" = Pagination, Query, description = "Pagination parameters")
+        ("pagination" = PaginationSort, Query, description = "Pagination parameters")
     )
 )]
 async fn list_collections(
     state: State<AppState>,
-    Query(p): Query<Pagination>,
+    payload: Option<Query<PaginationSort>>,
 ) -> Result<impl IntoResponse, ChonkitError> {
+    let Query(pagination) = payload.unwrap_or_default();
+
     let service = VectorService::new(state.postgres.clone());
-    let collections = service.list_collections(p).await?;
+
+    let collections = service.list_collections(pagination).await?;
+
     Ok(Json(collections))
+}
+
+#[utoipa::path(
+    get,
+    path = "/display/collections",
+    responses(
+        (status = 200, description = "List collections with additional info for display purposes.", body = inline(List<CollectionDisplay>)),
+        (status = 400, description = "Invalid pagination parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("pagination" = PaginationSort, Query, description = "Query parameters"),
+    ),
+)]
+async fn list_collections_display(
+    state: State<AppState>,
+    payload: Option<Query<PaginationSort>>,
+) -> Result<Json<List<CollectionDisplay>>, ChonkitError> {
+    dbg!(&payload);
+    let Query(pagination) = payload.unwrap_or_default();
+    dbg!(&pagination);
+
+    let service = VectorService::new(state.postgres.clone());
+
+    let collections = service.list_collections_display(pagination).await?;
+
+    Ok(Json(collections))
+}
+
+#[utoipa::path(
+    get,
+    path = "/display/collections/{id}",
+    responses(
+        (status = 200, description = "Get collection by id", body = CollectionDisplay),
+        (status = 404, description = "Collection not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("id" = Uuid, Path, description = "Collection ID")        
+    ) 
+)]
+async fn collection_display(
+    state: State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<CollectionDisplay>, ChonkitError> {
+    let service = VectorService::new(state.postgres.clone());
+
+    let collection = service.get_collection_display(id).await?;
+
+    Ok(Json(collection))
 }
 
 #[utoipa::path(

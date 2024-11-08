@@ -1,7 +1,7 @@
 use crate::{
     core::model::{
         collection::{Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert},
-        List, Pagination,
+        List, Pagination, PaginationSort,
     },
     error::ChonkitError,
 };
@@ -17,7 +17,7 @@ pub trait VectorRepo {
     /// * `p`: Pagination params.
     fn list_collections(
         &self,
-        p: Pagination,
+        p: PaginationSort,
     ) -> impl Future<Output = Result<List<Collection>, ChonkitError>> + Send;
 
     /// List collections with limit and offset for display purposes.
@@ -25,7 +25,7 @@ pub trait VectorRepo {
     /// * `p`: Pagination params.
     fn list_collections_display(
         &self,
-        p: Pagination,
+        p: PaginationSort,
     ) -> impl Future<Output = Result<List<CollectionDisplay>, ChonkitError>> + Send;
 
     /// Insert collection metadata.

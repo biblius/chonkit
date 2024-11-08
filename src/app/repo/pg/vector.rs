@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     core::{
         model::{
@@ -7,111 +5,121 @@ use crate::{
                 Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert,
             },
             document::DocumentShort,
-            List, Pagination,
+            List, Pagination, PaginationSort,
         },
         repo::{vector::VectorRepo, Atomic},
     },
     error::ChonkitError,
 };
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::{prelude::FromRow, PgPool, Postgres};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl VectorRepo for PgPool {
-    async fn list_collections(&self, p: Pagination) -> Result<List<Collection>, ChonkitError> {
-        let total = sqlx::query!("SELECT COUNT(name) FROM collections")
+    async fn list_collections(
+        &self,
+        params: PaginationSort,
+    ) -> Result<List<Collection>, ChonkitError> {
+        let total = sqlx::query!("SELECT COUNT(id) FROM collections")
             .fetch_one(self)
             .await
             .map(|row| row.count.map(|count| count as usize))?;
 
-        let (limit, offset) = p.to_limit_offset();
-        let collections = sqlx::query_as!(
-            Collection,
-            r#"SELECT id, name, model, embedder, provider, created_at, updated_at
-                   FROM collections
-                   LIMIT $1
-                   OFFSET $2
-                "#,
-            limit,
-            offset,
-        )
-        .fetch_all(self)
-        .await?
-        .into_iter()
-        .collect();
+        let (limit, offset) = params.to_limit_offset();
+        let (sort_by, sort_dir) = params.to_sort();
+
+        let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
+            "SELECT id, name, model, embedder, provider, created_at, updated_at FROM collections",
+        );
+
+        query
+            .push(format!(" ORDER BY {sort_by} {sort_dir} "))
+            .push(" LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset);
+
+        let collections: Vec<Collection> = query
+            .build_query_as()
+            .fetch_all(self)
+            .await?
+            .into_iter()
+            .collect();
 
         Ok(List::new(total, collections))
     }
 
     async fn list_collections_display(
         &self,
-        p: Pagination,
+        p: PaginationSort,
     ) -> Result<List<CollectionDisplay>, ChonkitError> {
         let (limit, offset) = p.to_limit_offset();
+        let (sort_by, sort_dir) = p.to_sort();
 
         let total = sqlx::query!("SELECT COUNT(id) FROM collections")
             .fetch_one(self)
             .await
             .map(|row| row.count)?;
 
-        let collections = sqlx::query_as!(
-            CollectionDocumentJoin,
+        let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
             r#"
-                WITH emb AS (
-                        SELECT 
-                                id,
-                                collection_id,
-                                document_id
-                        FROM embeddings
-                ),
-                docs AS (
+                WITH docs AS (
                         SELECT
-                                emb.collection_id,
+                                embeddings.collection_id,
                                 documents.id AS document_id,
                                 documents.name AS document_name
                         FROM documents 
-                        RIGHT JOIN emb ON documents.id = emb.document_id
+                        RIGHT JOIN embeddings ON documents.id = embeddings.document_id
                 ),
                 counts AS (
                         SELECT
-                                emb.collection_id,
-                                COUNT(DISTINCT emb.document_id) AS count
-                        FROM emb
-                        GROUP BY emb.collection_id
+                                embeddings.collection_id,
+                                COUNT(DISTINCT embeddings.document_id) AS count
+                        FROM embeddings
+                        GROUP BY embeddings.collection_id
                 ),
                 cols AS (
                         SELECT 
-                                id,
-                                name,
-                                model,
-                                embedder,
-                                provider,
-                                created_at,
-                                updated_at
+                                collections.id,
+                                collections.name,
+                                collections.model,
+                                collections.embedder,
+                                collections.provider,
+                                collections.created_at,
+                                collections.updated_at
                         FROM collections
-                        LIMIT $1
-                        OFFSET $2
-                )
+        "#,
+        );
+        query
+            .push(" LIMIT ")
+            .push_bind(limit)
+            .push(" OFFSET ")
+            .push_bind(offset)
+            .push(")")
+            .push(
+                r#"
                 SELECT
-                        cols.id AS "id!",
-                        cols.name AS "name!",
-                        cols.model AS "model!",
-                        cols.embedder AS "embedder!",
-                        cols.provider AS "provider!",
-                        cols.created_at AS "created_at!",
-                        cols.updated_at AS "updated_at!",
+                        cols.id,
+                        cols.name,
+                        cols.model,
+                        cols.embedder,
+                        cols.provider,
+                        cols.created_at,
+                        cols.updated_at,
                         docs.document_id,
                         docs.document_name,
-                        COALESCE(counts.count, 0) AS "document_count!"
+                        COALESCE(counts.count, 0) AS "document_count"
                 FROM cols
                 LEFT JOIN docs ON cols.id = docs.collection_id
                 LEFT JOIN counts ON cols.id = counts.collection_id
-        "#,
-            limit,
-            offset
-        )
-        .fetch_all(self)
-        .await?;
+            "#,
+            );
+
+        query.push(format!(" ORDER BY {sort_by} {sort_dir} "));
+
+        let collections: Vec<CollectionDocumentJoin> =
+            query.build_query_as().fetch_all(self).await?;
 
         let mut result: HashMap<Uuid, CollectionDisplay> = HashMap::new();
 
@@ -403,6 +411,7 @@ impl VectorRepo for PgPool {
 }
 
 /// Private DTO for joining collections and the documents they contain.
+#[derive(Debug, FromRow)]
 struct CollectionDocumentJoin {
     id: Uuid,
     name: String,

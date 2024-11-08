@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::core::{
     chunk::Chunker,
     document::parser::ParseConfig,
@@ -9,7 +7,7 @@ use crate::core::{
             config::{DocumentChunkConfig, DocumentParseConfig},
             Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentUpdate,
         },
-        List, Pagination,
+        List, PaginationSort,
     },
     repo::{document::DocumentRepo, Atomic},
 };
@@ -17,6 +15,7 @@ use crate::error::ChonkitError;
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{types::Json, FromRow, PgPool, Postgres, Row};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[async_trait::async_trait]
@@ -93,7 +92,11 @@ impl DocumentRepo for PgPool {
         .map_err(ChonkitError::from)
     }
 
-    async fn list(&self, p: Pagination, src: Option<&str>) -> Result<List<Document>, ChonkitError> {
+    async fn list(
+        &self,
+        params: PaginationSort,
+        src: Option<&str>,
+    ) -> Result<List<Document>, ChonkitError> {
         let mut query =
             sqlx::query_builder::QueryBuilder::<Postgres>::new("SELECT COUNT(id) FROM documents");
 
@@ -107,7 +110,8 @@ impl DocumentRepo for PgPool {
             .await
             .map(|row| row.get::<i64, usize>(0))?;
 
-        let (limit, offset) = p.to_limit_offset();
+        let (limit, offset) = params.to_limit_offset();
+        let (sort_by, sort_dir) = params.to_sort();
 
         let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
             r#"SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at FROM documents"#,
@@ -118,6 +122,7 @@ impl DocumentRepo for PgPool {
         }
 
         query
+            .push(format!(" ORDER BY {sort_by} {sort_dir} "))
             .push(" LIMIT ")
             .push_bind(limit)
             .push(" OFFSET ")
@@ -130,28 +135,15 @@ impl DocumentRepo for PgPool {
 
     async fn list_with_collections(
         &self,
-        p: Pagination,
+        params: PaginationSort,
         src: Option<&str>,
         document_id: Option<Uuid>,
     ) -> Result<List<DocumentDisplay>, ChonkitError> {
         let mut query =
             sqlx::query_builder::QueryBuilder::<Postgres>::new("SELECT COUNT(id) FROM documents");
 
-        match (src, document_id) {
-            (Some(src), None) => {
-                query.push(" WHERE src = ").push_bind(src);
-            }
-            (None, Some(document_id)) => {
-                query.push(" WHERE id = ").push_bind(document_id);
-            }
-            (Some(src), Some(document_id)) => {
-                query
-                    .push(" WHERE id = ")
-                    .push_bind(document_id)
-                    .push(" AND src = ")
-                    .push_bind(src);
-            }
-            (None, None) => (),
+        if let Some(src) = src {
+            query.push(" WHERE src = ").push_bind(src);
         }
 
         let total = query
@@ -160,7 +152,8 @@ impl DocumentRepo for PgPool {
             .await
             .map(|row| row.get::<i64, usize>(0))?;
 
-        let (limit, offset) = p.to_limit_offset();
+        let (limit, offset) = params.to_limit_offset();
+        let (sort_by, sort_dir) = params.to_sort();
 
         let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
             r#"
@@ -205,6 +198,7 @@ impl DocumentRepo for PgPool {
         }
 
         query
+            .push(format!(" ORDER BY {sort_by} {sort_dir} "))
             .push(" LIMIT ")
             .push_bind(limit)
             .push(" OFFSET ")
@@ -424,7 +418,7 @@ impl DocumentRepo for PgPool {
         Ok(DocumentParseConfig::from(config))
     }
 
-    async fn insert_with_defaults(
+    async fn insert_with_configs(
         &self,
         document: DocumentInsert<'_>,
         parse_config: ParseConfig,
