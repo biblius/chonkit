@@ -362,8 +362,7 @@ pub mod dto {
     }
 
     /// DTO used for previewing chunks.
-    #[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-    #[derive(Debug, Deserialize, Validate)]
+    #[derive(Debug, Deserialize, Validate, utoipa::ToSchema)]
     #[serde(rename_all = "camelCase")]
     #[validate(Self::validate_schema)]
     pub(super) struct ChunkPreviewPayload {

@@ -1,13 +1,11 @@
+use super::document::DocumentShort;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::prelude::FromRow;
 use uuid::Uuid;
 
-use super::document::DocumentShort;
-
 /// Used by vector databases.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize, Default, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VectorCollection {
     /// Unique collection name.
@@ -34,8 +32,7 @@ impl VectorCollection {
 }
 
 /// Vector collection model.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Serialize, FromRow, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Collection {
     /// Primary key.
@@ -73,8 +70,7 @@ impl<'a> CollectionInsert<'a> {
 }
 
 /// Collection struct for display purposes when listing documents.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionShort {
     pub id: Uuid,
@@ -97,8 +93,7 @@ impl CollectionShort {
 }
 
 /// Aggregate version of [Collection] with the documents it contains.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionDisplay {
     pub collection: Collection,
@@ -121,8 +116,7 @@ impl CollectionDisplay {
 }
 
 /// Embedding information model.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Embedding {
     /// Primary key.

@@ -158,8 +158,7 @@ pub fn spawn_batch_embedder(state: AppState) -> BatchEmbedderHandle {
     tx
 }
 
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     /// A list of available vector providers.

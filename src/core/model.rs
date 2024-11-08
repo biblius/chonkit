@@ -19,7 +19,6 @@ pub struct List<T> {
     pub items: Vec<T>,
 }
 
-#[cfg(feature = "http")]
 impl<'s, T> utoipa::ToSchema<'s> for List<T>
 where
     T: utoipa::ToSchema<'s>,
@@ -72,8 +71,7 @@ impl<T> std::iter::IntoIterator for List<T> {
 /// `page` defaults to 1 (which results in offset 0).
 /// `per_page` defaults to 10.
 #[serde_as]
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema, utoipa::IntoParams))]
-#[derive(Debug, Clone, Copy, Deserialize, Validate)]
+#[derive(Debug, Clone, Copy, Deserialize, Validate, utoipa::ToSchema, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct Pagination {
     /// The limit.
@@ -110,8 +108,7 @@ impl Default for Pagination {
 }
 
 /// Used to paginate queries and sort the rows.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema, utoipa::IntoParams))]
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, utoipa::ToSchema, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginationSort {
     /// See [Pagination].
@@ -180,8 +177,7 @@ impl Default for PaginationSort {
     }
 }
 
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, utoipa::ToSchema)]
 //#[serde(untagged)]
 pub enum SortDirection {
     #[serde(rename = "asc")]

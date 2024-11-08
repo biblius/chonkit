@@ -15,8 +15,7 @@ pub use semantic::{DistanceFn, SemanticWindow, SemanticWindowConfig};
 pub use sliding::SlidingWindow;
 pub use snapping::SnappingWindow;
 
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Chunker {
     Sliding(SlidingWindow),
@@ -145,8 +144,7 @@ pub enum ChunkerError {
     Embedder(String),
 }
 
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Validate, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[validate(Self::validate_schema)]
 pub struct ChunkBaseConfig {

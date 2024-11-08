@@ -12,8 +12,7 @@ const SLIDING_WINDOW_DEFAULT_OVERLAP: usize = 200;
 /// `size` determines the base amount for every chunk and
 /// `overlap` determines how much back and front characters
 /// to extend the base with.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SlidingWindow {
     pub config: ChunkBaseConfig,

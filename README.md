@@ -82,7 +82,6 @@ OpenAPI documentation is available at any chonker instance at `http://your-addre
 Chonkit offers the following binaries:
 
 - Server (`--bin server`); exposes an HTTP API around `chonkit`'s core functionality.
-- CLI (`--bin cli`); exposes a CLI interface around `chonkit`'s core functionality.
 - Fastembedder (`--bin fembedder`); A small binary used to initiate fastembed in
   CUDA mode on a remote machine that can be used as an embedding API,
   similarly to OpenAI.
@@ -152,24 +151,19 @@ The following is a table of the supported build features.
 
 | Feature     | Configuration      | Description                                                                                                                       |
 | ----------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `http`      | Execution mode     | Build for http (server) execution mode.                                                                                           |
-| `cli`       | Execution mode     | Build for cli execution mode.                                                                                                     |
 | `qdrant`    | VectorDb provider  | Enable qdrant as one of the vector database providers.                                                                            |
 | `weaviate`  | VectorDb provider  | Enable weaviate as one of the vector database providers.                                                                          |
 | `fembed`    | Embedder provider  | Enable fastembed as one of the embedding providers. One of either `fe-local` or `fe-remote` is necessary when enabling this flag. |
 | `fe-local`  | Embedder provider  | Use the local implementation of `Embedder` for `FastEmbedder`. Mutually exclusive with `fe-remote`.                               |
 | `fe-remote` | Embedder provider  | Use the remote implementation of `Embedder` for `FastEmbedder`. Mutually exclusive with `fe-local`.                               |
 | `openai`    | Embedder provider  | Enable openai as one of the embedding providers.                                                                                  |
-| `cuda`      | Execution provider | Available when using `fembed`. When enabled, uses the CUDAExecutionProvider for the onnxruntime.                                  |
+| `cuda`      | Execution provider | Available when using `fe-local`. When enabled, uses the CUDAExecutionProvider for the onnxruntime.                                |
 
-Full build command example
+#### Full build command example
 
 ```bash
-cargo build -F http -F qdrant --release
+cargo build -F "qdrant weaviate fe-local" --release
 ```
-
-Chonkit can be built for 2 execution modes; `cli` and `http` (http is default).
-These are selected via feature flags when invoking `cargo` (via the `-F` flag).
 
 ### Sqlx 'offline' compilation
 
@@ -215,8 +209,8 @@ Chonkit accepts the following arguments:
 | `--db-url`          | `-d` | The database URL.                                     | `DATABASE_URL`    | \*          | -               |
 | `--log`             | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`        | \*          | `info`          |
 | `--upload-path`     | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`     | \*          | `./upload`      |
-| `--address`         | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`         | `http`      | `0.0.0.0:42069` |
-| `--allowed-origins` | `-c` | Comma separated list of origins allowed to connect.   | `ALLOWED_ORIGINS` | `http`      | -               |
+| `--address`         | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`         | \*          | `0.0.0.0:42069` |
+| `--allowed-origins` | `-c` | Comma separated list of origins allowed to connect.   | `ALLOWED_ORIGINS` | \*          | -               |
 | `--qdrant-url`      | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`      | `qdrant`    | -               |
 | `--weaviate-url`    | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL`    | `weaviate`  | -               |
 | `--fembed-url`      | `-f` | Remote fastembed URL.                                 | `FEMBED_URL`      | `fe-remote` | -               |

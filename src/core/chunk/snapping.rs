@@ -37,8 +37,7 @@ const SNAPPING_WINDOW_DEFAULT_OVERLAP: usize = 5;
 ///
 /// If the input has a lot of unicode with characters more than 1 byte, a larger `size` is
 /// recommended.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SnappingWindow {
     /// Here `size` represents the amount of bytes in the base chunk

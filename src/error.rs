@@ -7,7 +7,6 @@ use validify::ValidationErrors;
 #[cfg(feature = "qdrant")]
 use qdrant_client::QdrantError;
 
-#[cfg(feature = "http")]
 pub mod http;
 
 #[derive(Debug, Error)]
@@ -69,7 +68,6 @@ pub enum ChonkitError {
     #[error("Regex; {0}")]
     Regex(#[from] regex::Error),
 
-    #[cfg(feature = "http")]
     #[error("Http; {0}")]
     Http(#[from] axum::http::Error),
 
@@ -81,7 +79,6 @@ pub enum ChonkitError {
     #[error("Weaviate; {0}")]
     Weaviate(String),
 
-    #[cfg(feature = "http")]
     #[error("Axum; {0}")]
     Axum(#[from] axum::Error),
 

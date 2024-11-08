@@ -19,8 +19,7 @@ use std::{fmt::Debug, sync::Arc, usize};
 ///
 /// This chunker will iterate through each batch of sentences determined by `size`
 /// and will group them together based on the given `threshold` and `distance_fn`.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticWindow {
     /// The embedder to use for embedding chunks.
@@ -29,8 +28,7 @@ pub struct SemanticWindow {
     pub config: SemanticWindowConfig,
 }
 
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticWindowConfig {
     /// How many sentences to use as the base for semantic similarity.
@@ -279,8 +277,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
     }
 }
 
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum DistanceFn {
     #[default]

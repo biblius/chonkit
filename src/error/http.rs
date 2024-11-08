@@ -28,9 +28,7 @@ impl ChonkitError {
             | E::Utf8(_)
             | E::Batch
             | E::SerdeJson(_) => SC::INTERNAL_SERVER_ERROR,
-
-            #[cfg(any(feature = "openai", feature = "fe-remote"))]
-            E::Reqwest(e) => e.status().unwrap_or(SC::INTERNAL_SERVER_ERROR),
+            E::Axum(_) => SC::INTERNAL_SERVER_ERROR,
 
             #[cfg(feature = "qdrant")]
             E::Qdrant(_) => SC::INTERNAL_SERVER_ERROR,
@@ -38,8 +36,8 @@ impl ChonkitError {
             #[cfg(feature = "weaviate")]
             E::Weaviate(_) => SC::INTERNAL_SERVER_ERROR,
 
-            #[cfg(feature = "http")]
-            E::Axum(_) => SC::INTERNAL_SERVER_ERROR,
+            #[cfg(any(feature = "openai", feature = "fe-remote"))]
+            E::Reqwest(e) => e.status().unwrap_or(SC::INTERNAL_SERVER_ERROR),
         }
     }
 }
@@ -75,7 +73,6 @@ where
     }
 }
 
-#[cfg(feature = "http")]
 impl IntoResponse for ChonkitError {
     fn into_response(self) -> axum::response::Response {
         error!("{self}");
@@ -135,7 +132,6 @@ impl IntoResponse for ChonkitError {
             #[cfg(feature = "qdrant")]
             CE::Qdrant(_) => (status, self.to_string()).into_response(),
 
-            #[cfg(feature = "http")]
             CE::Axum(_) => (status, self.to_string()).into_response(),
         }
     }

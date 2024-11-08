@@ -20,8 +20,7 @@ pub trait DocumentParser {
 /// General parsing configuration for documents.
 /// A text element is parser specific, it could be PDF pages,
 /// DOCX paragraphs, CSV rows, etc.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Default, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[validate(Self::validate)]
 pub struct ParseConfig {
@@ -38,7 +37,7 @@ pub struct ParseConfig {
 
     /// Filter specific patterns in text elements. Parser specific.
     #[serde(with = "serde_regex")]
-    #[cfg_attr(feature = "http", schema(value_type = Vec<String>))]
+    #[schema(value_type = Vec<String>)]
     pub filters: Vec<Regex>,
 }
 

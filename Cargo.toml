@@ -9,11 +9,10 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "server"
-required-features = ["http"]
 
 [[bin]]
 name = "fembedder"
-required-features = ["http", "fe-local", "cuda"]
+required-features = ["fe-local", "cuda"]
 
 [dependencies]
 chrono = { version = "0.4.31", features = ["serde"] }
@@ -66,38 +65,30 @@ weaviate-community = { version = "0.2.2", optional = true }
 qdrant-client = { version = "1.10.1", optional = true }
 
 # http
-axum = { version = "0.7.4", features = ["multipart"], optional = true }
+axum = { version = "0.7.4", features = ["multipart"]}
 axum-extra = { version = "0.9.3", features = [
     "cookie",
     "typed-header",
     "cookie-private",
-], optional = true }
-axum-macros = { version = "0.4.1", optional = true }
+]}
+axum-macros = { version = "0.4.1"}
 tower-http = { version = "0.5.0", features = [
     "fs",
     "tracing",
     "trace",
     "cors",
-], optional = true }
+]}
 utoipa = { version = "4.2.3", features = [
     "axum_extras",
     "chrono",
     "uuid",
-], optional = true }
+]}
 utoipa-swagger-ui = { version = "7.1.0", features = ["axum"], optional = true }
 serde_with = "3.11.0"
 
 
 [features]
-default = ["http", "weaviate", "qdrant", "fe-local"]
-http = [
-    "axum",
-    "axum-extra",
-    "axum-macros",
-    "tower-http",
-    "utoipa",
-    "utoipa-swagger-ui",
-]
+default = ["weaviate", "qdrant", "fe-local"]
 fembed = ["fastembed"]
 fe-local = ["fembed", "ort"]
 fe-remote = ["fembed", "reqwest"]

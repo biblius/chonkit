@@ -2,7 +2,6 @@ use clap::Parser;
 
 const DEFAULT_UPLOAD_PATH: &str = "upload";
 
-#[cfg(feature = "http")]
 const DEFAULT_ADDRESS: &str = "0.0.0.0:42069";
 
 #[derive(Debug, Parser)]
@@ -21,12 +20,10 @@ pub struct StartArgs {
     upload_path: Option<String>,
 
     /// Address to listen on.
-    #[cfg(feature = "http")]
     #[arg(short, long)]
     address: Option<String>,
 
     /// CORS allowed origins.
-    #[cfg(feature = "http")]
     #[arg(short = 'c', long)]
     allowed_origins: Option<String>,
 
@@ -108,7 +105,6 @@ impl StartArgs {
         }
     }
 
-    #[cfg(feature = "http")]
     pub fn address(&self) -> String {
         match &self.address {
             Some(addr) => addr.to_string(),
@@ -119,7 +115,6 @@ impl StartArgs {
         }
     }
 
-    #[cfg(feature = "http")]
     pub fn allowed_origins(&self) -> Vec<String> {
         match &self.allowed_origins {
             Some(origins) => origins.split(',').map(String::from).collect(),

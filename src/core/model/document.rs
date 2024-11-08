@@ -10,8 +10,7 @@ use sqlx::prelude::FromRow;
 pub mod config;
 
 /// Holds relevant data for parsing and chunking.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentConfig {
     pub id: uuid::Uuid,
@@ -41,8 +40,7 @@ impl DocumentConfig {
 
 /// Holds document metadata.
 /// Main document model for the `documents` table.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Default, FromRow)]
+#[derive(Debug, Serialize, Default, FromRow, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     /// Primary key.
@@ -74,8 +72,7 @@ pub struct Document {
 }
 
 /// Document struct for display purposes when listing collections.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize, Default, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentShort {
     pub id: uuid::Uuid,
@@ -89,8 +86,7 @@ impl DocumentShort {
 }
 
 /// Aggregate version of [Document] with the collections that contain it.
-#[cfg_attr(feature = "http", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize, Default, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentDisplay {
     pub document: Document,
