@@ -8,10 +8,6 @@ name = "chonkit"
 path = "src/lib.rs"
 
 [[bin]]
-name = "cli"
-required-features = ["cli"]
-
-[[bin]]
 name = "server"
 required-features = ["http"]
 
@@ -94,7 +90,6 @@ serde_with = "3.11.0"
 
 [features]
 default = ["http", "weaviate", "qdrant", "fe-local"]
-cli = []
 http = [
     "axum",
     "axum-extra",

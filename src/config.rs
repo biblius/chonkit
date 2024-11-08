@@ -49,11 +49,6 @@ pub struct StartArgs {
     #[cfg(feature = "fe-remote")]
     #[arg(short, long)]
     fembed_url: Option<String>,
-
-    /// CLI mode execution command
-    #[cfg(feature = "cli")]
-    #[clap(subcommand)]
-    pub command: crate::cli::Execute,
 }
 
 impl StartArgs {
