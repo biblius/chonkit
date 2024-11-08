@@ -2,36 +2,42 @@
 use super::router::{
     // App config
     __path_app_config,
+
     // Documents
-    __path_list_documents,
-    __path_list_documents_display,
-    __path_get_document,
-    __path_delete_document,
-    __path_upload_documents,
-    __path_chunk_preview,
-    __path_parse_preview,
-    __path_update_document_config,
-    __path_sync,
+    document::{
+        __path_list_documents,
+        __path_list_documents_display,
+        __path_get_document,
+        __path_delete_document,
+        __path_upload_documents,
+        __path_chunk_preview,
+        __path_parse_preview,
+        __path_update_document_config,
+        __path_sync,
+    },
+
     // Vectors
-    __path_list_collections,
-    __path_list_embedding_models,
-    __path_get_collection,
-    __path_create_collection,
-    __path_delete_collection,
-    __path_list_embedded_documents,
-    __path_embed,
-    __path_batch_embed,
-    __path_search, 
-    __path_count_embeddings,
-    __path_delete_embeddings,
-    __path_list_collections_display,
-    __path_collection_display
+    vector::{
+        __path_list_collections,
+        __path_list_embedding_models,
+        __path_get_collection,
+        __path_create_collection,
+        __path_delete_collection,
+        __path_list_embedded_documents,
+        __path_embed,
+        __path_batch_embed,
+        __path_search, 
+        __path_count_embeddings,
+        __path_delete_embeddings,
+        __path_list_collections_display,
+        __path_collection_display
+    }
 };
-use crate::dto::{
-    ChunkPreviewPayload, CreateCollectionPayload, EmbeddingBatchPayload, EmbeddingSinglePayload,
-    ListDocumentsPayload, ListEmbeddingsPayload, SearchPayload, UploadResult,
+use super::dto::{
+    EmbeddingBatchPayload, EmbeddingSinglePayload, ListDocumentsPayload, ListEmbeddingsPayload,
+    UploadResult,
 };
-use chonkit::{
+use crate::{
     app::state::AppConfig,
     core::{
         chunk::{
@@ -45,6 +51,10 @@ use chonkit::{
             },
             document::{Document, DocumentConfig, DocumentDisplay, DocumentShort},
             List, Pagination, PaginationSort,
+        },
+        service::{
+            document::dto::ChunkPreviewPayload,
+            vector::dto::{CreateCollectionPayload, SearchPayload},
         },
     },
 };
@@ -108,6 +118,7 @@ use utoipa::OpenApi;
         EmbeddingSinglePayload,
         ListEmbeddingsPayload,
         ListDocumentsPayload,
+
         // Display
         DocumentDisplay,
         DocumentShort,

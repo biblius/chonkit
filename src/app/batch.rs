@@ -1,17 +1,12 @@
-use super::state::AppState;
-use crate::{
-    core::service::{
-        document::DocumentService,
-        vector::{dto::CreateEmbeddings, VectorService},
-    },
-    error::ChonkitError,
-};
+use super::state::ServiceState;
+use crate::{core::service::vector::dto::CreateEmbeddings, error::ChonkitError};
 use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
 use tokio::{select, sync::mpsc};
 use uuid::Uuid;
 
+/// Sending end for batch embedding jobs.
 pub type BatchEmbedderHandle = mpsc::Sender<BatchJob>;
 
 pub struct BatchEmbedder {
@@ -29,11 +24,11 @@ pub struct BatchEmbedder {
     /// Here solely so we can just clone it for jobs.
     result_tx: mpsc::Sender<BatchJobResult>,
 
-    state: AppState,
+    state: ServiceState,
 }
 
 impl BatchEmbedder {
-    pub fn new(job_rx: mpsc::Receiver<BatchJob>, state: AppState) -> Self {
+    pub fn new(job_rx: mpsc::Receiver<BatchJob>, state: ServiceState) -> Self {
         let (result_tx, result_rx) = mpsc::channel(128);
         Self {
             q: HashMap::new(),
@@ -101,7 +96,7 @@ impl BatchEmbedder {
 
     async fn execute_job(
         job_id: Uuid,
-        state: AppState,
+        services: ServiceState,
         add: Vec<Uuid>,
         remove: Vec<Uuid>,
         collection_id: Uuid,
@@ -144,19 +139,15 @@ impl BatchEmbedder {
             };
         }
 
-        let vector_service = VectorService::new(state.postgres.clone());
-        let document_service = DocumentService::new(state.postgres.clone());
-
-        let collection = ok_or_return!(vector_service.get_collection(collection_id).await);
-        let vector_db = state.vector_db(ok_or_return!(collection.provider.as_str().try_into()));
-        let embedder = state.embedder(ok_or_return!(collection.embedder.as_str().try_into()));
+        let collection = ok_or_return!(services.vector.get_collection(collection_id).await);
 
         for document_id in add.into_iter() {
             tracing::debug!("Processing document '{document_id}'");
 
             // Map the existence of the embeddings as an error
             let embeddings = ok_or_continue!(
-                vector_service
+                services
+                    .vector
                     .get_embeddings(document_id, collection_id)
                     .await
             );
@@ -171,19 +162,18 @@ impl BatchEmbedder {
 
             ok_or_continue!(exists);
 
-            let document = ok_or_continue!(document_service.get_document(document_id).await);
+            let document = ok_or_continue!(services.document.get_document(document_id).await);
 
             // Initialize the report so we get the timestamp before the embedding starts
             let report = EmbeddingAddReportBuilder::new(document.id, collection.id);
 
-            let store = state.store(ok_or_continue!(document.src.as_str().try_into()));
-
             // Get the content and chunk it
 
-            let content = ok_or_continue!(document_service.get_content(&*store, document_id).await);
+            let content = ok_or_continue!(services.document.get_content(document_id).await);
             let chunks = ok_or_continue!(
-                document_service
-                    .get_chunks(document.id, &content, Some(embedder.clone()))
+                services
+                    .document
+                    .get_chunks(&document, &collection, &content)
                     .await
             );
             let chunks = match chunks {
@@ -199,16 +189,12 @@ impl BatchEmbedder {
                 chunks: &chunks,
             };
 
-            let embeddings = ok_or_continue!(
-                vector_service
-                    .create_embeddings(&*vector_db, &*embedder, create)
-                    .await
-            );
+            let embeddings = ok_or_continue!(services.vector.create_embeddings(create).await);
 
             let report = report
                 .embeddings_id(embeddings.id)
                 .model_used(collection.model.clone())
-                .vector_db(vector_db.id().to_string())
+                .vector_db(collection.provider.clone())
                 .total_chunks(chunks.len())
                 .finished_at(Utc::now())
                 .build();
@@ -225,8 +211,9 @@ impl BatchEmbedder {
             let report = EmbeddingRemovalReportBuilder::new(document_id, collection.id);
 
             let _ = ok_or_continue!(
-                vector_service
-                    .delete_embeddings(collection_id, document_id, &*vector_db)
+                services
+                    .vector
+                    .delete_embeddings(collection_id, document_id)
                     .await
             );
 

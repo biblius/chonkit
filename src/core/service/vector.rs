@@ -1,14 +1,13 @@
-use crate::core::embedder::Embedder;
 use crate::core::model::collection::{
     Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert,
 };
 use crate::core::model::{List, Pagination, PaginationSort};
+use crate::core::provider::ProviderState;
 use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
-use crate::core::vector::VectorDb;
 use crate::error::ChonkitError;
 use crate::{transaction, DEFAULT_COLLECTION_NAME};
-use dto::{CreateCollection, CreateEmbeddings, Search};
+use dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload};
 use tracing::{error, info};
 use uuid::Uuid;
 use validify::{Validate, Validify};
@@ -17,11 +16,12 @@ use validify::{Validate, Validify};
 #[derive(Clone)]
 pub struct VectorService<Repo> {
     repo: Repo,
+    providers: ProviderState,
 }
 
 impl<R> VectorService<R> {
-    pub fn new(repo: R) -> Self {
-        Self { repo }
+    pub fn new(repo: R, providers: ProviderState) -> Self {
+        Self { repo, providers }
     }
 }
 
@@ -86,17 +86,25 @@ where
     /// * `embedder`: The embedder to use.
     pub async fn list_embedding_models(
         &self,
-        embedder: &(dyn Embedder + Send + Sync),
+        embedder: &str,
     ) -> Result<Vec<(String, usize)>, ChonkitError> {
+        let embedder = self.providers.embedding.provider(embedder)?;
         Ok(embedder.list_embedding_models().await?)
     }
 
     /// Create the default vector collection if it doesn't already exist.
-    pub async fn create_default_collection(
-        &self,
-        vector_db: &(dyn VectorDb + Send + Sync),
-        embedder: &(dyn Embedder + Send + Sync),
-    ) {
+    pub async fn create_default_collection(&self, vector_db: &str, embedder: &str) {
+        let vector_db = self
+            .providers
+            .vector
+            .provider(vector_db)
+            .expect("invalid vector provider");
+        let embedder = self
+            .providers
+            .embedding
+            .provider(embedder)
+            .expect("invalid embedding provider");
+
         let (model, size) = embedder.default_model();
 
         vector_db.create_default_collection(size).await;
@@ -122,13 +130,19 @@ where
     /// * `data`: Creation data.
     pub async fn create_collection(
         &self,
-        vector_db: &(dyn VectorDb + Send + Sync),
-        embedder: &(dyn Embedder + Send + Sync),
-        mut data: CreateCollection,
+        mut data: CreateCollectionPayload,
     ) -> Result<Collection, ChonkitError> {
         data.validify()?;
 
-        let CreateCollection { name, model } = data.clone();
+        let CreateCollectionPayload {
+            name,
+            model,
+            vector_provider,
+            embedding_provider,
+        } = data;
+
+        let vector_db = self.providers.vector.provider(&vector_provider)?;
+        let embedder = self.providers.embedding.provider(&embedding_provider)?;
 
         let size = embedder.size(&model).await?.ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
@@ -138,8 +152,6 @@ where
         })?;
 
         info!("Creating collection '{name}' of size '{size}'",);
-
-        let CreateCollection { name, model } = data;
 
         let collection: Collection = transaction!(self.repo, |tx| async move {
             vector_db.create_vector_collection(&name, size).await?;
@@ -159,16 +171,13 @@ where
     /// equal to the one found in the collection with the given ID.
     ///
     /// * `id`: Collection ID.
-    pub async fn delete_collection(
-        &self,
-        vector_db: &(dyn VectorDb + Send + Sync),
-        id: Uuid,
-    ) -> Result<u64, ChonkitError> {
+    pub async fn delete_collection(&self, id: Uuid) -> Result<u64, ChonkitError> {
         let Some(collection) = self.repo.get_collection(id).await? else {
             return Err(ChonkitError::DoesNotExist(format!(
                 "Collection with ID '{id}'"
             )));
         };
+        let vector_db = self.providers.vector.provider(&collection.provider)?;
         vector_db.delete_vector_collection(&collection.name).await?;
         let count = self.repo.delete_collection(id).await?;
         Ok(count)
@@ -184,8 +193,6 @@ where
     /// * `embedder`: The embedder to use.
     pub async fn create_embeddings(
         &self,
-        vector_db: &(dyn VectorDb + Send + Sync),
-        embedder: &(dyn Embedder + Send + Sync),
         CreateEmbeddings {
             id,
             collection,
@@ -206,6 +213,9 @@ where
                 collection.name
             )));
         }
+
+        let vector_db = self.providers.vector.provider(&collection.provider)?;
+        let embedder = self.providers.embedding.provider(&collection.embedder)?;
 
         let v_collection = vector_db.get_collection(&collection.name).await?;
 
@@ -244,19 +254,26 @@ where
     /// Limit defaults to 5.
     ///
     /// * `input`: Search params.
-    pub async fn search(
-        &self,
-        vector_db: &(dyn VectorDb + Send + Sync),
-        embedder: &(dyn Embedder + Send + Sync),
-        input: Search,
-    ) -> Result<Vec<String>, ChonkitError> {
-        let Search {
-            query,
-            limit,
-            collection,
-        } = input;
+    pub async fn search(&self, mut search: SearchPayload) -> Result<Vec<String>, ChonkitError> {
+        search.validify()?;
 
-        let mut embeddings = embedder.embed(&[&query], &collection.model).await?;
+        let collection = if let Some(collection_id) = search.collection_id {
+            self.get_collection(collection_id).await?
+        } else {
+            let (Some(name), Some(provider)) = (&search.collection_name, &search.provider) else {
+                // Cannot happen because of above validify
+                return Err(ChonkitError::InvalidProvider(
+                format!("Both 'collection_name' and 'provider' must be provided if 'collection_id' is not provided"),
+            ));
+            };
+
+            self.get_collection_by_name(name, provider).await?
+        };
+
+        let vector_db = self.providers.vector.provider(&collection.provider)?;
+        let embedder = self.providers.embedding.provider(&collection.embedder)?;
+
+        let mut embeddings = embedder.embed(&[&search.query], &collection.model).await?;
 
         debug_assert!(!embeddings.is_empty());
         debug_assert_eq!(1, embeddings.len());
@@ -265,7 +282,7 @@ where
             .query(
                 std::mem::take(&mut embeddings[0]),
                 &collection.name,
-                limit.unwrap_or(5),
+                search.limit.unwrap_or(5),
             )
             .await
     }
@@ -283,6 +300,7 @@ where
         pagination: Pagination,
         collection_id: Option<Uuid>,
     ) -> Result<List<Embedding>, ChonkitError> {
+        pagination.validate()?;
         self.repo.list_embeddings(pagination, collection_id).await
     }
 
@@ -290,13 +308,14 @@ where
         &self,
         collection_id: Uuid,
         document_id: Uuid,
-        vector_db: &(dyn VectorDb + Send + Sync),
     ) -> Result<u64, ChonkitError> {
         let Some(collection) = self.repo.get_collection(collection_id).await? else {
             return Err(ChonkitError::DoesNotExist(format!(
                 "Collection with ID '{collection_id}'"
             )));
         };
+
+        let vector_db = self.providers.vector.provider(&collection.provider)?;
 
         vector_db
             .delete_embeddings(&collection.name, document_id)
@@ -314,22 +333,25 @@ where
         &self,
         collection_id: Uuid,
         document_id: Uuid,
-        vector_db: &(dyn VectorDb + Send + Sync),
     ) -> Result<usize, ChonkitError> {
         let Some(collection) = self.repo.get_collection(collection_id).await? else {
             return Err(ChonkitError::DoesNotExist(format!(
                 "Collection with ID '{collection_id}'"
             )));
         };
+        let vector_db = self.providers.vector.provider(&collection.provider)?;
         vector_db.count_vectors(&collection.name, document_id).await
     }
 }
 
 /// Vector service DTOs.
 pub mod dto {
-    use crate::core::model::collection::Collection;
+    use serde::Deserialize;
+    use utoipa::ToSchema;
     use uuid::Uuid;
-    use validify::{field_err, ValidationError, Validify};
+    use validify::{
+        field_err, schema_err, schema_validation, ValidationError, ValidationErrors, Validify,
+    };
 
     fn ascii_alphanumeric_underscored(s: &str) -> Result<(), ValidationError> {
         if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -355,9 +377,9 @@ pub mod dto {
         Ok(())
     }
 
-    /// Params for creating collections.
-    #[derive(Debug, Clone, Validify)]
-    pub struct CreateCollection {
+    #[derive(Debug, Deserialize, Validify, ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    pub struct CreateCollectionPayload {
         /// Collection name. Cannot contain special characters.
         #[validate(custom(ascii_alphanumeric_underscored))]
         #[validate(custom(begins_with_capital_ascii_letter))]
@@ -367,6 +389,12 @@ pub mod dto {
 
         /// Collection model.
         pub model: String,
+
+        /// Vector database provider.
+        pub vector_provider: String,
+
+        /// Embeddings provider.
+        pub embedding_provider: String,
     }
 
     #[derive(Debug, Clone, Validify)]
@@ -382,15 +410,54 @@ pub mod dto {
     }
 
     /// Params for semantic search.
-    #[derive(Debug)]
-    pub struct Search {
-        /// The collection to search in.
-        pub collection: Collection,
-
+    #[derive(Debug, Deserialize, Validify, ToSchema)]
+    #[serde(rename_all = "camelCase")]
+    #[validate(Self::validate_schema)]
+    pub struct SearchPayload {
         /// The text to search by.
+        #[modify(trim)]
         pub query: String,
+
+        /// The collection to search in. Has priority over
+        /// everything else.
+        pub collection_id: Option<Uuid>,
+
+        /// If given search via the name and provider combo.
+        #[validate(length(min = 1))]
+        #[modify(trim)]
+        pub collection_name: Option<String>,
+
+        /// Vector provider.
+        pub provider: Option<String>,
 
         /// Amount of results to return.
         pub limit: Option<u32>,
+    }
+
+    impl SearchPayload {
+        #[schema_validation]
+        fn validate_schema(&self) -> Result<(), ValidationErrors> {
+            let SearchPayload {
+                collection_id,
+                collection_name,
+                provider,
+                ..
+            } = self;
+            match (collection_id, collection_name, provider) {
+                (None, None, None) => {
+                    schema_err!(
+                        "either_id_or_name_and_provider",
+                        "one of either `collection_id`, or `provider` and `collection_name` combination must be set"
+                    );
+                }
+                (None, Some(_), None) | (None, None, Some(_)) => {
+                    schema_err!(
+                    "name_and_provider",
+                    "both 'collection_name'and 'provider' must be set if `collection_id` is not set"
+                );
+                }
+                _ => {}
+            }
+        }
     }
 }

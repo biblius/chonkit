@@ -4,13 +4,15 @@ use crate::{
         document::{
             parser::{ParseConfig, Parser},
             sha256,
-            store::{DocumentStore, DocumentSync},
+            store::DocumentSync,
         },
         embedder::Embedder,
         model::{
+            collection::Collection,
             document::{Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType},
             List, PaginationSort,
         },
+        provider::ProviderState,
         repo::{document::DocumentRepo, Atomic},
     },
     error::ChonkitError,
@@ -26,14 +28,15 @@ use validify::{Validate, Validify};
 #[derive(Clone)]
 pub struct DocumentService<R> {
     pub repo: R,
+    providers: ProviderState,
 }
 
 impl<R> DocumentService<R>
 where
-    R: DocumentRepo + Clone + Atomic + Send + Sync,
+    R: DocumentRepo + Atomic + Send + Sync,
 {
-    pub fn new(repo: R) -> Self {
-        Self { repo }
+    pub fn new(repo: R, providers: ProviderState) -> Self {
+        Self { repo, providers }
     }
 
     /// Get a paginated list of documents from the repository.
@@ -88,16 +91,12 @@ where
     /// or the default parser if it has no configuration.
     ///
     /// * `id`: Document ID.
-    pub async fn get_content(
-        &self,
-        store: &(dyn DocumentStore + Sync + Send),
-        id: Uuid,
-    ) -> Result<String, ChonkitError> {
-        let document = self.repo.get_by_id(id).await?;
-
-        let Some(document) = document else {
+    pub async fn get_content(&self, id: Uuid) -> Result<String, ChonkitError> {
+        let Some(document) = self.repo.get_by_id(id).await? else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
+
+        let store = self.providers.store.provider(&document.src)?;
 
         let ext = document.ext.as_str().try_into()?;
         let parser = self.get_parser(id, ext).await?;
@@ -108,31 +107,30 @@ where
     /// Get document chunks using its parsing and chunking configuration,
     /// or the default configurations if they have no configuration.
     ///
-    /// * `id`: Document ID.
+    /// * `document`: Document ID.
     /// * `content`: The document's content.
-    /// * `embedder`: Optional embedder for the semantic chunker.
     pub async fn get_chunks<'content>(
         &self,
-        id: Uuid,
+        document: &Document,
+        collection: &Collection,
         content: &'content str,
-        embedder: Option<Arc<dyn Embedder + Send + Sync>>,
     ) -> Result<ChunkedDocument<'content>, ChonkitError> {
         let mut chunker = self
             .repo
-            .get_chunk_config(id)
+            .get_chunk_config(document.id)
             .await?
             .map(|config| config.config)
             .ok_or_else(|| {
-                ChonkitError::DoesNotExist(format!("Chunking config for document with ID {id}"))
+                ChonkitError::DoesNotExist(format!(
+                    "Chunking config for document with ID {}",
+                    document.id
+                ))
             })?;
+
+        let embedder = self.providers.embedding.provider(&collection.provider)?;
 
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
-            let Some(embedder) = embedder else {
-                return Err(ChonkitError::InvalidEmbeddingModel(
-                    "No embedder provided for semantic chunker".to_string(),
-                ));
-            };
             chunker.embedder(embedder);
         }
 
@@ -146,13 +144,14 @@ where
     /// * `params`: Upload params.
     pub async fn upload(
         &self,
-        store: &(dyn DocumentStore + Sync + Send),
+        storage_provider: &str,
         mut params: DocumentUpload<'_>,
     ) -> Result<DocumentConfig, ChonkitError> {
         params.validify()?;
 
         let DocumentUpload { ref name, ty, file } = params;
         let hash = sha256(file);
+        let store = self.providers.store.provider(storage_provider)?;
 
         let existing = self.repo.get_by_hash(&hash).await?;
 
@@ -182,15 +181,11 @@ where
     /// Remove the document from the repo and delete it from the storage.
     ///
     /// * `id`: Document ID.
-    pub async fn delete(
-        &self,
-        store: &(dyn DocumentStore + Sync + Send),
-        id: Uuid,
-    ) -> Result<(), ChonkitError> {
-        let document = self.repo.get_by_id(id).await?;
-        let Some(document) = document else {
+    pub async fn delete(&self, id: Uuid) -> Result<(), ChonkitError> {
+        let Some(document) = self.repo.get_by_id(id).await? else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
+        let store = self.providers.store.provider(&document.src)?;
         self.repo.remove_by_id(document.id).await?;
         store.delete(&document.path).await
     }
@@ -207,10 +202,14 @@ where
         &self,
         document_id: Uuid,
         config: ChunkPreviewPayload,
-        store: &(dyn DocumentStore + Sync + Send),
-        embedder: Option<Arc<dyn Embedder + Send + Sync>>,
     ) -> Result<Vec<String>, ChonkitError> {
         config.validate()?;
+
+        let embedder = if let Some(embedder) = &config.embedder {
+            Some(self.providers.embedding.provider(embedder.as_str())?)
+        } else {
+            None
+        };
 
         let parser = if let Some(parser) = config.parser {
             parser
@@ -221,7 +220,7 @@ where
             })?
         };
 
-        let content = self.parse_preview(&*store, document_id, parser).await?;
+        let content = self.parse_preview(document_id, parser).await?;
         let chunked = self
             .chunk_preview_inner(&content, config.chunker, embedder)
             .await?;
@@ -239,7 +238,6 @@ where
     ///             file type.
     pub async fn parse_preview(
         &self,
-        store: &(dyn DocumentStore + Sync + Send),
         id: Uuid,
         config: ParseConfig,
     ) -> Result<String, ChonkitError> {
@@ -250,6 +248,8 @@ where
         let Some(document) = document else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
+
+        let store = self.providers.store.provider(&document.src)?;
 
         let ext = document.ext.as_str().try_into()?;
         let parser = Parser::new_from(ext, config);
@@ -365,7 +365,7 @@ pub mod dto {
     #[derive(Debug, Deserialize, Validate, utoipa::ToSchema)]
     #[serde(rename_all = "camelCase")]
     #[validate(Self::validate_schema)]
-    pub(super) struct ChunkPreviewPayload {
+    pub struct ChunkPreviewPayload {
         /// Parsing configuration.
         pub parser: Option<ParseConfig>,
 
