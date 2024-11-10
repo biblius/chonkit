@@ -88,7 +88,7 @@ where
         &self,
         embedder: &str,
     ) -> Result<Vec<(String, usize)>, ChonkitError> {
-        let embedder = self.providers.embedding.provider(embedder)?;
+        let embedder = self.providers.embedding.get_provider(embedder)?;
         Ok(embedder.list_embedding_models().await?)
     }
 
@@ -97,12 +97,12 @@ where
         let vector_db = self
             .providers
             .vector
-            .provider(vector_db)
+            .get_provider(vector_db)
             .expect("invalid vector provider");
         let embedder = self
             .providers
             .embedding
-            .provider(embedder)
+            .get_provider(embedder)
             .expect("invalid embedding provider");
 
         let (model, size) = embedder.default_model();
@@ -141,8 +141,8 @@ where
             embedding_provider,
         } = data;
 
-        let vector_db = self.providers.vector.provider(&vector_provider)?;
-        let embedder = self.providers.embedding.provider(&embedding_provider)?;
+        let vector_db = self.providers.vector.get_provider(&vector_provider)?;
+        let embedder = self.providers.embedding.get_provider(&embedding_provider)?;
 
         let size = embedder.size(&model).await?.ok_or_else(|| {
             ChonkitError::InvalidEmbeddingModel(format!(
@@ -153,7 +153,7 @@ where
 
         info!("Creating collection '{name}' of size '{size}'",);
 
-        let collection: Collection = transaction!(self.repo, |tx| async move {
+        transaction!(self.repo, |tx| async move {
             vector_db.create_vector_collection(&name, size).await?;
 
             let insert = CollectionInsert::new(&name, &model, embedder.id(), vector_db.id());
@@ -161,9 +161,7 @@ where
             let collection = self.repo.insert_collection(insert, Some(tx)).await?;
 
             Ok(collection)
-        })?;
-
-        Ok(collection)
+        })
     }
 
     /// Delete a vector collection and all its corresponding embedding entries.
@@ -177,7 +175,7 @@ where
                 "Collection with ID '{id}'"
             )));
         };
-        let vector_db = self.providers.vector.provider(&collection.provider)?;
+        let vector_db = self.providers.vector.get_provider(&collection.provider)?;
         vector_db.delete_vector_collection(&collection.name).await?;
         let count = self.repo.delete_collection(id).await?;
         Ok(count)
@@ -214,8 +212,11 @@ where
             )));
         }
 
-        let vector_db = self.providers.vector.provider(&collection.provider)?;
-        let embedder = self.providers.embedding.provider(&collection.embedder)?;
+        let vector_db = self.providers.vector.get_provider(&collection.provider)?;
+        let embedder = self
+            .providers
+            .embedding
+            .get_provider(&collection.embedder)?;
 
         let v_collection = vector_db.get_collection(&collection.name).await?;
 
@@ -270,8 +271,11 @@ where
             self.get_collection_by_name(name, provider).await?
         };
 
-        let vector_db = self.providers.vector.provider(&collection.provider)?;
-        let embedder = self.providers.embedding.provider(&collection.embedder)?;
+        let vector_db = self.providers.vector.get_provider(&collection.provider)?;
+        let embedder = self
+            .providers
+            .embedding
+            .get_provider(&collection.embedder)?;
 
         let mut embeddings = embedder.embed(&[&search.query], &collection.model).await?;
 
@@ -315,7 +319,7 @@ where
             )));
         };
 
-        let vector_db = self.providers.vector.provider(&collection.provider)?;
+        let vector_db = self.providers.vector.get_provider(&collection.provider)?;
 
         vector_db
             .delete_embeddings(&collection.name, document_id)
@@ -339,7 +343,7 @@ where
                 "Collection with ID '{collection_id}'"
             )));
         };
-        let vector_db = self.providers.vector.provider(&collection.provider)?;
+        let vector_db = self.providers.vector.get_provider(&collection.provider)?;
         vector_db.count_vectors(&collection.name, document_id).await
     }
 }

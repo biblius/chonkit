@@ -33,22 +33,15 @@ pub struct GlobalState {
 pub struct AppState {
     pub postgres: PgPool,
 
-    pub fs_store: Arc<FsDocumentStore>,
+    pub vector_provider: Arc<VectorStoreProvider>,
 
-    #[cfg(feature = "openai")]
-    pub openai: Arc<super::embedder::openai::OpenAiEmbeddings>,
+    pub embedding_provider: Arc<EmbeddingProvider>,
 
-    #[cfg(feature = "fembed")]
-    pub fastembed: Arc<super::embedder::fastembed::FastEmbedder>,
-
-    #[cfg(feature = "qdrant")]
-    pub qdrant: Arc<super::vector::qdrant::QdrantDb>,
-
-    #[cfg(feature = "weaviate")]
-    pub weaviate: Arc<super::vector::weaviate::WeaviateDb>,
+    pub document_provider: Arc<DocumentStoreProvider>,
 }
 
 impl AppState {
+    /// Load the application state using the provided configuration.
     pub async fn new(args: &crate::config::StartArgs) -> Self {
         // Ensures the dynamic library is loaded and panics if it isn't
         pdfium_render::prelude::Pdfium::default();
@@ -91,30 +84,38 @@ impl AppState {
         ));
 
         #[cfg(feature = "qdrant")]
-        let qdrant = Arc::new(crate::app::vector::qdrant::init(&args.qdrant_url()));
+        let qdrant = crate::app::vector::qdrant::init(&args.qdrant_url());
 
         #[cfg(feature = "weaviate")]
-        let weaviate = Arc::new(crate::app::vector::weaviate::init(&args.weaviate_url()));
+        let weaviate = crate::app::vector::weaviate::init(&args.weaviate_url());
 
-        Self {
-            postgres,
-
-            fs_store,
-
-            #[cfg(feature = "fembed")]
-            fastembed,
-
-            #[cfg(feature = "openai")]
-            openai,
-
+        let vector_provider = Arc::new(VectorStoreProvider {
             #[cfg(feature = "qdrant")]
             qdrant,
 
             #[cfg(feature = "weaviate")]
             weaviate,
+        });
+
+        let embedding_provider = Arc::new(EmbeddingProvider {
+            #[cfg(feature = "fembed")]
+            fastembed,
+
+            #[cfg(feature = "openai")]
+            openai,
+        });
+
+        let document_provider = Arc::new(DocumentStoreProvider { fs_store });
+
+        Self {
+            postgres,
+            document_provider,
+            vector_provider,
+            embedding_provider,
         }
     }
 
+    /// Get an instance of a document sync implementation for the given repository.
     pub fn syncer<T>(
         &self,
         input: &str,
@@ -123,17 +124,20 @@ impl AppState {
         T: DocumentRepo + Send + Sync,
     {
         match input {
-            _ if self.fs_store.id() == input => Ok(self.fs_store.clone()),
+            _ if self.document_provider.fs_store.id() == input => {
+                Ok(self.document_provider.fs_store.clone())
+            }
             _ => Err(ChonkitError::InvalidProvider(input.to_string())),
         }
     }
 
+    /// Used for metadata display.
     pub async fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
         let mut embedding_providers = HashMap::new();
         let mut default_chunkers = vec![Chunker::sliding_default(), Chunker::snapping_default()];
 
         for provider in EMBEDDING_PROVIDERS {
-            let embedder: Arc<dyn Embedder + Send + Sync> = self.provider(provider)?;
+            let embedder = self.embedding_provider.get_provider(provider)?;
 
             default_chunkers.push(Chunker::semantic_default(embedder.clone()));
 
@@ -146,11 +150,30 @@ impl AppState {
             embedding_providers.insert(provider.to_string(), models);
         }
 
+        let mut document_providers = vec![
+            /* Temporary, until there is more providers. */ "fs".to_string(),
+        ];
+        document_providers.extend(
+            DOCUMENT_PROVIDERS
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+
         Ok(AppConfig {
             vector_providers: VECTOR_PROVIDERS.iter().map(|s| s.to_string()).collect(),
             embedding_providers,
             default_chunkers,
+            document_providers,
         })
+    }
+
+    pub fn to_provider_state(&self) -> ProviderState {
+        ProviderState {
+            vector: self.vector_provider.clone(),
+            embedding: self.embedding_provider.clone(),
+            store: self.document_provider.clone(),
+        }
     }
 }
 
@@ -166,35 +189,36 @@ pub struct AppConfig {
     /// A list of available vector providers.
     pub vector_providers: Vec<String>,
 
-    /// A map of available embedding providers, their models and the respective model sizes.
+    /// A map of available embedding providers, their models and their respective model sizes.
     pub embedding_providers: HashMap<String, HashMap<String, usize>>,
+
+    /// A list of available document storage providers.
+    pub document_providers: Vec<String>,
 
     /// A list of default chunking configurations.
     pub default_chunkers: Vec<Chunker>,
 }
 
-/// Creates a provider enum and its TryFrom <String> and <&str> implementations.
-///
-/// Implements functions for AppState to easily get an instance of whatever
-/// the provider is for.
+/// Implements functions for `$target` to easily get an instance of whatever
+/// the provider is for, i.e. `$provider_out`.
 ///
 /// Additionally, creates a constant with the given feature literals so we can easily list them
 /// to the client.
 macro_rules! provider {
     (
-        $provider_out:ident,
-        $($feature:expr => $provider:ident => $state_id:ident),*
+        $target:ident -> $provider_out:ident,
+        $($($feature:literal =>)? $provider:ident => $state_id:ident),*
         $(,)?;
         $constant_name:ident
     ) => {
-            impl ProviderFactory<Arc<dyn $provider_out + Send + Sync>> for AppState {
+            impl ProviderFactory<Arc<dyn $provider_out + Send + Sync>> for $target {
                 /// AUTO-GENERATED BY THE `provider!` MACRO.
                 /// SEE [crate::app::state] FOR MORE DETAILS.
                 /// Obtain the provider for the given enum variant from the application state.
-                fn provider(&self, input: &str) -> Result<Arc<dyn $provider_out + Send + Sync>, ChonkitError> {
+                fn get_provider(&self, input: &str) -> Result<Arc<dyn $provider_out + Send + Sync>, ChonkitError> {
                     match input {
                         $(
-                            #[cfg(feature = $feature)]
+                            $(#[cfg(feature = $feature)])?
                             _ if self.$state_id.id() == input => Ok(self.$state_id.clone()),
                         )*
                         _ => Err(ChonkitError::InvalidProvider(input.to_string()))
@@ -207,34 +231,31 @@ macro_rules! provider {
             /// A list of available providers for a given functionality.
             pub(in $crate::app) const $constant_name: &[&str] = &[
                 $(
-                    #[cfg(feature = $feature)]
-                    $feature
+                    $(#[cfg(feature = $feature)])?
+                    $($feature)?
                 ),*
             ];
     };
 }
 
 provider! {
-    Embedder,
+    EmbeddingProvider -> Embedder,
         "fembed" => FastEmbed => fastembed,
         "openai" => OpenAi => openai;
     EMBEDDING_PROVIDERS
 }
 
 provider! {
-    VectorDb,
+    VectorStoreProvider -> VectorDb,
         "qdrant" => Qdrant => qdrant,
         "weaviate" => Weaviate => weaviate;
     VECTOR_PROVIDERS
 }
 
-impl ProviderFactory<Arc<dyn DocumentStore + Send + Sync>> for AppState {
-    fn provider(&self, input: &str) -> Result<Arc<dyn DocumentStore + Send + Sync>, ChonkitError> {
-        match input {
-            _ if self.fs_store.id() == input => Ok(self.fs_store.clone()),
-            _ => Err(ChonkitError::InvalidProvider(input.to_string())),
-        }
-    }
+provider! {
+    DocumentStoreProvider -> DocumentStore,
+        FsDocumentStore => fs_store;
+    DOCUMENT_PROVIDERS
 }
 
 #[derive(Clone)]
@@ -244,9 +265,50 @@ pub struct ServiceState {
 }
 
 impl ServiceState {
-    pub fn new(repository: PgPool, providers: ProviderState) -> Self {
+    pub fn from_app_state(state: &AppState) -> Self {
+        Self::new(state.postgres.clone(), state.to_provider_state())
+    }
+
+    fn new(repository: PgPool, providers: ProviderState) -> Self {
         let document = DocumentService::new(repository.clone(), providers.clone());
         let vector = VectorService::new(repository, providers);
         Self { document, vector }
     }
 }
+
+/// Provides concrete implementations of [Embedder] for each provider.
+#[derive(Clone)]
+pub struct EmbeddingProvider {
+    #[cfg(feature = "openai")]
+    pub openai: Arc<super::embedder::openai::OpenAiEmbeddings>,
+
+    #[cfg(feature = "fembed")]
+    pub fastembed: Arc<super::embedder::fastembed::FastEmbedder>,
+}
+
+/// Provides concrete implementations of [VectorDb] for each provider.
+#[derive(Clone)]
+pub struct VectorStoreProvider {
+    #[cfg(feature = "qdrant")]
+    pub qdrant: super::vector::qdrant::QdrantDb,
+
+    #[cfg(feature = "weaviate")]
+    pub weaviate: super::vector::weaviate::WeaviateDb,
+}
+
+/// Provides concrete implementations of [DocumentStore] for each provider.
+#[derive(Clone)]
+pub struct DocumentStoreProvider {
+    pub fs_store: Arc<FsDocumentStore>,
+}
+
+// #[macro_export]
+// macro_rules! conditional_state {
+//     (
+//         $( $id:ident = $provider:ident { $( $feature:literal : $state_id:ident ),* $(,)? } $(,)? )*
+// ) => {
+//      $(
+//
+//      )*
+// };
+// }

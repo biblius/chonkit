@@ -31,7 +31,7 @@ pub fn init(url: &str) -> WeaviateDb {
 }
 
 #[async_trait::async_trait]
-impl VectorDb for Arc<WeaviateClient> {
+impl VectorDb for WeaviateClient {
     fn id(&self) -> &'static str {
         "weaviate"
     }

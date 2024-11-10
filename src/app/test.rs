@@ -1,16 +1,159 @@
-//! Test container utilites.
+//! Test utilites.
+
+use std::sync::Arc;
 
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
 use testcontainers_modules::postgres::Postgres;
 
-#[cfg(feature = "qdrant")]
-use super::vector::qdrant::QdrantDb;
+use crate::core::provider::ProviderState;
 
-#[cfg(feature = "weaviate")]
-use super::vector::weaviate::WeaviateDb;
+use super::{
+    document::store::FsDocumentStore,
+    state::{DocumentStoreProvider, EmbeddingProvider, VectorStoreProvider},
+};
 
 pub type PostgresContainer = ContainerAsync<Postgres>;
 pub type AsyncContainer = ContainerAsync<GenericImage>;
+
+pub struct TestState {
+    /// Individual clients for repository and vector database implementations.
+    pub clients: TestClients,
+
+    /// Holds test containers so they don't get dropped.
+    pub containers: TestContainers,
+
+    /// Holds the providers necessary for services.
+    pub providers: ProviderState,
+}
+
+impl TestState {
+    pub async fn init(config: TestStateConfig) -> Self {
+        let (postgres, postgres_img) = init_postgres().await;
+
+        #[cfg(feature = "qdrant")]
+        let (qdrant, qdrant_img) = init_qdrant().await;
+
+        #[cfg(feature = "weaviate")]
+        let (weaviate, weaviate_img) = init_weaviate().await;
+
+        #[cfg(feature = "fembed")]
+        let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder::new());
+
+        let vector = VectorStoreProvider {
+            #[cfg(feature = "qdrant")]
+            qdrant: qdrant.clone(),
+
+            #[cfg(feature = "weaviate")]
+            weaviate: weaviate.clone(),
+        };
+
+        let store = DocumentStoreProvider {
+            fs_store: Arc::new(FsDocumentStore::new(&config.fs_store_path)),
+        };
+
+        let embedding = EmbeddingProvider {
+            #[cfg(feature = "fembed")]
+            fastembed: fastembed.clone(),
+
+            #[cfg(feature = "openai")]
+            openai: panic!("cannot run test with `openai` enabled"),
+        };
+
+        let providers = ProviderState {
+            vector: Arc::new(vector.clone()),
+            embedding: Arc::new(embedding.clone()),
+            store: Arc::new(store.clone()),
+        };
+
+        let clients = TestClients::new(
+            postgres,
+            #[cfg(feature = "qdrant")]
+            qdrant,
+            #[cfg(feature = "weaviate")]
+            weaviate,
+            #[cfg(feature = "fembed")]
+            fastembed,
+        );
+
+        let containers = TestContainers::new(
+            postgres_img,
+            #[cfg(feature = "qdrant")]
+            qdrant_img,
+            #[cfg(feature = "weaviate")]
+            weaviate_img,
+        );
+
+        TestState {
+            clients,
+            containers,
+            providers,
+        }
+    }
+}
+
+pub struct TestStateConfig {
+    pub fs_store_path: String,
+}
+
+/// Holds clients for repository and vector database implementations.
+pub struct TestClients {
+    pub postgres: sqlx::PgPool,
+
+    #[cfg(feature = "qdrant")]
+    pub qdrant: super::vector::qdrant::QdrantDb,
+
+    #[cfg(feature = "weaviate")]
+    pub weaviate: super::vector::weaviate::WeaviateDb,
+
+    #[cfg(feature = "fembed")]
+    pub fastembed: std::sync::Arc<super::embedder::fastembed::FastEmbedder>,
+}
+
+impl TestClients {
+    fn new(
+        postgres: sqlx::PgPool,
+        #[cfg(feature = "qdrant")] qdrant: super::vector::qdrant::QdrantDb,
+        #[cfg(feature = "weaviate")] weaviate: super::vector::weaviate::WeaviateDb,
+        #[cfg(feature = "fembed")] fastembed: Arc<super::embedder::fastembed::FastEmbedder>,
+    ) -> Self {
+        Self {
+            postgres,
+            #[cfg(feature = "qdrant")]
+            qdrant,
+            #[cfg(feature = "weaviate")]
+            weaviate,
+            #[cfg(feature = "fembed")]
+            fastembed,
+        }
+    }
+}
+
+/// Holds test container images so they don't get dropped during execution of test suites.
+pub struct TestContainers {
+    pub postgres: PostgresContainer,
+
+    #[cfg(feature = "qdrant")]
+    pub qdrant: ContainerAsync<GenericImage>,
+
+    #[cfg(feature = "weaviate")]
+    pub weaviate: ContainerAsync<GenericImage>,
+}
+
+impl TestContainers {
+    fn new(
+        postgres: PostgresContainer,
+        #[cfg(feature = "qdrant")] qdrant: ContainerAsync<GenericImage>,
+        #[cfg(feature = "weaviate")] weaviate: ContainerAsync<GenericImage>,
+    ) -> Self {
+        Self {
+            postgres,
+            #[cfg(feature = "qdrant")]
+            qdrant,
+            #[cfg(feature = "weaviate")]
+            weaviate,
+        }
+    }
+}
 
 /// Setup a postgres test container and connect to it using PgPool.
 /// Runs the migrations in the container.
@@ -32,7 +175,10 @@ pub async fn init_postgres() -> (sqlx::PgPool, PostgresContainer) {
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
 #[cfg(feature = "qdrant")]
-pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
+pub async fn init_qdrant() -> (
+    super::vector::qdrant::QdrantDb,
+    ContainerAsync<GenericImage>,
+) {
     use testcontainers::core::{IntoContainerPort, WaitFor};
 
     let qd_image = GenericImage::new("qdrant/qdrant", "latest")
@@ -52,7 +198,10 @@ pub async fn init_qdrant() -> (QdrantDb, ContainerAsync<GenericImage>) {
 /// When using suitest's [before_all][suitest::before_all], make sure you return this, othwerise the
 /// container will get dropped and cleaned up.
 #[cfg(feature = "weaviate")]
-pub async fn init_weaviate() -> (WeaviateDb, ContainerAsync<GenericImage>) {
+pub async fn init_weaviate() -> (
+    super::vector::weaviate::WeaviateDb,
+    ContainerAsync<GenericImage>,
+) {
     use testcontainers::core::{ImageExt, IntoContainerPort, WaitFor};
 
     let wv_image = GenericImage::new("semitechnologies/weaviate", "1.24.12")

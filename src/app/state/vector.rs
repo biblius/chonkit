@@ -2,15 +2,15 @@
 #[cfg(all(test, any(feature = "qdrant", feature = "weaviate")))]
 #[suitest::suite(integration_tests)]
 mod vector_service_integration_tests {
-
     use crate::{
         app::{
             embedder::fastembed::FastEmbedder,
-            test::{init_postgres, PostgresContainer},
+            test::{TestContainers, TestState, TestStateConfig},
         },
         core::{
-            embedder::Embedder as _,
+            embedder::Embedder,
             model::document::{DocumentInsert, DocumentType},
+            provider::ProviderState,
             repo::{document::DocumentRepo, vector::VectorRepo},
             service::vector::dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload},
             vector::VectorDb,
@@ -19,310 +19,368 @@ mod vector_service_integration_tests {
         DEFAULT_COLLECTION_NAME,
     };
     use sqlx::PgPool;
-    use suitest::before_all;
-    use testcontainers::{ContainerAsync, GenericImage};
+    use std::sync::Arc;
+    use suitest::{after_all, before_all, cleanup};
+
+    const TEST_UPLOAD_PATH: &str = "__vector_service_test_upload__";
 
     type VectorService = crate::core::service::vector::VectorService<PgPool>;
-
-    #[cfg(all(feature = "qdrant", feature = "weaviate"))]
-    compile_error!("test can only be run with exactly 1 vector provider");
-
-    #[cfg(feature = "qdrant")]
-    type VectorDatabase = crate::app::vector::qdrant::QdrantDb;
-
-    #[cfg(feature = "weaviate")]
-    type VectorDatabase = crate::app::vector::weaviate::WeaviateDb;
 
     #[before_all]
     async fn setup() -> (
         PgPool,
-        VectorDatabase,
         VectorService,
-        FastEmbedder,
-        PostgresContainer,
-        ContainerAsync<GenericImage>,
+        ProviderState,
+        Vec<&'static str>,
+        Arc<FastEmbedder>,
+        TestContainers,
     ) {
-        let (postgres, pg) = init_postgres().await;
+        tokio::fs::create_dir(TEST_UPLOAD_PATH).await.unwrap();
+
+        let test_state = TestState::init(TestStateConfig {
+            fs_store_path: TEST_UPLOAD_PATH.to_string(),
+        })
+        .await;
+
+        let service = VectorService::new(
+            test_state.clients.postgres.clone(),
+            test_state.providers.clone(),
+        );
+
+        let mut expected = 0;
+        let mut vector_providers = vec![];
 
         #[cfg(feature = "qdrant")]
-        let (vector_client, v_img) = crate::app::test::init_qdrant().await;
+        {
+            vector_providers.push(test_state.clients.qdrant.id());
+            expected += 1;
+        }
 
         #[cfg(feature = "weaviate")]
-        let (vector_client, v_img) = crate::app::test::init_weaviate().await;
+        {
+            vector_providers.push(test_state.clients.weaviate.id());
+            expected += 1;
+        }
 
-        #[cfg(feature = "fembed")]
-        let embedder = crate::app::embedder::fastembed::FastEmbedder::new();
+        assert_eq!(expected, vector_providers.len());
 
-        let service = VectorService::new(postgres.clone());
+        for provider in vector_providers.iter() {
+            service
+                .create_default_collection(provider, test_state.clients.fastembed.id())
+                .await;
+        }
 
-        service
-            .create_default_collection(vector_client.id(), embedder.id())
-            .await;
+        (
+            test_state.clients.postgres,
+            service,
+            test_state.providers,
+            vector_providers,
+            test_state.clients.fastembed,
+            test_state.containers,
+        )
+    }
 
-        (postgres, vector_client, service, embedder, pg, v_img)
+    #[cleanup]
+    async fn cleanup() {
+        let _ = tokio::fs::remove_dir_all(TEST_UPLOAD_PATH).await;
+    }
+
+    #[after_all]
+    async fn teardown() {
+        let _ = tokio::fs::remove_dir_all(TEST_UPLOAD_PATH).await;
     }
 
     #[test]
-    async fn default_collection_is_stored_in_repo(
+    async fn default_collection_stored_successfully(
         service: VectorService,
-        embedder: FastEmbedder,
-        vector_db: VectorDatabase,
+        embedder: Arc<FastEmbedder>,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let collection = service
-            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
-            .await
-            .unwrap();
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
 
-        assert_eq!(collection.name, DEFAULT_COLLECTION_NAME);
-        assert_eq!(collection.model, embedder.default_model().0);
-        assert_eq!(collection.embedder, embedder.id());
-        assert_eq!(collection.provider, vector_db.id());
-    }
+            let collection = service
+                .get_collection_by_name(DEFAULT_COLLECTION_NAME, provider)
+                .await
+                .unwrap();
 
-    #[test]
-    async fn default_collection_is_stored_vec_db(
-        service: VectorService,
-        embedder: FastEmbedder,
-        vector_db: VectorDatabase,
-    ) {
-        let collection = service
-            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
-            .await
-            .unwrap();
+            assert_eq!(collection.name, DEFAULT_COLLECTION_NAME);
+            assert_eq!(collection.model, embedder.default_model().0);
+            assert_eq!(collection.embedder, embedder.id());
+            assert_eq!(collection.provider, *provider);
 
-        let v_collection = vector_db
-            .get_collection(DEFAULT_COLLECTION_NAME)
-            .await
-            .unwrap();
+            let v_collection = vector_db
+                .get_collection(DEFAULT_COLLECTION_NAME)
+                .await
+                .unwrap();
 
-        let size = embedder.size(&collection.model).await.unwrap().unwrap();
+            let size = embedder.size(&collection.model).await.unwrap().unwrap();
 
-        assert_eq!(size, v_collection.size);
+            assert_eq!(size, v_collection.size);
 
-        // Assert this can be called again without errors.
-        service
-            .create_default_collection(vector_db.id(), embedder.id())
-            .await;
+            // Assert this can be called again without errors.
+            service
+                .create_default_collection(vector_db.id(), embedder.id())
+                .await;
+        }
     }
 
     #[test]
     async fn create_collection_works(
         service: VectorService,
-        embedder: FastEmbedder,
-        vector_db: VectorDatabase,
+        embedder: Arc<FastEmbedder>,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let name = "Test_collection_0";
-        let model = embedder
-            .list_embedding_models()
-            .await
-            .unwrap()
-            .first()
-            .cloned()
-            .unwrap();
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
 
-        let params = CreateCollectionPayload {
-            model: model.0.clone(),
-            name: name.to_string(),
-            vector_provider: vector_db.id().to_string(),
-            embedding_provider: embedder.id().to_string(),
-        };
+            let name = "Test_collection_0";
+            let model = embedder
+                .list_embedding_models()
+                .await
+                .unwrap()
+                .first()
+                .cloned()
+                .unwrap();
 
-        let collection = service.create_collection(params).await.unwrap();
+            let params = CreateCollectionPayload {
+                model: model.0.clone(),
+                name: name.to_string(),
+                vector_provider: vector_db.id().to_string(),
+                embedding_provider: embedder.id().to_string(),
+            };
 
-        assert_eq!(collection.name, name);
-        assert_eq!(collection.model, model.0);
-        assert_eq!(collection.embedder, embedder.id());
-        assert_eq!(collection.provider, vector_db.id());
+            let collection = service.create_collection(params).await.unwrap();
 
-        let v_collection = vector_db.get_collection(name).await.unwrap();
+            assert_eq!(collection.name, name);
+            assert_eq!(collection.model, model.0);
+            assert_eq!(collection.embedder, embedder.id());
+            assert_eq!(collection.provider, vector_db.id());
 
-        let size = embedder.size(&collection.model).await.unwrap().unwrap();
+            let v_collection = vector_db.get_collection(name).await.unwrap();
 
-        assert_eq!(size, v_collection.size);
+            let size = embedder.size(&collection.model).await.unwrap().unwrap();
+
+            assert_eq!(size, v_collection.size);
+        }
     }
 
     #[test]
     async fn create_collection_fails_with_invalid_model(
         service: VectorService,
-        vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Arc<FastEmbedder>,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let name = "Test_collection_0";
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
 
-        let params = CreateCollectionPayload {
-            model: "invalid_model".to_string(),
-            name: name.to_string(),
-            vector_provider: vector_db.id().to_string(),
-            embedding_provider: embedder.id().to_string(),
-        };
+            let name = "Test_collection_0";
 
-        let result = service.create_collection(params).await;
+            let params = CreateCollectionPayload {
+                model: "invalid_model".to_string(),
+                name: name.to_string(),
+                vector_provider: vector_db.id().to_string(),
+                embedding_provider: embedder.id().to_string(),
+            };
 
-        assert!(result.is_err());
+            let result = service.create_collection(params).await;
+
+            assert!(result.is_err());
+        }
     }
 
     #[test]
     async fn create_collection_fails_with_existing_collection(
         service: VectorService,
-        vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Arc<FastEmbedder>,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let params = CreateCollectionPayload {
-            model: embedder.default_model().0,
-            name: DEFAULT_COLLECTION_NAME.to_string(),
-            vector_provider: vector_db.id().to_string(),
-            embedding_provider: embedder.id().to_string(),
-        };
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
+            let params = CreateCollectionPayload {
+                model: embedder.default_model().0,
+                name: DEFAULT_COLLECTION_NAME.to_string(),
+                vector_provider: vector_db.id().to_string(),
+                embedding_provider: embedder.id().to_string(),
+            };
 
-        let result = service.create_collection(params).await;
+            let result = service.create_collection(params).await;
 
-        assert!(result.is_err());
+            assert!(result.is_err());
+        }
     }
 
     #[test]
     async fn inserting_and_searching_embeddings_works(
-        service: VectorService,
         postgres: PgPool,
-        vector_db: VectorDatabase,
+        service: VectorService,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let default = service
-            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
-            .await
-            .unwrap();
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
+            let default = service
+                .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
+                .await
+                .unwrap();
 
-        let create = DocumentInsert::new(
-            "test_document",
-            "test_path_1",
-            DocumentType::Text,
-            "SHA256_1",
-            "fs",
-        );
+            let create = DocumentInsert::new(
+                "test_document",
+                "test_path_1",
+                DocumentType::Text,
+                "SHA256_1",
+                "fs",
+            );
 
-        let document = postgres.insert(create).await.unwrap();
+            let document = postgres.insert(create).await.unwrap();
 
-        let content = r#"Hello World!"#;
+            let content = r#"Hello World!"#;
 
-        let embeddings = CreateEmbeddings {
-            id: document.id,
-            collection: default.id,
-            chunks: &[content],
-        };
+            let embeddings = CreateEmbeddings {
+                id: document.id,
+                collection: default.id,
+                chunks: &[content],
+            };
 
-        let collection = service
-            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
-            .await
-            .unwrap();
+            let collection = service
+                .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
+                .await
+                .unwrap();
 
-        service.create_embeddings(embeddings).await.unwrap();
+            service.create_embeddings(embeddings).await.unwrap();
 
-        let search = SearchPayload {
-            query: content.to_string(),
-            collection_id: Some(collection.id),
-            limit: Some(1),
-            collection_name: None,
-            provider: None,
-        };
+            let search = SearchPayload {
+                query: content.to_string(),
+                collection_id: Some(collection.id),
+                limit: Some(1),
+                collection_name: None,
+                provider: None,
+            };
 
-        let results = service.search(search).await.unwrap();
+            let results = service.search(search).await.unwrap();
 
-        assert_eq!(1, results.len());
-        assert_eq!(content, results[0]);
+            assert_eq!(1, results.len());
+            assert_eq!(content, results[0]);
 
-        let embeddings = postgres
-            .get_embeddings_by_name(document.id, DEFAULT_COLLECTION_NAME, vector_db.id())
-            .await
-            .unwrap()
-            .unwrap();
+            let embeddings = postgres
+                .get_embeddings_by_name(document.id, DEFAULT_COLLECTION_NAME, vector_db.id())
+                .await
+                .unwrap()
+                .unwrap();
 
-        let collection = postgres
-            .get_collection(embeddings.collection_id)
-            .await
-            .unwrap()
-            .unwrap();
+            let collection = postgres
+                .get_collection(embeddings.collection_id)
+                .await
+                .unwrap()
+                .unwrap();
 
-        assert_eq!(DEFAULT_COLLECTION_NAME, collection.name);
-        assert_eq!(document.id, embeddings.document_id);
+            assert_eq!(DEFAULT_COLLECTION_NAME, collection.name);
+            assert_eq!(document.id, embeddings.document_id);
+
+            let amount = postgres.remove_by_id(document.id).await.unwrap();
+            assert_eq!(1, amount);
+        }
     }
 
     #[test]
     async fn deleting_collection_removes_all_embeddings(
         service: VectorService,
         postgres: PgPool,
-        vector_db: VectorDatabase,
-        embedder: FastEmbedder,
+        embedder: Arc<FastEmbedder>,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let collection_name = "Test_collection_delete_embeddings";
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
 
-        let create = CreateCollectionPayload {
-            name: collection_name.to_string(),
-            model: embedder.default_model().0,
-            vector_provider: vector_db.id().to_string(),
-            embedding_provider: embedder.id().to_string(),
-        };
+            let collection_name = "Test_collection_delete_embeddings";
 
-        let collection = service.create_collection(create).await.unwrap();
+            let create = CreateCollectionPayload {
+                name: collection_name.to_string(),
+                model: embedder.default_model().0,
+                vector_provider: vector_db.id().to_string(),
+                embedding_provider: embedder.id().to_string(),
+            };
 
-        let create = DocumentInsert::new(
-            "test_document",
-            "test_path_2",
-            DocumentType::Text,
-            "SHA256_2",
-            "fs",
-        );
+            let collection = service.create_collection(create).await.unwrap();
 
-        let document = postgres.insert(create).await.unwrap();
+            let create = DocumentInsert::new(
+                "test_document",
+                "test_path_2",
+                DocumentType::Text,
+                "SHA256_2",
+                "fs",
+            );
 
-        let content = r#"Hello World!"#;
+            let document = postgres.insert(create).await.unwrap();
 
-        let embeddings = CreateEmbeddings {
-            id: document.id,
-            collection: collection.id,
-            chunks: &[content],
-        };
+            let content = r#"Hello World!"#;
 
-        service.create_embeddings(embeddings).await.unwrap();
+            let embeddings = CreateEmbeddings {
+                id: document.id,
+                collection: collection.id,
+                chunks: &[content],
+            };
 
-        service.delete_collection(collection.id).await.unwrap();
+            service.create_embeddings(embeddings).await.unwrap();
 
-        let embeddings = postgres
-            .get_embeddings(document.id, collection.id)
-            .await
-            .unwrap();
+            service.delete_collection(collection.id).await.unwrap();
 
-        assert!(embeddings.is_none())
+            let embeddings = postgres
+                .get_embeddings(document.id, collection.id)
+                .await
+                .unwrap();
+
+            assert!(embeddings.is_none());
+
+            let amount = postgres.remove_by_id(document.id).await.unwrap();
+            assert_eq!(1, amount);
+        }
     }
 
     #[test]
     async fn prevents_duplicate_embeddings(
         service: VectorService,
         postgres: PgPool,
-        vector_db: VectorDatabase,
+        vector_providers: Vec<&'static str>,
+        provider_state: ProviderState,
     ) {
-        let create = DocumentInsert::new(
-            "test_document",
-            "test_path_3",
-            DocumentType::Text,
-            "SHA256_3",
-            "fs",
-        );
+        for provider in vector_providers.iter() {
+            let vector_db = provider_state.vector.get_provider(provider).unwrap();
+            let create = DocumentInsert::new(
+                "test_document",
+                "test_path_3",
+                DocumentType::Text,
+                "SHA256_3",
+                "fs",
+            );
 
-        let default = service
-            .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
-            .await
-            .unwrap();
+            let default = service
+                .get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id())
+                .await
+                .unwrap();
 
-        let document = postgres.insert(create).await.unwrap();
+            let document = postgres.insert(create).await.unwrap();
 
-        let content = r#"Hello World!"#;
-        let create = CreateEmbeddings {
-            id: document.id,
-            collection: default.id,
-            chunks: &[content],
-        };
-        service.create_embeddings(create.clone()).await.unwrap();
+            let content = r#"Hello World!"#;
+            let create = CreateEmbeddings {
+                id: document.id,
+                collection: default.id,
+                chunks: &[content],
+            };
 
-        let duplicate = service.create_embeddings(create).await;
+            service.create_embeddings(create.clone()).await.unwrap();
 
-        assert!(matches!(duplicate, Err(ChonkitError::AlreadyExists(_))))
+            let duplicate = service.create_embeddings(create).await;
+
+            assert!(matches!(duplicate, Err(ChonkitError::AlreadyExists(_))));
+
+            let amount = postgres.remove_by_id(document.id).await.unwrap();
+            assert_eq!(1, amount);
+        }
     }
 }

@@ -96,7 +96,7 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let store = self.providers.store.provider(&document.src)?;
+        let store = self.providers.store.get_provider(&document.src)?;
 
         let ext = document.ext.as_str().try_into()?;
         let parser = self.get_parser(id, ext).await?;
@@ -127,7 +127,10 @@ where
                 ))
             })?;
 
-        let embedder = self.providers.embedding.provider(&collection.provider)?;
+        let embedder = self
+            .providers
+            .embedding
+            .get_provider(&collection.provider)?;
 
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
@@ -151,7 +154,7 @@ where
 
         let DocumentUpload { ref name, ty, file } = params;
         let hash = sha256(file);
-        let store = self.providers.store.provider(storage_provider)?;
+        let store = self.providers.store.get_provider(storage_provider)?;
 
         let existing = self.repo.get_by_hash(&hash).await?;
 
@@ -161,21 +164,20 @@ where
             )));
         };
 
-        let path = store.write(name, file).await?;
+        transaction!(self.repo, |tx| async move {
+            let path = store.write(name, file).await?;
 
-        let insert = DocumentInsert::new(name, &path, ty, &hash, store.id());
-        let parse_config = ParseConfig::default();
-        let chunk_config = Chunker::snapping_default();
+            let insert = DocumentInsert::new(name, &path, ty, &hash, store.id());
+            let parse_config = ParseConfig::default();
+            let chunk_config = Chunker::snapping_default();
 
-        let document_config = transaction!(self.repo, |tx| async move {
             let document = self
                 .repo
                 .insert_with_configs(insert, parse_config, chunk_config, tx)
                 .await?;
-            Ok(document)
-        })?;
 
-        Ok(document_config)
+            Ok(document)
+        })
     }
 
     /// Remove the document from the repo and delete it from the storage.
@@ -185,7 +187,7 @@ where
         let Some(document) = self.repo.get_by_id(id).await? else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
-        let store = self.providers.store.provider(&document.src)?;
+        let store = self.providers.store.get_provider(&document.src)?;
         self.repo.remove_by_id(document.id).await?;
         store.delete(&document.path).await
     }
@@ -206,7 +208,7 @@ where
         config.validate()?;
 
         let embedder = if let Some(embedder) = &config.embedder {
-            Some(self.providers.embedding.provider(embedder.as_str())?)
+            Some(self.providers.embedding.get_provider(embedder.as_str())?)
         } else {
             None
         };
@@ -249,7 +251,7 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let store = self.providers.store.provider(&document.src)?;
+        let store = self.providers.store.get_provider(&document.src)?;
 
         let ext = document.ext.as_str().try_into()?;
         let parser = Parser::new_from(ext, config);

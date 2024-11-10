@@ -1,19 +1,11 @@
 use clap::Parser;
-use std::sync::Arc;
 use tracing::info;
 
 #[tokio::main]
 async fn main() {
     let args = chonkit::config::StartArgs::parse();
     let app_state = chonkit::app::state::AppState::new(&args).await;
-    let service_state = chonkit::app::state::ServiceState::new(
-        app_state.postgres.clone(),
-        chonkit::core::provider::ProviderState {
-            vector: Arc::new(app_state.clone()),
-            embedding: Arc::new(app_state.clone()),
-            store: Arc::new(app_state.clone()),
-        },
-    );
+    let service_state = chonkit::app::state::ServiceState::from_app_state(&app_state);
     let batch_embedder = chonkit::app::state::spawn_batch_embedder(service_state.clone());
 
     let global_state = chonkit::app::state::GlobalState {

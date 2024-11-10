@@ -30,7 +30,7 @@ pub fn init(url: &str) -> QdrantDb {
 }
 
 #[async_trait::async_trait]
-impl VectorDb for Arc<Qdrant> {
+impl VectorDb for Qdrant {
     fn id(&self) -> &'static str {
         "qdrant"
     }

@@ -3,10 +3,7 @@
 #[suitest::suite_cfg(sequential = true)]
 mod document_service_integration_tests {
     use crate::{
-        app::{
-            document::store::FsDocumentStore,
-            test::{init_postgres, PostgresContainer},
-        },
+        app::test::{TestState, TestStateConfig},
         core::{
             document::parser::{
                 docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser, ParseConfig,
@@ -24,15 +21,20 @@ mod document_service_integration_tests {
     use suitest::{after_all, before_all, cleanup};
 
     #[before_all]
-    async fn setup() -> (PgPool, FsDocumentStore, DocumentService, PostgresContainer) {
+    async fn setup() -> (TestState, DocumentService) {
         tokio::fs::create_dir(TEST_UPLOAD_PATH).await.unwrap();
 
-        let (client, _pg_img) = init_postgres().await;
+        let test_state = TestState::init(TestStateConfig {
+            fs_store_path: TEST_UPLOAD_PATH.to_string(),
+        })
+        .await;
 
-        let store = FsDocumentStore::new(TEST_UPLOAD_PATH);
-        let service = DocumentService::new(client.clone());
+        let service = DocumentService::new(
+            test_state.clients.postgres.clone(),
+            test_state.providers.clone(),
+        );
 
-        (client, store, service, _pg_img)
+        (test_state, service)
     }
 
     #[cleanup]
