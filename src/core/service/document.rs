@@ -133,7 +133,7 @@ where
         let embedder = self
             .providers
             .embedding
-            .get_provider(&collection.provider)?;
+            .get_provider(&collection.embedder)?;
 
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
