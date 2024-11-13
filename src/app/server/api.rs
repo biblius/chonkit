@@ -50,7 +50,7 @@ use crate::{
                 Collection, CollectionDisplay, CollectionShort, Embedding, VectorCollection,
             },
             document::{Document, DocumentConfig, DocumentDisplay, DocumentShort},
-            List, Pagination, PaginationSort,
+            List, Pagination, PaginationSort, SortDirection,
         },
         service::{
             document::dto::ChunkPreviewPayload,
@@ -124,6 +124,7 @@ use utoipa::OpenApi;
         DocumentShort,
         CollectionDisplay,
         CollectionShort,
+        SortDirection,
     ))
 )]
 pub struct ApiDoc;
