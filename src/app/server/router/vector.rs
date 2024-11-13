@@ -186,7 +186,7 @@ pub(super) async fn embed(
     let content = services.document.get_content(document_id).await?;
 
     let chunks = services.document
-        .get_chunks(&document,&collection, &content )
+        .get_chunks(&document, &content)
         .await?;
 
     let chunks = match chunks {

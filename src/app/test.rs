@@ -1,16 +1,13 @@
 //! Test utilites.
 
-use std::sync::Arc;
-
-use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
-use testcontainers_modules::postgres::Postgres;
-
-use crate::core::provider::ProviderState;
-
 use super::{
     document::store::FsDocumentStore,
     state::{DocumentStoreProvider, EmbeddingProvider, VectorStoreProvider},
 };
+use crate::core::provider::ProviderState;
+use std::sync::Arc;
+use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
+use testcontainers_modules::postgres::Postgres;
 
 pub type PostgresContainer = ContainerAsync<Postgres>;
 pub type AsyncContainer = ContainerAsync<GenericImage>;

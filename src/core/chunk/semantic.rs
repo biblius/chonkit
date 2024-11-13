@@ -61,9 +61,7 @@ pub struct SemanticWindowConfig {
     /// The model to use for embeddings.
     pub embed_model: String,
 
-    /// Embedder provider, not used in the chunker and serves
-    /// solely as metadata.
-    #[serde(skip_deserializing)]
+    /// Embedder provider used to load the appropriate embedder.
     pub embed_provider: String,
 }
 

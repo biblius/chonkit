@@ -8,7 +8,6 @@ use crate::{
         },
         embedder::Embedder,
         model::{
-            collection::Collection,
             document::{Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType},
             List, PaginationSort,
         },
@@ -115,7 +114,6 @@ where
     pub async fn get_chunks<'content>(
         &self,
         document: &Document,
-        collection: &Collection,
         content: &'content str,
     ) -> Result<ChunkedDocument<'content>, ChonkitError> {
         let mut chunker = self
@@ -130,13 +128,12 @@ where
                 ))
             })?;
 
-        let embedder = self
-            .providers
-            .embedding
-            .get_provider(&collection.embedder)?;
-
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
+            let embedder = self
+                .providers
+                .embedding
+                .get_provider(&chunker.config.embed_provider)?;
             chunker.embedder(embedder);
         }
 

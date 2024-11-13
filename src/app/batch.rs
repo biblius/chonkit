@@ -170,12 +170,7 @@ impl BatchEmbedder {
             // Get the content and chunk it
 
             let content = ok_or_continue!(services.document.get_content(document_id).await);
-            let chunks = ok_or_continue!(
-                services
-                    .document
-                    .get_chunks(&document, &collection, &content)
-                    .await
-            );
+            let chunks = ok_or_continue!(services.document.get_chunks(&document, &content).await);
             let chunks = match chunks {
                 crate::core::chunk::ChunkedDocument::Ref(r) => r,
                 crate::core::chunk::ChunkedDocument::Owned(ref o) => {
