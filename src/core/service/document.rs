@@ -41,14 +41,17 @@ where
 
     /// Get a paginated list of documents from the repository.
     ///
-    /// * `p`: Pagination.
+    /// * `p`: Pagination and sorting options.
+    /// * `src`: Optional document source to filter by.
+    /// * `ready`: If given and `true`, return only documents that are ready for processing.
     pub async fn list_documents(
         &self,
         p: PaginationSort,
         src: Option<&str>,
+        ready: Option<bool>,
     ) -> Result<List<Document>, ChonkitError> {
         p.validate()?;
-        self.repo.list(p, src).await
+        self.repo.list(p, src, ready).await
     }
 
     /// Get a paginated list of documents from the repository with additional info for each.

@@ -96,6 +96,7 @@ impl DocumentRepo for PgPool {
         &self,
         params: PaginationSort,
         src: Option<&str>,
+        ready: Option<bool>,
     ) -> Result<List<Document>, ChonkitError> {
         let mut query =
             sqlx::query_builder::QueryBuilder::<Postgres>::new("SELECT COUNT(id) FROM documents");
@@ -114,11 +115,69 @@ impl DocumentRepo for PgPool {
         let (sort_by, sort_dir) = params.to_sort();
 
         let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
-            r#"SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at FROM documents"#,
+            r#"
+            SELECT 
+                documents.id,
+                documents.name,
+                documents.path,
+                documents.ext,
+                documents.hash,
+                documents.src,
+                documents.label,
+                documents.tags,
+                documents.created_at,
+                documents.updated_at
+            FROM documents"#,
         );
 
-        if let Some(src) = src {
-            query.push(" WHERE src = ").push_bind(src);
+        match (ready, src) {
+            (Some(ready), None) => {
+                if ready {
+                    query.push(
+                        r#"
+                        INNER JOIN chunkers ON chunkers.document_id = documents.id
+                        INNER JOIN parsers ON parsers.document_id = documents.id
+                        "#,
+                    );
+                } else {
+                    query.push(
+                        r#"
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM chunkers WHERE chunkers.document_id = documents.id
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 FROM parsers WHERE parsers.document_id = documents.id
+                        )
+                    "#,
+                    );
+                }
+            }
+            (Some(ready), Some(src)) => {
+                if ready {
+                    query.push(
+                        r#"
+                        INNER JOIN chunkers ON chunkers.document_id = documents.id
+                        INNER JOIN parsers ON parsers.document_id = documents.id
+                        "#,
+                    );
+                    query.push(" WHERE src = ").push_bind(src);
+                } else {
+                    query.push(" WHERE src = ").push_bind(src).push(
+                        r#"
+                        AND NOT EXISTS (
+                            SELECT 1 FROM chunkers WHERE chunkers.document_id = documents.id
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 FROM parsers WHERE parsers.document_id = documents.id
+                        )
+                        "#,
+                    );
+                }
+            }
+            (None, Some(src)) => {
+                query.push(" WHERE src = ").push_bind(src);
+            }
+            (None, None) => {}
         }
 
         query

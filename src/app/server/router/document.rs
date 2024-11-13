@@ -41,7 +41,7 @@ pub(super) async fn list_documents(
 
     let documents = services
         .document
-        .list_documents(params.pagination, params.src.as_deref())
+        .list_documents(params.pagination, params.src.as_deref(), params.ready)
         .await?;
 
     Ok(Json(documents))

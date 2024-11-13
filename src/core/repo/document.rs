@@ -56,6 +56,7 @@ pub trait DocumentRepo {
         &self,
         p: PaginationSort,
         src: Option<&str>,
+        ready: Option<bool>,
     ) -> Result<List<Document>, ChonkitError>;
 
     /// List documents with limit and offset with additional relations for embeddings.
