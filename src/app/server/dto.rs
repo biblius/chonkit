@@ -15,6 +15,7 @@ use validify::{schema_err, schema_validation, Validate, ValidationErrors};
 #[serde(rename_all = "camelCase")]
 pub(super) struct UploadResult {
     pub documents: Vec<DocumentConfig>,
+
     /// Map form keys to errors
     pub errors: HashMap<String, Vec<String>>,
 }
