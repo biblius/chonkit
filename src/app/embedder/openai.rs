@@ -33,8 +33,8 @@ impl Embedder for OpenAiEmbeddings {
 
     async fn list_embedding_models(&self) -> Result<Vec<(String, usize)>, ChonkitError> {
         Ok(vec![
-            (String::from(TEXT_EMBEDDING_3_LARGE), 1536),
-            (String::from(TEXT_EMBEDDING_3_SMALL), 3072),
+            (String::from(TEXT_EMBEDDING_3_LARGE), 3072),
+            (String::from(TEXT_EMBEDDING_3_SMALL), 1536),
             (String::from(TEXT_EMBEDDING_ADA_002), 1536),
         ])
     }
