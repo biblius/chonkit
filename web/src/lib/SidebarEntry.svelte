@@ -66,17 +66,18 @@
   });
 </script>
 
+<!-- svelte-ignore a11y-click-events-have-key-events -->
 <li
   style="margin-left: {nesting}rem;"
   on:click={() => (isDir ? toggle(id) : loadDocument(id))}
 >
-  <p id={`side_${id}`} class="sidebar-entry">
+  <div id={`side_${id}`} class="sidebar-entry">
     {#if name.endsWith(".md")}
       <Icon icon={MdIcon} text={name} />
     {:else}
       <Icon icon={DirIcon} text={name} />
     {/if}
-  </p>
+  </div>
 </li>
 
 {#if open}
@@ -90,23 +91,10 @@
   {/each}
 {/if}
 
-<style>
+<style scoped>
   li {
     position: relative;
     height: fit-content;
     width: fit-content;
-  }
-
-  p {
-    box-sizing: border-box;
-    position: relative;
-    text-wrap: wrap;
-    padding-left: 0.5rem;
-    font-size: 0.7em;
-    word-break: break-all;
-  }
-
-  p:hover {
-    cursor: pointer;
   }
 </style>

@@ -213,28 +213,19 @@
   </aside>
 </div>
 
-<style>
+<style scoped>
   nav {
-    position: sticky;
+    position: relative;
     left: 0;
     top: 0;
     margin: 0 0 1rem 0;
-    padding: 0 2rem;
-    width: 10%;
-    height: 100%;
+    padding: .5rem;
+    min-width: 250px;
+    min-height: 100vh;
   }
 
   nav h1 {
-    width: 100%;
-    margin: 1rem 0;
     font-size: 1.6em;
-    text-align: center;
-  }
-
-  @media screen and (max-width: 1000px) {
-    nav h1 {
-      font-size: 1.6em;
-    }
   }
 
   aside {
@@ -267,9 +258,4 @@
   h1 {
     font-size: 1em;
   }
-
-  /* .chunk {
-    font-size: 0.7em;
-    word-break: break-all;
-  } */
 </style>
