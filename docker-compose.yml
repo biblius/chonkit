@@ -49,11 +49,10 @@ services:
       CLUSTER_HOSTNAME: "node1"
 
   api:
+    profiles: ["api"]
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        VEC_DB: qdrant
     container_name: api
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/chonkit

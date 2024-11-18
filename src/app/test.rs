@@ -1,4 +1,7 @@
-//! Test utilites.
+//! Test suites and utilites.
+
+mod document;
+mod vector;
 
 use super::{
     document::store::FsDocumentStore,
@@ -12,7 +15,7 @@ use testcontainers_modules::postgres::Postgres;
 pub type PostgresContainer = ContainerAsync<Postgres>;
 pub type AsyncContainer = ContainerAsync<GenericImage>;
 
-pub struct TestState {
+struct TestState {
     /// Individual clients for repository and vector database implementations.
     pub clients: TestClients,
 
@@ -62,7 +65,7 @@ impl TestState {
             store: Arc::new(store.clone()),
         };
 
-        let clients = TestClients::new(
+        let clients = TestClients {
             postgres,
             #[cfg(feature = "qdrant")]
             qdrant,
@@ -70,15 +73,15 @@ impl TestState {
             weaviate,
             #[cfg(feature = "fembed")]
             fastembed,
-        );
+        };
 
-        let containers = TestContainers::new(
-            postgres_img,
+        let containers = TestContainers {
+            postgres: postgres_img,
             #[cfg(feature = "qdrant")]
-            qdrant_img,
+            qdrant: qdrant_img,
             #[cfg(feature = "weaviate")]
-            weaviate_img,
-        );
+            weaviate: weaviate_img,
+        };
 
         TestState {
             clients,
@@ -88,12 +91,12 @@ impl TestState {
     }
 }
 
-pub struct TestStateConfig {
+struct TestStateConfig {
     pub fs_store_path: String,
 }
 
 /// Holds clients for repository and vector database implementations.
-pub struct TestClients {
+struct TestClients {
     pub postgres: sqlx::PgPool,
 
     #[cfg(feature = "qdrant")]
@@ -106,27 +109,8 @@ pub struct TestClients {
     pub fastembed: std::sync::Arc<super::embedder::fastembed::FastEmbedder>,
 }
 
-impl TestClients {
-    fn new(
-        postgres: sqlx::PgPool,
-        #[cfg(feature = "qdrant")] qdrant: super::vector::qdrant::QdrantDb,
-        #[cfg(feature = "weaviate")] weaviate: super::vector::weaviate::WeaviateDb,
-        #[cfg(feature = "fembed")] fastembed: Arc<super::embedder::fastembed::FastEmbedder>,
-    ) -> Self {
-        Self {
-            postgres,
-            #[cfg(feature = "qdrant")]
-            qdrant,
-            #[cfg(feature = "weaviate")]
-            weaviate,
-            #[cfg(feature = "fembed")]
-            fastembed,
-        }
-    }
-}
-
 /// Holds test container images so they don't get dropped during execution of test suites.
-pub struct TestContainers {
+struct TestContainers {
     pub postgres: PostgresContainer,
 
     #[cfg(feature = "qdrant")]
@@ -134,22 +118,6 @@ pub struct TestContainers {
 
     #[cfg(feature = "weaviate")]
     pub weaviate: ContainerAsync<GenericImage>,
-}
-
-impl TestContainers {
-    fn new(
-        postgres: PostgresContainer,
-        #[cfg(feature = "qdrant")] qdrant: ContainerAsync<GenericImage>,
-        #[cfg(feature = "weaviate")] weaviate: ContainerAsync<GenericImage>,
-    ) -> Self {
-        Self {
-            postgres,
-            #[cfg(feature = "qdrant")]
-            qdrant,
-            #[cfg(feature = "weaviate")]
-            weaviate,
-        }
-    }
 }
 
 /// Setup a postgres test container and connect to it using PgPool.

@@ -19,9 +19,6 @@ use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
-pub mod document;
-pub mod vector;
-
 #[derive(Clone)]
 pub struct GlobalState {
     pub app_state: AppState,
@@ -85,10 +82,10 @@ impl AppState {
         );
 
         #[cfg(feature = "fe-local")]
-        let fastembed = Arc::new(crate::app::embedder::fastembed::local::FastEmbedder::new());
+        let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder::new());
 
         #[cfg(feature = "fe-remote")]
-        let fastembed = Arc::new(crate::app::embedder::fastembed::remote::FastEmbedder::new(
+        let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder::new(
             args.fembed_url(),
         ));
 

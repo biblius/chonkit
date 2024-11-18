@@ -12,7 +12,7 @@ if [[ $? == 0 ]]; then
 	echo "Created directory 'upload'"
 fi
 
-docker compose -f infra-compose.yml up -d
+docker compose up -d
 
 echo "Enter your OpenAI API key (press Enter to skip):"
 read -s oai_key
