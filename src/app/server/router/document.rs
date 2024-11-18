@@ -120,12 +120,12 @@ pub(super) async fn delete_document(
 #[utoipa::path(
     post,
     path = "/documents",
+    request_body(content = String, content_type = "multipart/form-data"),
     responses(
         (status = 200, description = "Upload documents", body = UploadResult),
         (status = 400, description = "Bad request"),
         (status = 500, description = "Internal server error")
     ),
-    request_body = axum::extract::Multipart
 )]
 pub(super) async fn upload_documents(
     services: axum::extract::State<ServiceState>,

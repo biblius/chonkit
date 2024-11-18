@@ -64,25 +64,6 @@ impl AppState {
             &args.upload_path(),
         ));
 
-        #[cfg(feature = "fe-local")]
-        tracing::info!(
-            "Cuda available: {:?}",
-            ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
-        );
-
-        #[cfg(feature = "fe-local")]
-        let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder::new());
-
-        #[cfg(feature = "fe-remote")]
-        let fastembed = Arc::new(crate::app::embedder::fastembed::FastEmbedder::new(
-            args.fembed_url(),
-        ));
-
-        #[cfg(feature = "openai")]
-        let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
-            &args.open_ai_key(),
-        ));
-
         #[cfg(feature = "qdrant")]
         let qdrant = crate::app::vector::qdrant::init(&args.qdrant_url());
 
@@ -96,6 +77,25 @@ impl AppState {
             #[cfg(feature = "weaviate")]
             weaviate,
         });
+
+        #[cfg(feature = "fe-local")]
+        tracing::info!(
+            "Cuda available: {:?}",
+            ort::ExecutionProvider::is_available(&ort::CUDAExecutionProvider::default())
+        );
+
+        #[cfg(feature = "fe-local")]
+        let fastembed = Arc::new(crate::app::embedder::fastembed::local::FastEmbedder::new());
+
+        #[cfg(feature = "fe-remote")]
+        let fastembed = Arc::new(crate::app::embedder::fastembed::remote::FastEmbedder::new(
+            args.fembed_url(),
+        ));
+
+        #[cfg(feature = "openai")]
+        let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
+            &args.open_ai_key(),
+        ));
 
         let embedding_provider = Arc::new(EmbeddingProvider {
             #[cfg(feature = "fembed")]
@@ -207,7 +207,7 @@ pub struct AppConfig {
 macro_rules! provider {
     (
         $target:ident -> $provider_out:ident,
-        $($($feature:literal =>)? $provider:ident => $state_id:ident),*
+        $($($feature:literal =>)? $state_id:ident),*
         $(,)?;
         $constant_name:ident
     ) => {
@@ -240,21 +240,21 @@ macro_rules! provider {
 
 provider! {
     EmbeddingProvider -> Embedder,
-        "fembed" => FastEmbed => fastembed,
-        "openai" => OpenAi => openai;
+        "fembed" => fastembed,
+        "openai" =>  openai;
     EMBEDDING_PROVIDERS
 }
 
 provider! {
     VectorStoreProvider -> VectorDb,
-        "qdrant" => Qdrant => qdrant,
-        "weaviate" => Weaviate => weaviate;
+        "qdrant" => qdrant,
+        "weaviate" => weaviate;
     VECTOR_PROVIDERS
 }
 
 provider! {
     DocumentStoreProvider -> DocumentStore,
-        FsDocumentStore => fs_store;
+        fs_store;
     DOCUMENT_PROVIDERS
 }
 
@@ -301,14 +301,3 @@ pub struct VectorStoreProvider {
 pub struct DocumentStoreProvider {
     pub fs_store: Arc<FsDocumentStore>,
 }
-
-// #[macro_export]
-// macro_rules! conditional_state {
-//     (
-//         $( $id:ident = $provider:ident { $( $feature:literal : $state_id:ident ),* $(,)? } $(,)? )*
-// ) => {
-//      $(
-//
-//      )*
-// };
-// }
