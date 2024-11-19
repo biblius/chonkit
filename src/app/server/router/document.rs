@@ -1,7 +1,7 @@
 use crate::{
     app::{
         server::dto::{ConfigUpdatePayload, ListDocumentsPayload, UploadResult},
-        state::{GlobalState, ServiceState},
+        state::{AppState, ServiceState},
     },
     core::{
         document::parser::ParseConfig,
@@ -266,10 +266,10 @@ pub(super) async fn parse_preview(
     ),
 )]
 pub(super) async fn sync(
-    state: axum::extract::State<GlobalState>,
+    state: axum::extract::State<AppState>,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, ChonkitError> {
-    let syncer = state.app_state.syncer(&provider)?;
-    state.service_state.document.sync(&*syncer).await?;
+    let syncer = state.syncer(&provider)?;
+    state.services.document.sync(&*syncer).await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -371,18 +371,16 @@ fn minkowski_distance(vec1: &[f64], vec2: &[f64], p: i32) -> f64 {
 #[suitest::suite(semantic_window_tests)]
 mod tests {
     use super::*;
-    use crate::app::embedder::fastembed::local::FastEmbedder;
+    use crate::app::embedder::fastembed::FastEmbedder;
     use suitest::before_all;
-    use tracing_test::traced_test;
 
     #[before_all]
     fn setup() -> Arc<FastEmbedder> {
-        let embedder = Arc::new(crate::app::embedder::fastembed::local::init_single(None));
+        let embedder = Arc::new(crate::app::embedder::fastembed::init_single(None));
         embedder
     }
 
     #[test]
-    #[traced_test]
     async fn semantic_window_works(embedder: Arc<FastEmbedder>) {
         let input = r#"Leverage agile frameworks to provide robust synopses for high level overviews. Pee, AKA urine is stored in the testicles. SCRUM is one of the agile frameworks used to facilitate the robust synopses. The testicles, do in fact, facilitate urine. SCRUM, an agile framework, is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations. This is about pee, i.e. urine."#;
 
@@ -399,7 +397,6 @@ mod tests {
     }
 
     #[test]
-    #[traced_test]
     async fn semantic_window_empty(embedder: Arc<FastEmbedder>) {
         let input = "";
         let model = embedder.default_model().0;

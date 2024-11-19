@@ -29,10 +29,7 @@ mod document_service_integration_tests {
         })
         .await;
 
-        let service = DocumentService::new(
-            test_state.clients.postgres.clone(),
-            test_state.providers.clone(),
-        );
+        let service = test_state.app.services.document.clone();
 
         (test_state, service)
     }

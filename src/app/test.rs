@@ -3,11 +3,15 @@
 mod document;
 mod vector;
 
+use crate::core::service::{document::DocumentService, vector::VectorService};
+
 use super::{
     document::store::FsDocumentStore,
-    state::{DocumentStoreProvider, EmbeddingProvider, VectorStoreProvider},
+    state::{
+        AppProviderState, AppState, DocumentStoreProvider, EmbeddingProvider, ServiceState,
+        VectorStoreProvider,
+    },
 };
-use crate::core::provider::ProviderState;
 use std::sync::Arc;
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
 use testcontainers_modules::postgres::Postgres;
@@ -16,14 +20,11 @@ pub type PostgresContainer = ContainerAsync<Postgres>;
 pub type AsyncContainer = ContainerAsync<GenericImage>;
 
 struct TestState {
-    /// Individual clients for repository and vector database implementations.
-    pub clients: TestClients,
-
     /// Holds test containers so they don't get dropped.
     pub containers: TestContainers,
 
-    /// Holds the providers necessary for services.
-    pub providers: ProviderState,
+    /// Holds the downstream service providers necessary for chonkit services.
+    pub app: AppState,
 }
 
 impl TestState {
@@ -59,35 +60,53 @@ impl TestState {
             openai: panic!("cannot run test with `openai` enabled"),
         };
 
-        let providers = ProviderState {
+        let providers = AppProviderState {
+            database: postgres.clone(),
             vector: Arc::new(vector.clone()),
             embedding: Arc::new(embedding.clone()),
-            store: Arc::new(store.clone()),
-        };
-
-        let clients = TestClients {
-            postgres,
-            #[cfg(feature = "qdrant")]
-            qdrant,
-            #[cfg(feature = "weaviate")]
-            weaviate,
-            #[cfg(feature = "fembed")]
-            fastembed,
+            document: Arc::new(store.clone()),
         };
 
         let containers = TestContainers {
-            postgres: postgres_img,
+            _postgres: postgres_img,
             #[cfg(feature = "qdrant")]
-            qdrant: qdrant_img,
+            _qdrant: qdrant_img,
             #[cfg(feature = "weaviate")]
-            weaviate: weaviate_img,
+            _weaviate: weaviate_img,
         };
 
-        TestState {
-            clients,
-            containers,
-            providers,
+        let services = ServiceState {
+            vector: VectorService::new(postgres.clone(), providers.clone().into()),
+            document: DocumentService::new(postgres, providers.clone().into()),
+        };
+
+        let app = AppState::new_test(services, providers);
+
+        TestState { containers, app }
+    }
+
+    fn load_vector_providers_for_test(&self) -> Vec<&'static str> {
+        use crate::core::vector::VectorDb;
+
+        let mut expected = 0;
+        let mut vector_providers = vec![];
+
+        #[cfg(feature = "qdrant")]
+        {
+            vector_providers.push(self.app.providers.vector.qdrant.id());
+            expected += 1;
         }
+
+        #[cfg(feature = "weaviate")]
+        {
+            vector_providers.push(self.app.providers.vector.weaviate.id());
+            expected += 1;
+        }
+
+        // Sanity check
+        assert_eq!(expected, vector_providers.len());
+
+        vector_providers
     }
 }
 
@@ -111,13 +130,13 @@ struct TestClients {
 
 /// Holds test container images so they don't get dropped during execution of test suites.
 struct TestContainers {
-    pub postgres: PostgresContainer,
+    pub _postgres: PostgresContainer,
 
     #[cfg(feature = "qdrant")]
-    pub qdrant: ContainerAsync<GenericImage>,
+    pub _qdrant: ContainerAsync<GenericImage>,
 
     #[cfg(feature = "weaviate")]
-    pub weaviate: ContainerAsync<GenericImage>,
+    pub _weaviate: ContainerAsync<GenericImage>,
 }
 
 /// Setup a postgres test container and connect to it using PgPool.

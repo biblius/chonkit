@@ -13,7 +13,6 @@ mod vector_service_integration_tests {
             provider::ProviderState,
             repo::{document::DocumentRepo, vector::VectorRepo},
             service::vector::dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload},
-            vector::VectorDb,
         },
         error::ChonkitError,
         DEFAULT_COLLECTION_NAME,
@@ -29,10 +28,10 @@ mod vector_service_integration_tests {
     #[before_all]
     async fn setup() -> (
         PgPool,
+        Arc<FastEmbedder>,
         VectorService,
         ProviderState,
         Vec<&'static str>,
-        Arc<FastEmbedder>,
         TestContainers,
     ) {
         tokio::fs::create_dir(TEST_UPLOAD_PATH).await.unwrap();
@@ -42,40 +41,25 @@ mod vector_service_integration_tests {
         })
         .await;
 
-        let service = VectorService::new(
-            test_state.clients.postgres.clone(),
-            test_state.providers.clone(),
-        );
+        let service = test_state.app.services.vector.clone();
 
-        let mut expected = 0;
-        let mut vector_providers = vec![];
-
-        #[cfg(feature = "qdrant")]
-        {
-            vector_providers.push(test_state.clients.qdrant.id());
-            expected += 1;
-        }
-
-        #[cfg(feature = "weaviate")]
-        {
-            vector_providers.push(test_state.clients.weaviate.id());
-            expected += 1;
-        }
-
-        assert_eq!(expected, vector_providers.len());
+        let vector_providers = test_state.load_vector_providers_for_test();
 
         for provider in vector_providers.iter() {
             service
-                .create_default_collection(provider, test_state.clients.fastembed.id())
+                .create_default_collection(
+                    provider,
+                    test_state.app.providers.embedding.fastembed.id(),
+                )
                 .await;
         }
 
         (
-            test_state.clients.postgres,
+            test_state.app.providers.database.clone(),
+            test_state.app.providers.embedding.fastembed.clone(),
             service,
-            test_state.providers,
+            test_state.app.providers.into(),
             vector_providers,
-            test_state.clients.fastembed,
             test_state.containers,
         )
     }

@@ -1,11 +1,5 @@
 use super::api::ApiDoc;
-use crate::{
-    app::{
-        batch::BatchEmbedderHandle,
-        state::{AppState, GlobalState},
-    },
-    error::ChonkitError,
-};
+use crate::{app::state::AppState, error::ChonkitError};
 use axum::{
     extract::{DefaultBodyLimit, State},
     http::{HeaderValue, Method},
@@ -22,11 +16,7 @@ use utoipa_swagger_ui::SwaggerUi;
 pub(super) mod document;
 pub(super) mod vector;
 
-pub fn router(
-    state: GlobalState,
-    batch_embedder: BatchEmbedderHandle,
-    origins: Vec<String>,
-) -> Router {
+pub fn router(state: AppState, origins: Vec<String>) -> Router {
     let origins = origins
         .into_iter()
         .map(|origin| {
@@ -49,7 +39,7 @@ pub fn router(
     let app_state_router = Router::new()
         .route("/_health", get(health_check))
         .route("/info", get(app_config))
-        .with_state(state.app_state.clone());
+        .with_state(state.clone());
 
     let sync = Router::new()
         .route("/documents/sync/:provider", get(document::sync))
@@ -57,7 +47,6 @@ pub fn router(
 
     service_api(state)
         .merge(sync)
-        .merge(batch_api(batch_embedder))
         .merge(app_state_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(TraceLayer::new_for_http().on_failure(
@@ -68,9 +57,13 @@ pub fn router(
         .layer(cors)
 }
 
-fn service_api(state: GlobalState) -> Router {
+fn service_api(state: AppState) -> Router {
     use document::*;
     use vector::*;
+
+    let batch_router = Router::new()
+        .route("/embeddings/batch", post(batch_embed))
+        .with_state(state.batch_embedder);
 
     Router::new()
         .route("/documents", get(list_documents))
@@ -100,14 +93,8 @@ fn service_api(state: GlobalState) -> Router {
         .route("/display/documents", get(list_documents_display))
         .route("/display/collections", get(list_collections_display))
         .route("/display/collections/:id", get(collection_display))
-        .with_state(state.service_state)
-}
-
-fn batch_api(batch_embedder: BatchEmbedderHandle) -> Router {
-    use vector::batch_embed;
-    Router::new()
-        .route("/embeddings/batch", post(batch_embed))
-        .with_state(batch_embedder)
+        .with_state(state.services)
+        .merge(batch_router)
 }
 
 async fn health_check() -> impl IntoResponse {

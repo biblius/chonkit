@@ -96,7 +96,7 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let store = self.providers.store.get_provider(&document.src)?;
+        let store = self.providers.document.get_provider(&document.src)?;
 
         let ext = document.ext.as_str().try_into()?;
         let parser = self.get_parser(id, ext).await?;
@@ -152,7 +152,7 @@ where
 
         let DocumentUpload { ref name, ty, file } = params;
         let hash = sha256(file);
-        let store = self.providers.store.get_provider(storage_provider)?;
+        let store = self.providers.document.get_provider(storage_provider)?;
 
         let existing = self.repo.get_by_hash(&hash).await?;
 
@@ -185,7 +185,7 @@ where
         let Some(document) = self.repo.get_by_id(id).await? else {
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
-        let store = self.providers.store.get_provider(&document.src)?;
+        let store = self.providers.document.get_provider(&document.src)?;
         self.repo.remove_by_id(document.id).await?;
         store.delete(&document.path).await
     }
@@ -254,7 +254,7 @@ where
             return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
         };
 
-        let store = self.providers.store.get_provider(&document.src)?;
+        let store = self.providers.document.get_provider(&document.src)?;
 
         let ext = document.ext.as_str().try_into()?;
         let parser = Parser::new_from(ext, config);

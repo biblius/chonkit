@@ -15,6 +15,7 @@ pub trait ProviderFactory<T> {
 }
 
 /// Holds the factories for all available providers.
+/// Chonkit services use this to obtain concrete implementations of their dependencies.
 #[derive(Clone)]
 pub struct ProviderState {
     /// Vector database provider.
@@ -24,5 +25,5 @@ pub struct ProviderState {
     pub embedding: Arc<dyn ProviderFactory<DynEmbedder> + Send + Sync>,
 
     /// Document storage provider.
-    pub store: Arc<dyn ProviderFactory<DynDocumentStore> + Send + Sync>,
+    pub document: Arc<dyn ProviderFactory<DynDocumentStore> + Send + Sync>,
 }
