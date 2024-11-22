@@ -1,11 +1,5 @@
 #!/bin/bash
 
-mkdir chunks &> /dev/null
-
-if [[ $? == 0 ]]; then 
-	echo "Created directory 'chunks'"
-fi
-
 mkdir upload &> /dev/null
 
 if [[ $? == 0 ]]; then 

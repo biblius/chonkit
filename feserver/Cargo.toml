@@ -1,0 +1,19 @@
+[package]
+name = "feserver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.35.1", features = ["rt-multi-thread", "macros"] }
+axum = { version = "0.7.4", features = ["multipart"] }
+axum-macros = { version = "0.4.1" }
+tower-http = { version = "0.5.0", features = ["tracing", "trace"] }
+clap = { version = "4.5.3", features = ["derive"] }
+serde = "1.0.183"
+serde_json = { version = "1.0.114", features = ["raw_value"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+chonkit-embedders = { path = "../embedders", default-features = false, features = [
+	"fe-local",
+	"cuda",
+] }

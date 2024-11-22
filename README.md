@@ -75,16 +75,15 @@ into them.
 
 ## OpenAPI documentation
 
-OpenAPI documentation is available at any chonker instance at `http://your-address/swagger-ui`.
+OpenAPI documentation is available at any chonkit instance at `http://your-address/swagger-ui`.
 
 ## Binaries
 
-Chonkit offers the following binaries:
+This workspace consists the following binaries:
 
-- Server (`--bin server`); exposes an HTTP API around `chonkit`'s core functionality.
-- Fastembedder (`--bin fembedder`); A small binary used to initiate fastembed in
-  CUDA mode on a remote machine that can be used as an embedding API,
-  similarly to OpenAI.
+- chonkit; exposes an HTTP API around `chonkit`'s core functionality.
+- feserver; used to initiate fastembed with
+  CUDA and expose an HTTP API for embeddings.
 
 ## Building
 
@@ -124,6 +123,8 @@ In order to let cargo know of its existence, you have 2 options:
 
 The latter is the preferred option as it is the least involved.
 
+See also: [rpath](https://en.wikipedia.org/wiki/Rpath).
+
 Note: The same procedure is applicable on Mac, only the paths and
 actual library files will be different.
 
@@ -145,19 +146,21 @@ Fastembed, and in turn `ort`, will then use the CUDA execution provider for the
 onnxruntime. `ort` is designed to fail gracefully if it cannot register CUDA as
 one of the execution providers and the CPU provider will be used as fallback.
 
+Additionally, if running `feserver` with Docker, [these instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#installation)
+need to be followed to enable GPUs in Docker.
+
 ### Features
 
 The following is a table of the supported build features.
 
-| Feature     | Configuration      | Description                                                                                                                       |
-| ----------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `qdrant`    | VectorDb provider  | Enable qdrant as one of the vector database providers.                                                                            |
-| `weaviate`  | VectorDb provider  | Enable weaviate as one of the vector database providers.                                                                          |
-| `fembed`    | Embedder provider  | Enable fastembed as one of the embedding providers. One of either `fe-local` or `fe-remote` is necessary when enabling this flag. |
-| `fe-local`  | Embedder provider  | Use the local implementation of `Embedder` for `FastEmbedder`. Mutually exclusive with `fe-remote`.                               |
-| `fe-remote` | Embedder provider  | Use the remote implementation of `Embedder` for `FastEmbedder`. Mutually exclusive with `fe-local`.                               |
-| `openai`    | Embedder provider  | Enable openai as one of the embedding providers.                                                                                  |
-| `cuda`      | Execution provider | Available when using `fe-local`. When enabled, uses the CUDAExecutionProvider for the onnxruntime.                                |
+| Feature     | Configuration      | Description                                                                                         |
+| ----------- | ------------------ | --------------------------------------------------------------------------------------------------- |
+| `qdrant`    | VectorDb provider  | Enable qdrant as one of the vector database providers.                                              |
+| `weaviate`  | VectorDb provider  | Enable weaviate as one of the vector database providers.                                            |
+| `fe-local`  | Embedder provider  | Use the implementation of `Embedder` with `LocalFastEmbedder`. Mutually exclusive with `fe-remote`. |
+| `fe-remote` | Embedder provider  | Use the implementation of `Embedder` with `RemoteFastEmbedder`. Mutually exclusive with `fe-local`. |
+| `openai`    | Embedder provider  | Enable openai as one of the embedding providers.                                                    |
+| `cuda`      | Execution provider | Available when using `fe-local`. When enabled, uses the CUDAExecutionProvider for the onnxruntime.  |
 
 #### Full build command example
 
@@ -184,9 +187,6 @@ the `DATABASE_URL` environment variable.
 unset DATABASE_URL
 ```
 
-See the [dockerfile](Dockerfile) and [docker-compose file](docker-compose.yml)
-for more details.
-
 ### Local quickstart
 
 ```bash
@@ -194,7 +194,6 @@ source setup.sh
 cargo run --bin server
 ```
 
-Creates the 'chunk' directory for storing chunks for inspection.
 Creates the 'upload' directory for storing uploaded documents.
 Starts the infrastructure containers (postgres, qdrant, weaviate).
 Exports the necessary environment variables to run chonkit.

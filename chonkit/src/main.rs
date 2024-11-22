@@ -1,0 +1,38 @@
+/// Concrete implementations of the [core] module.
+pub mod app;
+
+/// Application starting arguments and configuration.
+pub mod config;
+
+/// Core business logic.
+pub mod core;
+
+/// Error types.
+pub mod error;
+
+/// The name for the default collection created on application startup.
+pub const DEFAULT_COLLECTION_NAME: &str = "Chonkit_Default_Collection";
+
+use clap::Parser;
+use tracing::info;
+
+#[tokio::main]
+async fn main() {
+    let args = chonkit::config::StartArgs::parse();
+    let app = chonkit::app::state::AppState::new(&args).await;
+
+    let addr = args.address();
+    let origins = args.allowed_origins();
+
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("error while starting TCP listener");
+
+    let router = chonkit::app::server::router::router(app, origins);
+
+    info!("Listening on {addr}");
+
+    axum::serve(listener, router)
+        .await
+        .expect("error while starting server");
+}

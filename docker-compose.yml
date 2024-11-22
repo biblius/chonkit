@@ -48,12 +48,23 @@ services:
       ENABLE_MODULES: ""
       CLUSTER_HOSTNAME: "node1"
 
-  api:
-    profiles: ["api"]
+  feserver:
+    profiles: ["remote"]
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: api
+      dockerfile: "docker/feserver.Dockerfile"
+    container_name: feserver
+    ports:
+      - "6969:6969"
+    volumes:
+      - feserver_data:/var/lib/docker/feserver/data
+
+  api-local:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: "docker/chonkit.Dockerfile"
+    container_name: chonkit
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/chonkit
       QDRANT_URL: http://qdrant:6334
@@ -68,8 +79,33 @@ services:
     volumes:
       - chonkit_data:/var/lib/docker/chonkit/data
 
+  api-remote:
+    profiles: ["remote"]
+    build:
+      context: .
+      dockerfile: "docker/chonkit.Dockerfile"
+      args:
+        FEATURES: "fe-remote qdrant weaviate"
+    container_name: chonkit
+    environment:
+      FEMBED_URL: http://feserver:6969
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/chonkit
+      QDRANT_URL: http://qdrant:6334
+      WEAVIATE_URL: http://weaviate:8080
+      ALLOWED_ORIGINS: http://localhost:3000
+    depends_on:
+      - postgres
+      - qdrant
+      - weaviate
+      - feserver
+    ports:
+      - "42069:42069"
+    volumes:
+      - chonkit_data:/var/lib/docker/chonkit/data
+
 volumes:
   postgres_data:
   qdrant_data:
   chonkit_data:
   weaviate_data:
+  feserver_data:

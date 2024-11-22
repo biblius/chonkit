@@ -1,0 +1,23 @@
+[package]
+name = "chonkit-embedders"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.183"
+tracing = "0.1.40"
+thiserror = "1.0.56"
+
+# fe-local
+fastembed = { version = "4.0.0", optional = true }
+ort = { version = "2.0.0-rc.5", features = ["load-dynamic"], optional = true }
+
+# fe-remote/openai
+reqwest = { version = "0.12.7", features = ["json"], optional = true }
+
+[features]
+default = ["fe-local", "fe-remote", "openai"]
+fe-local = ["fastembed", "ort"]
+cuda = ["ort?/cuda"]
+fe-remote = ["reqwest"]
+openai = ["reqwest"]
