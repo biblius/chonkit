@@ -1,5 +1,5 @@
 use super::{ChunkerError, DocumentChunker};
-use crate::{core::chunk::ChunkBaseConfig, error::ChonkitError};
+use crate::{core::chunk::ChunkBaseConfig, error::ChonkitError, map_err};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use validify::Validate;
@@ -37,7 +37,7 @@ impl<'a> DocumentChunker<'a> for SlidingWindow {
     type Output = &'a str;
 
     async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
-        self.config.validate()?;
+        map_err!(self.config.validate());
 
         let SlidingWindow {
             config: ChunkBaseConfig { size, overlap },

@@ -1,5 +1,5 @@
 use super::state::ServiceState;
-use crate::{core::service::vector::dto::CreateEmbeddings, error::ChonkitError};
+use crate::{core::service::vector::dto::CreateEmbeddings, err, error::ChonkitError};
 use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -153,9 +153,10 @@ impl BatchEmbedder {
             );
 
             let exists = if embeddings.is_some() {
-                Err(ChonkitError::AlreadyExists(format!(
+                err!(
+                    AlreadyExists,
                     "Embeddings for '{document_id}' in collection '{collection_id}'"
-                )))
+                )
             } else {
                 Ok(())
             };
@@ -179,8 +180,8 @@ impl BatchEmbedder {
             };
 
             let create = CreateEmbeddings {
-                id: document.id,
-                collection: collection.id,
+                document_id: document.id,
+                collection_id: collection.id,
                 chunks: &chunks,
             };
 

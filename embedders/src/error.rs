@@ -6,10 +6,10 @@ pub enum EmbeddingError {
     InvalidModel(String),
 
     #[cfg(feature = "fe-local")]
-    #[error("fastembed error: {0}")]
+    #[error(transparent)]
     Fastembed(#[from] fastembed::Error),
 
     #[cfg(any(feature = "openai", feature = "fe-remote"))]
-    #[error("http client error: {0}")]
+    #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 }

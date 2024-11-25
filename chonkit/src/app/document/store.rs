@@ -11,7 +11,9 @@ use crate::{
         },
         repo::document::DocumentRepo,
     },
+    err,
     error::ChonkitError,
+    map_err,
 };
 use std::{path::PathBuf, str::FromStr, time::Instant};
 use tracing::{debug, error, info};
@@ -34,7 +36,6 @@ impl FsDocumentStore {
             panic!("not a directory: {path}");
         }
 
-        dbg!(&base);
         info!("Initialising fs store at {}", base.display());
 
         Self { base }
@@ -42,24 +43,15 @@ impl FsDocumentStore {
 
     fn get_extension(&self, pb: PathBuf) -> Result<DocumentType, ChonkitError> {
         if !pb.is_file() {
-            return Err(ChonkitError::InvalidFileName(format!(
-                "not a file: {}",
-                pb.display()
-            )));
+            return err!(InvalidFileName, "not a file: {}", pb.display());
         }
 
         let Some(ext) = pb.extension() else {
-            return Err(ChonkitError::InvalidFileName(format!(
-                "missing extension: {}",
-                pb.display()
-            )));
+            return err!(InvalidFileName, "missing extension: {}", pb.display());
         };
 
         let Some(ext) = ext.to_str() else {
-            return Err(ChonkitError::InvalidFileName(format!(
-                "extension invalid unicode: {:?}",
-                ext
-            )));
+            return err!(InvalidFileName, "extension invalid unicode: {:?}", ext);
         };
 
         DocumentType::try_from(ext)
@@ -78,7 +70,7 @@ impl DocumentStore for FsDocumentStore {
         parser: &(dyn DocumentParser + Sync),
     ) -> Result<String, ChonkitError> {
         debug!("Reading {}", document.path);
-        let file = tokio::fs::read(&document.path).await?;
+        let file = map_err!(tokio::fs::read(&document.path).await);
         parser.parse(&file)
     }
 
@@ -86,22 +78,20 @@ impl DocumentStore for FsDocumentStore {
         let path = format!("{}/{name}", self.base.display());
         debug!("Writing {path}");
         match tokio::fs::read(&path).await {
-            Ok(_) => Err(ChonkitError::AlreadyExists(format!(
-                "File '{name}' at {path}"
-            ))),
+            Ok(_) => err!(AlreadyExists, "File '{name}' at {path}"),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => {
-                    tokio::fs::write(&path, file).await?;
+                    map_err!(tokio::fs::write(&path, file).await);
                     Ok(path)
                 }
-                _ => Err(e.into()),
+                _ => Err(map_err!(Err(e))),
             },
         }
     }
 
     async fn delete(&self, path: &str) -> Result<(), ChonkitError> {
         debug!("Removing {path}");
-        Ok(tokio::fs::remove_file(path).await?)
+        Ok(map_err!(tokio::fs::remove_file(path).await))
     }
 }
 
@@ -133,15 +123,15 @@ where
                         );
                         repo.remove_by_id(document.id).await?;
                     }
-                    _ => return Err(e.into()),
+                    _ => return map_err!(Err(e)),
                 }
             }
         }
 
         // Store
-        let mut files = tokio::fs::read_dir(&self.base).await?;
+        let mut files = map_err!(tokio::fs::read_dir(&self.base).await);
 
-        while let Some(file) = files.next_entry().await? {
+        while let Some(file) = map_err!(files.next_entry().await) {
             let ext = match self.get_extension(file.path()) {
                 Ok(ext) => ext,
                 Err(e) => {
@@ -152,7 +142,7 @@ where
             let name = file.file_name().to_string_lossy().to_string();
             let path = file.path().display().to_string();
 
-            let content = tokio::fs::read(&path).await?;
+            let content = map_err!(tokio::fs::read(&path).await);
             let hash = sha256(&content);
 
             let doc = repo.get_by_path(&path).await?;

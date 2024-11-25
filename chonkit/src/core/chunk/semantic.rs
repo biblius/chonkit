@@ -2,7 +2,7 @@ use super::{
     cursor::{byte_count, Cursor, DEFAULT_SKIP_B, DEFAULT_SKIP_F},
     ChunkerError, DocumentChunker,
 };
-use crate::{core::embedder::Embedder, error::ChonkitError};
+use crate::{core::embedder::Embedder, error::ChonkitError, map_err};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc, usize};
@@ -139,17 +139,16 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
                 },
         } = self;
 
-        let embedder = embedder
-            .clone()
-            .ok_or_else(|| ChunkerError::Embedder("embedder not provided".to_string()))?;
+        let embedder = embedder.clone().unwrap();
 
-        embedder.size(embed_model).await?.ok_or_else(|| {
-            ChunkerError::Embedder(format!(
+        if embedder.size(embed_model).await?.is_none() {
+            let error = Err(ChunkerError::Embedder(format!(
                 "embedder {} does not support model {}",
                 embedder.id(),
                 embed_model
-            ))
-        })?;
+            )));
+            return map_err!(error);
+        };
 
         let total_bytes = byte_count(input);
 

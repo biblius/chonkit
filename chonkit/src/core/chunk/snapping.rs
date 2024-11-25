@@ -5,7 +5,7 @@ use super::{
     },
     ChunkBaseConfig, ChunkerError, DocumentChunker,
 };
-use crate::error::ChonkitError;
+use crate::{error::ChonkitError, map_err};
 use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
@@ -111,7 +111,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
     type Output = &'a str;
 
     async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
-        self.config.validate()?;
+        map_err!(self.config.validate());
 
         if input.trim().is_empty() {
             return Ok(vec![]);
@@ -158,7 +158,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
 
             start += byte_count(piece);
 
-            chunk = concat(chunk, piece)?;
+            chunk = map_err!(concat(chunk, piece));
 
             if byte_count(chunk) < *size {
                 // If the cursor is not finished, take another batch.
@@ -169,7 +169,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
                 // Otherwise, we are at the end of input.
                 let prev = &input[..cursor.byte_offset - byte_count(chunk)];
                 let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
-                let chunk_full = concat(prev, chunk)?;
+                let chunk_full = map_err!(concat(prev, chunk));
                 chunks.push(chunk_full);
 
                 #[cfg(debug_assertions)]
@@ -191,7 +191,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
             let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
             let (next, next_offset) = next_chunk(next, *overlap, *delim, skip_forward, skip_back);
 
-            let chunk_full = concat(concat(prev, chunk)?, next)?;
+            let chunk_full = map_err!(concat(map_err!(concat(prev, chunk)), next));
 
             // Skip the first chunk since its contents will be in the following one.
             if !prev.is_empty() {

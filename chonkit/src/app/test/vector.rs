@@ -14,7 +14,7 @@ mod vector_service_integration_tests {
             repo::{document::DocumentRepo, vector::VectorRepo},
             service::vector::dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload},
         },
-        error::ChonkitError,
+        error::ChonkitErr,
         DEFAULT_COLLECTION_NAME,
     };
     use suitest::{after_all, before_all, cleanup};
@@ -215,8 +215,8 @@ mod vector_service_integration_tests {
             let content = r#"Hello World!"#;
 
             let embeddings = CreateEmbeddings {
-                id: document.id,
-                collection: default.id,
+                document_id: document.id,
+                collection_id: default.id,
                 chunks: &[content],
             };
 
@@ -296,8 +296,8 @@ mod vector_service_integration_tests {
             let content = r#"Hello World!"#;
 
             let embeddings = CreateEmbeddings {
-                id: document.id,
-                collection: collection.id,
+                document_id: document.id,
+                collection_id: collection.id,
                 chunks: &[content],
             };
 
@@ -342,16 +342,17 @@ mod vector_service_integration_tests {
 
             let content = r#"Hello World!"#;
             let create = CreateEmbeddings {
-                id: document.id,
-                collection: default.id,
+                document_id: document.id,
+                collection_id: default.id,
                 chunks: &[content],
             };
 
             service.create_embeddings(create.clone()).await.unwrap();
 
             let duplicate = service.create_embeddings(create).await;
+            let error = duplicate.unwrap_err().error;
 
-            assert!(matches!(duplicate, Err(ChonkitError::AlreadyExists(_))));
+            assert!(matches!(error, ChonkitErr::AlreadyExists(_)));
 
             let amount = postgres.remove_by_id(document.id).await.unwrap();
             assert_eq!(1, amount);

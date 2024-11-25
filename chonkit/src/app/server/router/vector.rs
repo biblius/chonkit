@@ -1,11 +1,9 @@
 use crate::{
-    app::{batch::{BatchEmbedderHandle, BatchJob, JobResult}, server::dto::{ EmbeddingBatchPayload, EmbeddingSinglePayload, ListEmbeddingsPayload, }, state::ServiceState},
-    core::{
+    app::{batch::{BatchEmbedderHandle, BatchJob, JobResult}, server::dto::{ EmbeddingBatchPayload, EmbeddingSinglePayload, ListEmbeddingsPayload, }, state::ServiceState}, core::{
         chunk::ChunkedDocument, model::{
             collection::{Collection, CollectionDisplay, Embedding},  List, PaginationSort
         }, service::vector::dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload }
-    },
-    error::ChonkitError,
+    }, err, error::ChonkitError, map_err
 };
 use axum::{
     extract::{Path, Query, State}, http::StatusCode, response::{sse::Event, Sse}, Json
@@ -197,8 +195,8 @@ pub(super) async fn embed(
     };
 
     let create = CreateEmbeddings {
-        id: document.id,
-        collection: collection.id,
+        document_id: document.id,
+        collection_id: collection.id,
         chunks: &chunks,
     };
 
@@ -222,7 +220,7 @@ pub(super) async fn batch_embed(
     State(batch_embedder): axum::extract::State<BatchEmbedderHandle>,
     Json(job): Json<EmbeddingBatchPayload>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, ChonkitError>>>, ChonkitError> {
-    job.validate()?;
+    map_err!(job.validate());
 
     let EmbeddingBatchPayload {
         collection,
@@ -236,12 +234,19 @@ pub(super) async fn batch_embed(
 
     if let Err(e) = batch_embedder.send(job).await {
         tracing::error!("Error sending embedding job: {:?}", e.0);
-        return Err(ChonkitError::Batch);
+        return err!(Batch);
     };
 
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|result| {
         let event = match result {
-            JobResult::Ok(report) => Event::default().json_data(report)?,
+            JobResult::Ok(report) => match Event::default().json_data(report) {
+                Ok(event) => event,
+                Err(err) => {
+                    tracing::error!("Error serializing embedding report: {err}");
+                    let err = format!("error: {err}");
+                    Event::default().data(err)
+                }
+            },
             JobResult::Err(err) => {
                 tracing::error!("Received error in batch embedder: {err}");
                 let err = format!("error: {err}");

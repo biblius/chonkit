@@ -1,5 +1,5 @@
 use super::{DocumentParser, ParseConfig};
-use crate::{core::model::document::DocumentType, error::ChonkitError};
+use crate::{core::model::document::DocumentType, error::ChonkitError, map_err};
 use pdfium_render::prelude::Pdfium;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Write, time::Instant};
@@ -34,7 +34,7 @@ impl DocumentParser for PdfParser {
         } = self.config;
 
         let pdfium = Pdfium::default();
-        let input = pdfium.load_pdf_from_byte_slice(input, None)?;
+        let input = map_err!(pdfium.load_pdf_from_byte_slice(input, None));
 
         let mut out = String::new();
 
@@ -63,7 +63,7 @@ impl DocumentParser for PdfParser {
             }
 
             // page_num is 0 based
-            let text = page.text()?;
+            let text = map_err!(page.text());
 
             'lines: for line in text.all().lines() {
                 let line = line.trim();

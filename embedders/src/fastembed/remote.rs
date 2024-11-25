@@ -30,7 +30,7 @@ impl RemoteFastEmbedder {
         let url = self.url("embed");
         let request = EmbedRequest {
             model: model.to_string(),
-            content: content.iter().map(|s| s.to_string()).collect(),
+            input: content.iter().map(|s| s.to_string()).collect(),
         };
 
         let response: EmbedResponse = self
@@ -41,6 +41,8 @@ impl RemoteFastEmbedder {
             .await?
             .json()
             .await?;
+
+        debug_assert_eq!(content.len(), response.embeddings.len());
 
         Ok(response.embeddings)
     }
@@ -53,7 +55,7 @@ impl RemoteFastEmbedder {
 #[derive(Debug, Serialize)]
 pub struct EmbedRequest {
     model: String,
-    content: Vec<String>,
+    input: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

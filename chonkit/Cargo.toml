@@ -64,11 +64,13 @@ axum-extra = { version = "0.9.3", features = [
 utoipa = { version = "4.2.3", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
 serde_with = "3.11.0"
+anyhow = { version = "1.0.93", features = ["backtrace"] }
 
 [features]
 default = ["weaviate", "qdrant", "fe-local", "openai"]
 fe-local = ["chonkit-embedders", "chonkit-embedders?/fe-local"]
 fe-remote = ["chonkit-embedders", "chonkit-embedders?/fe-remote"]
+cuda = ["chonkit-embedders?/cuda"]
 openai = ["chonkit-embedders", "chonkit-embedders?/openai"]
 weaviate = ["weaviate-community"]
 qdrant = ["qdrant-client"]

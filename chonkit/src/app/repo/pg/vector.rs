@@ -9,7 +9,9 @@ use crate::{
         },
         repo::{vector::VectorRepo, Atomic},
     },
+    err,
     error::ChonkitError,
+    map_err,
 };
 use chrono::{DateTime, Utc};
 use sqlx::{prelude::FromRow, PgPool, Postgres};
@@ -21,10 +23,10 @@ impl VectorRepo for PgPool {
         &self,
         params: PaginationSort,
     ) -> Result<List<Collection>, ChonkitError> {
-        let total = sqlx::query!("SELECT COUNT(id) FROM collections")
+        let total = map_err!(sqlx::query!("SELECT COUNT(id) FROM collections")
             .fetch_one(self)
             .await
-            .map(|row| row.count.map(|count| count as usize))?;
+            .map(|row| row.count.map(|count| count as usize)));
 
         let (limit, offset) = params.to_limit_offset();
         let (sort_by, sort_dir) = params.to_sort();
@@ -40,10 +42,7 @@ impl VectorRepo for PgPool {
             .push(" OFFSET ")
             .push_bind(offset);
 
-        let collections: Vec<Collection> = query
-            .build_query_as()
-            .fetch_all(self)
-            .await?
+        let collections: Vec<Collection> = map_err!(query.build_query_as().fetch_all(self).await)
             .into_iter()
             .collect();
 
@@ -57,10 +56,10 @@ impl VectorRepo for PgPool {
         let (limit, offset) = p.to_limit_offset();
         let (sort_by, sort_dir) = p.to_sort();
 
-        let total = sqlx::query!("SELECT COUNT(id) FROM collections")
+        let total = map_err!(sqlx::query!("SELECT COUNT(id) FROM collections")
             .fetch_one(self)
             .await
-            .map(|row| row.count)?;
+            .map(|row| row.count));
 
         let mut query = sqlx::query_builder::QueryBuilder::<Postgres>::new(
             r#"
@@ -119,7 +118,7 @@ impl VectorRepo for PgPool {
         query.push(format!(" ORDER BY {sort_by} {sort_dir} "));
 
         let collections: Vec<CollectionDocumentJoin> =
-            query.build_query_as().fetch_all(self).await?;
+            map_err!(query.build_query_as().fetch_all(self).await);
 
         let mut result: HashMap<Uuid, CollectionDisplay> = HashMap::new();
 
@@ -200,48 +199,51 @@ impl VectorRepo for PgPool {
             query.fetch_one(self).await
         };
 
-        collection.map_err(|e| match e {
-            sqlx::Error::Database(err) if err.code().is_some_and(|code| code == "23505") => {
-                ChonkitError::AlreadyExists(format!("Collection '{name}' already exists"))
+        match collection {
+            Ok(collection) => Ok(collection),
+            Err(sqlx::Error::Database(e)) if e.code().is_some_and(|code| code == "23505") => {
+                err!(AlreadyExists, "Collection '{name}' already exists")
             }
-            _ => ChonkitError::from(e),
-        })
+            Err(e) => map_err!(Err(e)),
+        }
     }
 
     async fn delete_collection(&self, id: Uuid) -> Result<u64, ChonkitError> {
-        let result = sqlx::query!("DELETE FROM collections WHERE id = $1", id)
-            .execute(self)
-            .await?;
+        let result = map_err!(
+            sqlx::query!("DELETE FROM collections WHERE id = $1", id)
+                .execute(self)
+                .await
+        );
         Ok(result.rows_affected())
     }
 
     async fn get_collection(&self, id: Uuid) -> Result<Option<Collection>, ChonkitError> {
-        Ok(sqlx::query_as!(
+        Ok(map_err!(sqlx::query_as!(
             Collection,
             "SELECT id, name, model, embedder, provider, created_at, updated_at FROM collections WHERE id = $1",
             id
         )
         .fetch_optional(self)
-        .await?)
+        .await))
     }
 
     async fn get_collection_display(
         &self,
         collection_id: Uuid,
     ) -> Result<Option<CollectionDisplay>, ChonkitError> {
-        let collection = sqlx::query_as!(
+        let collection = map_err!(sqlx::query_as!(
             Collection,
             "SELECT id, name, model, embedder, provider, created_at, updated_at FROM collections WHERE id = $1",
             collection_id
         )
         .fetch_optional(self)
-        .await?;
+        .await);
 
         let Some(collection) = collection else {
             return Ok(None);
         };
 
-        let documents = sqlx::query_as!(
+        let documents = map_err!(sqlx::query_as!(
             DocumentShort,
             r#"
                 WITH embeddings AS (SELECT document_id FROM embeddings WHERE collection_id = $1) 
@@ -250,7 +252,7 @@ impl VectorRepo for PgPool {
             collection_id
         )
         .fetch_all(self)
-        .await?;
+        .await);
 
         Ok(Some(CollectionDisplay::new(
             collection,
@@ -264,14 +266,14 @@ impl VectorRepo for PgPool {
         name: &str,
         provider: &str,
     ) -> Result<Option<Collection>, ChonkitError> {
-        Ok(sqlx::query_as!(
+        Ok(map_err!(sqlx::query_as!(
             Collection,
             "SELECT id, name, model, embedder, provider, created_at, updated_at FROM collections WHERE name = $1 AND provider = $2",
             name,
             provider
         )
         .fetch_optional(self)
-        .await?)
+        .await))
     }
 
     async fn insert_embeddings(
@@ -284,9 +286,10 @@ impl VectorRepo for PgPool {
             collection_id,
         } = embeddings;
 
-        Ok(sqlx::query_as!(
-            Embedding,
-            "INSERT INTO embeddings
+        Ok(map_err!(
+            sqlx::query_as!(
+                Embedding,
+                "INSERT INTO embeddings
                 (id, document_id, collection_id)
              VALUES
                 ($1, $2, $3)
@@ -295,24 +298,27 @@ impl VectorRepo for PgPool {
              RETURNING 
                 id, document_id, collection_id, created_at, updated_at
              ",
-            id,
-            document_id,
-            collection_id,
-        )
-        .fetch_one(self)
-        .await?)
+                id,
+                document_id,
+                collection_id,
+            )
+            .fetch_one(self)
+            .await
+        ))
     }
 
     async fn get_all_embeddings(&self, document_id: Uuid) -> Result<Vec<Embedding>, ChonkitError> {
-        Ok(sqlx::query_as!(
-            Embedding,
-            "SELECT id, document_id, collection_id, created_at, updated_at 
+        Ok(map_err!(
+            sqlx::query_as!(
+                Embedding,
+                "SELECT id, document_id, collection_id, created_at, updated_at 
              FROM embeddings
              WHERE document_id = $1",
-            document_id
-        )
-        .fetch_all(self)
-        .await?)
+                document_id
+            )
+            .fetch_all(self)
+            .await
+        ))
     }
 
     async fn get_embeddings(
@@ -320,16 +326,18 @@ impl VectorRepo for PgPool {
         document_id: Uuid,
         collection_id: Uuid,
     ) -> Result<Option<Embedding>, ChonkitError> {
-        Ok(sqlx::query_as!(
-            Embedding,
-            "SELECT id, document_id, collection_id, created_at, updated_at 
+        Ok(map_err!(
+            sqlx::query_as!(
+                Embedding,
+                "SELECT id, document_id, collection_id, created_at, updated_at 
              FROM embeddings
              WHERE document_id = $1 AND collection_id = $2",
-            document_id,
-            collection_id
-        )
-        .fetch_optional(self)
-        .await?)
+                document_id,
+                collection_id
+            )
+            .fetch_optional(self)
+            .await
+        ))
     }
 
     async fn list_embeddings(
@@ -337,28 +345,30 @@ impl VectorRepo for PgPool {
         pagination: Pagination,
         collection_id: Option<Uuid>,
     ) -> Result<List<Embedding>, ChonkitError> {
-        let total = sqlx::query!(
+        let total = map_err!(sqlx::query!(
             "SELECT COUNT(id) FROM embeddings WHERE $1::UUID IS NULL OR collection_id = $1",
             collection_id
         )
         .fetch_one(self)
         .await
-        .map(|row| row.count.map(|count| count as usize))?;
+        .map(|row| row.count.map(|count| count as usize)));
 
         let (limit, offset) = pagination.to_limit_offset();
 
-        let embeddings = sqlx::query_as!(
-            Embedding,
-            "SELECT id, document_id, collection_id, created_at, updated_at 
+        let embeddings = map_err!(
+            sqlx::query_as!(
+                Embedding,
+                "SELECT id, document_id, collection_id, created_at, updated_at 
              FROM embeddings
              WHERE $1::UUID IS NULL OR collection_id = $1
              LIMIT $2 OFFSET $3",
-            collection_id,
-            limit,
-            offset
+                collection_id,
+                limit,
+                offset
+            )
+            .fetch_all(self)
+            .await
         )
-        .fetch_all(self)
-        .await?
         .into_iter()
         .collect();
 
@@ -371,7 +381,7 @@ impl VectorRepo for PgPool {
         collection_name: &str,
         provider: &str,
     ) -> Result<Option<Embedding>, ChonkitError> {
-        Ok(sqlx::query_as!(
+        Ok(map_err!(sqlx::query_as!(
             Embedding,
             "SELECT id, document_id, collection_id, created_at, updated_at 
              FROM embeddings
@@ -381,7 +391,7 @@ impl VectorRepo for PgPool {
             provider
         )
         .fetch_optional(self)
-        .await?)
+        .await))
     }
 
     async fn delete_embeddings(
@@ -389,23 +399,27 @@ impl VectorRepo for PgPool {
         document_id: Uuid,
         collection_id: Uuid,
     ) -> Result<u64, ChonkitError> {
-        Ok(sqlx::query!(
-            "DELETE FROM embeddings WHERE document_id = $1 AND collection_id = $2",
-            document_id,
-            collection_id
+        Ok(map_err!(
+            sqlx::query!(
+                "DELETE FROM embeddings WHERE document_id = $1 AND collection_id = $2",
+                document_id,
+                collection_id
+            )
+            .execute(self)
+            .await
         )
-        .execute(self)
-        .await?
         .rows_affected())
     }
 
     async fn delete_all_embeddings(&self, collection_id: Uuid) -> Result<u64, ChonkitError> {
-        Ok(sqlx::query!(
-            "DELETE FROM embeddings WHERE collection_id = $1",
-            collection_id
+        Ok(map_err!(
+            sqlx::query!(
+                "DELETE FROM embeddings WHERE collection_id = $1",
+                collection_id
+            )
+            .execute(self)
+            .await
         )
-        .execute(self)
-        .await?
         .rows_affected())
     }
 }

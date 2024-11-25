@@ -1,5 +1,6 @@
 use crate::core::embedder::Embedder;
 use crate::error::ChonkitError;
+use crate::map_err;
 
 pub use chonkit_embedders::openai::OpenAiEmbeddings;
 
@@ -18,6 +19,6 @@ impl Embedder for OpenAiEmbeddings {
     }
 
     async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f64>>, ChonkitError> {
-        Ok(self.embed(content, model).await?)
+        Ok(map_err!(self.embed(content, model).await))
     }
 }

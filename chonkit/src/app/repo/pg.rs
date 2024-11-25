@@ -1,4 +1,4 @@
-use crate::{core::repo::Atomic, error::ChonkitError};
+use crate::{core::repo::Atomic, error::ChonkitError, map_err};
 use sqlx::{PgPool, Transaction};
 use tracing::info;
 
@@ -23,14 +23,17 @@ impl Atomic for PgPool {
     type Tx = Transaction<'static, sqlx::Postgres>;
 
     async fn start_tx(&self) -> Result<Self::Tx, ChonkitError> {
-        self.begin().await.map_err(ChonkitError::from)
+        let tx = map_err!(self.begin().await);
+        Ok(tx)
     }
 
     async fn commit_tx(&self, tx: Self::Tx) -> Result<(), ChonkitError> {
-        tx.commit().await.map_err(ChonkitError::from)
+        map_err!(tx.commit().await);
+        Ok(())
     }
 
     async fn abort_tx(&self, tx: Self::Tx) -> Result<(), ChonkitError> {
-        tx.rollback().await.map_err(ChonkitError::from)
+        map_err!(tx.rollback().await);
+        Ok(())
     }
 }

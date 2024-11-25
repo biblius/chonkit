@@ -1,13 +1,13 @@
-use super::ChonkitError;
+use super::{ChonkitErr, ChonkitError};
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 use tracing::error;
 
 impl ChonkitError {
     pub fn status(&self) -> StatusCode {
-        use ChonkitError as E;
+        use ChonkitErr as E;
         use StatusCode as SC;
-        match self {
+        match self.error {
             E::ParseInt(_) => SC::BAD_REQUEST,
             E::AlreadyExists(_) => SC::CONFLICT,
             E::DoesNotExist(_) => SC::NOT_FOUND,
@@ -72,14 +72,25 @@ where
 
 impl IntoResponse for ChonkitError {
     fn into_response(self) -> axum::response::Response {
-        error!("{self}");
-
+        let location = self.location();
         let status = self.status();
 
-        use ChonkitError as CE;
+        error!("{self}");
+
+        let err = anyhow::Error::new(self.error);
+
+        error!("Causes:");
+        let mut src = err.source();
+        while let Some(source) = src {
+            error!(" - : {source}");
+            src = source.source();
+        }
+        error!("{location}");
+
+        use ChonkitErr as CE;
         use ErrorType as ET;
 
-        match self {
+        match err.downcast::<CE>().unwrap() {
             CE::InvalidProvider(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
             CE::DoesNotExist(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
 
@@ -93,9 +104,11 @@ impl IntoResponse for ChonkitError {
                 (status, ResponseError::new(ET::Api, e)).into_response()
             }
 
-            CE::Batch => {
-                (status, ResponseError::new(ET::Internal, self.to_string())).into_response()
-            }
+            CE::Batch => (
+                status,
+                ResponseError::new(ET::Internal, "Batch embedding error".to_string()),
+            )
+                .into_response(),
 
             // TODO
             CE::IO(_)
@@ -108,7 +121,7 @@ impl IntoResponse for ChonkitError {
             | CE::Sqlx(_)
             | CE::Chunk(_)
             | CE::InvalidFileName(_)
-            | CE::Http(_) => (status, self.to_string()).into_response(),
+            | CE::Http(_) => (status, "Internal".to_string()).into_response(),
             CE::ParsePdf(_) => todo!(),
             CE::DocxRead(_) => todo!(),
             CE::AlreadyExists(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
@@ -117,14 +130,16 @@ impl IntoResponse for ChonkitError {
             CE::Weaviate(e) => (status, ResponseError::new(ET::Internal, e)).into_response(),
 
             #[cfg(feature = "qdrant")]
-            CE::Qdrant(qdrant_client::QdrantError::ResponseError { status: st }) => {
-                (status, ResponseError::new(ET::Internal, st.to_string())).into_response()
-            }
+            CE::Qdrant(qdrant_client::QdrantError::ResponseError { .. }) => (
+                status,
+                ResponseError::new(ET::Internal, "qdrant".to_string()),
+            )
+                .into_response(),
 
             #[cfg(feature = "qdrant")]
-            CE::Qdrant(_) => (status, self.to_string()).into_response(),
+            CE::Qdrant(_) => (status, "qdrant".to_string()).into_response(),
 
-            CE::Axum(_) => (status, self.to_string()).into_response(),
+            CE::Axum(_) => (status, "axum".to_string()).into_response(),
         }
     }
 }

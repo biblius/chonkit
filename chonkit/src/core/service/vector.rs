@@ -5,8 +5,8 @@ use crate::core::model::{List, Pagination, PaginationSort};
 use crate::core::provider::ProviderState;
 use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
-use crate::error::ChonkitError;
-use crate::{transaction, DEFAULT_COLLECTION_NAME};
+use crate::error::{ChonkitErr, ChonkitError};
+use crate::{err, map_err, transaction, DEFAULT_COLLECTION_NAME};
 use dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -37,7 +37,7 @@ where
         &self,
         p: PaginationSort,
     ) -> Result<List<Collection>, ChonkitError> {
-        p.validate()?;
+        map_err!(p.validate());
         self.repo.list_collections(p).await
     }
 
@@ -45,7 +45,7 @@ where
         &self,
         p: PaginationSort,
     ) -> Result<List<CollectionDisplay>, ChonkitError> {
-        p.validate()?;
+        map_err!(p.validate());
         self.repo.list_collections_display(p).await
     }
 
@@ -54,7 +54,10 @@ where
     /// * `id`: Collection ID.
     pub async fn get_collection(&self, id: Uuid) -> Result<Collection, ChonkitError> {
         let collection = self.repo.get_collection(id).await?;
-        collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID '{id}'")))
+        match collection {
+            Some(collection) => Ok(collection),
+            None => err!(DoesNotExist, "Collection with ID '{id}'"),
+        }
     }
 
     /// Get the collection for the given ID with additional info for display purposes.
@@ -65,7 +68,10 @@ where
         id: Uuid,
     ) -> Result<CollectionDisplay, ChonkitError> {
         let collection = self.repo.get_collection_display(id).await?;
-        collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection with ID '{id}'")))
+        match collection {
+            Some(collection) => Ok(collection),
+            None => err!(DoesNotExist, "Collection with ID '{id}'"),
+        }
     }
 
     /// Get the collection for the given name and provider unique combo.
@@ -78,7 +84,10 @@ where
         provider: &str,
     ) -> Result<Collection, ChonkitError> {
         let collection = self.repo.get_collection_by_name(name, provider).await?;
-        collection.ok_or_else(|| ChonkitError::DoesNotExist(format!("Collection '{name}'")))
+        match collection {
+            Some(collection) => Ok(collection),
+            None => err!(DoesNotExist, "Collection '{name}'"),
+        }
     }
 
     /// Return a list of models supported by this instance's embedder and their respective sizes.
@@ -118,7 +127,10 @@ where
 
         match self.repo.insert_collection(insert, None).await {
             Ok(_) => info!("Created default collection '{DEFAULT_COLLECTION_NAME}'"),
-            Err(ChonkitError::AlreadyExists(_)) => {
+            Err(ChonkitError {
+                error: ChonkitErr::AlreadyExists(_),
+                ..
+            }) => {
                 info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists")
             }
             Err(e) => error!("Failed to create default collection: {e}"),
@@ -132,7 +144,7 @@ where
         &self,
         mut data: CreateCollectionPayload,
     ) -> Result<Collection, ChonkitError> {
-        data.validify()?;
+        map_err!(data.validify());
 
         let CreateCollectionPayload {
             name,
@@ -144,12 +156,13 @@ where
         let vector_db = self.providers.vector.get_provider(&vector_provider)?;
         let embedder = self.providers.embedding.get_provider(&embedding_provider)?;
 
-        let size = embedder.size(&model).await?.ok_or_else(|| {
-            ChonkitError::InvalidEmbeddingModel(format!(
-                "Model {model} not supported by embedder '{}'",
-                embedder.id()
-            ))
-        })?;
+        let Some(size) = embedder.size(&model).await? else {
+            let embedder_id = embedder.id();
+            return err!(
+                InvalidEmbeddingModel,
+                "Model {model} not supported by embedder '{embedder_id}'"
+            );
+        };
 
         info!("Creating collection '{name}' of size '{size}'",);
 
@@ -171,9 +184,7 @@ where
     /// * `id`: Collection ID.
     pub async fn delete_collection(&self, id: Uuid) -> Result<u64, ChonkitError> {
         let Some(collection) = self.repo.get_collection(id).await? else {
-            return Err(ChonkitError::DoesNotExist(format!(
-                "Collection with ID '{id}'"
-            )));
+            return err!(DoesNotExist, "Collection with ID '{id}'");
         };
         let vector_db = self.providers.vector.get_provider(&collection.provider)?;
         vector_db.delete_vector_collection(&collection.name).await?;
@@ -192,24 +203,23 @@ where
     pub async fn create_embeddings(
         &self,
         CreateEmbeddings {
-            id,
-            collection,
+            document_id,
+            collection_id,
             chunks,
         }: CreateEmbeddings<'_>,
     ) -> Result<Embedding, ChonkitError> {
         // Make sure the collection exists.
-        let Some(collection) = self.repo.get_collection(collection).await? else {
-            return Err(ChonkitError::DoesNotExist(format!(
-                "Collection '{collection}'"
-            )));
+        let Some(collection) = self.repo.get_collection(collection_id).await? else {
+            return err!(DoesNotExist, "Collection with ID '{collection_id}'");
         };
 
-        let existing = self.repo.get_embeddings(id, collection.id).await?;
+        let existing = self.repo.get_embeddings(document_id, collection.id).await?;
         if existing.is_some() {
-            return Err(ChonkitError::AlreadyExists(format!(
-                "Embeddings for document '{id}' in collection '{}'",
-                collection.name
-            )));
+            let name = collection.name;
+            return err!(
+                AlreadyExists,
+                "Embeddings for document '{document_id}' in collection '{name}'"
+            );
         }
 
         let vector_db = self.providers.vector.get_provider(&collection.provider)?;
@@ -220,19 +230,20 @@ where
 
         let v_collection = vector_db.get_collection(&collection.name).await?;
 
-        let size = embedder.size(&collection.model).await?.ok_or_else(|| {
-            ChonkitError::InvalidEmbeddingModel(format!(
-                "Model '{}' not supported for embedder {}",
-                collection.model,
-                embedder.id()
-            ))
-        })?;
+        let Some(size) = embedder.size(&collection.model).await? else {
+            let (model, embedder) = (collection.model, embedder.id());
+            return err!(
+                InvalidEmbeddingModel,
+                "Model '{model}' not supported for embedder {embedder}"
+            );
+        };
 
         if size != v_collection.size {
-            return Err(ChonkitError::InvalidEmbeddingModel(format!(
-                "Model size ({size}) not compatible with collection ({})",
-                v_collection.size
-            )));
+            let v_size = v_collection.size;
+            return err!(
+                InvalidEmbeddingModel,
+                "Model size ({size}) not compatible with collection ({v_size})"
+            );
         }
 
         let embeddings = embedder.embed(&chunks, &collection.model).await?;
@@ -240,12 +251,12 @@ where
         debug_assert_eq!(chunks.len(), embeddings.len());
 
         vector_db
-            .insert_embeddings(id, &collection.name, &chunks, embeddings)
+            .insert_embeddings(document_id, &collection.name, &chunks, embeddings)
             .await?;
 
         let embeddings = self
             .repo
-            .insert_embeddings(EmbeddingInsert::new(id, collection.id))
+            .insert_embeddings(EmbeddingInsert::new(document_id, collection.id))
             .await?;
 
         Ok(embeddings)
@@ -256,16 +267,14 @@ where
     ///
     /// * `input`: Search params.
     pub async fn search(&self, mut search: SearchPayload) -> Result<Vec<String>, ChonkitError> {
-        search.validify()?;
+        map_err!(search.validify());
 
         let collection = if let Some(collection_id) = search.collection_id {
             self.get_collection(collection_id).await?
         } else {
             let (Some(name), Some(provider)) = (&search.collection_name, &search.provider) else {
                 // Cannot happen because of above validify
-                return Err(ChonkitError::InvalidProvider(
-                format!("Both 'collection_name' and 'provider' must be provided if 'collection_id' is not provided"),
-            ));
+                unreachable!("not properly validated");
             };
 
             self.get_collection_by_name(name, provider).await?
@@ -304,7 +313,7 @@ where
         pagination: Pagination,
         collection_id: Option<Uuid>,
     ) -> Result<List<Embedding>, ChonkitError> {
-        pagination.validate()?;
+        map_err!(pagination.validate());
         self.repo.list_embeddings(pagination, collection_id).await
     }
 
@@ -314,9 +323,7 @@ where
         document_id: Uuid,
     ) -> Result<u64, ChonkitError> {
         let Some(collection) = self.repo.get_collection(collection_id).await? else {
-            return Err(ChonkitError::DoesNotExist(format!(
-                "Collection with ID '{collection_id}'"
-            )));
+            return err!(DoesNotExist, "Collection with ID '{collection_id}'");
         };
 
         let vector_db = self.providers.vector.get_provider(&collection.provider)?;
@@ -339,9 +346,7 @@ where
         document_id: Uuid,
     ) -> Result<usize, ChonkitError> {
         let Some(collection) = self.repo.get_collection(collection_id).await? else {
-            return Err(ChonkitError::DoesNotExist(format!(
-                "Collection with ID '{collection_id}'"
-            )));
+            return err!(DoesNotExist, "Collection with ID '{collection_id}'");
         };
         let vector_db = self.providers.vector.get_provider(&collection.provider)?;
         vector_db.count_vectors(&collection.name, document_id).await
@@ -404,10 +409,10 @@ pub mod dto {
     #[derive(Debug, Clone, Validify)]
     pub struct CreateEmbeddings<'a> {
         /// Document ID.
-        pub id: Uuid,
+        pub document_id: Uuid,
 
         /// Which collection these embeddings are for.
-        pub collection: Uuid,
+        pub collection_id: Uuid,
 
         /// The chunked document.
         pub chunks: &'a [&'a str],
