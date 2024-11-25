@@ -15,6 +15,10 @@ RUN curl -sL \
   https://github.com/microsoft/onnxruntime/releases/download/v$ONX_VERSION/onnxruntime-linux-x64-$ONX_VERSION.tgz \
   | tar -xzf - -C ./onnxruntime
 
+RUN curl -sL \
+  https://github.com/microsoft/onnxruntime/releases/download/v$ONX_VERSION/onnxruntime-linux-x64-gpu-$ONX_VERSION.tgz \
+  | tar -xzf - -C ./onnxruntime
+
 WORKDIR /app/feserver
 
 RUN cargo build --release --target-dir ./target
@@ -26,7 +30,14 @@ ARG ONX_VERSION
 WORKDIR /app
 
 COPY --from=builder /app/feserver/target/release/feserver ./feserver
+
+# ONNX libraries
 COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-${ONX_VERSION}/lib/libonnxruntime.so /usr/lib
+COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-gpu-${ONX_VERSION}/lib/libonnxruntime.so /usr/lib
+
+# ONNX providers
+COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-gpu-${ONX_VERSION}/lib/libonnxruntime_providers_cuda.so /usr/lib
+COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-${ONX_VERSION}/lib/libonnxruntime_providers_shared.so /usr/lib
 
 RUN apt-get update && apt-get install -y libssl3 && apt clean && rm -rf /var/lib/apt/lists/*
 
