@@ -1,6 +1,6 @@
 use super::collection::CollectionShort;
 use crate::{
-    core::{chunk::Chunker, document::parser::ParseConfig},
+    core::{chunk::ChunkConfig, document::parser::ParseConfig},
     err,
     error::ChonkitError,
 };
@@ -20,12 +20,12 @@ pub struct DocumentConfig {
     pub ext: String,
     pub hash: String,
     pub src: String,
-    pub chunk_config: Option<Chunker>,
+    pub chunk_config: Option<ChunkConfig>,
     pub parse_config: Option<ParseConfig>,
 }
 
 impl DocumentConfig {
-    pub fn new(document: Document, chunk_config: Chunker, parse_config: ParseConfig) -> Self {
+    pub fn new(document: Document, chunk_config: ChunkConfig, parse_config: ParseConfig) -> Self {
         Self {
             id: document.id,
             name: document.name,

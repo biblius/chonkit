@@ -1,7 +1,7 @@
 use crate::error::ChonkitError;
 use crate::{
     core::{
-        chunk::Chunker,
+        chunk::ChunkConfig,
         document::parser::ParseConfig,
         model::{
             collection::CollectionShort,
@@ -52,7 +52,7 @@ impl DocumentRepo for PgPool {
                 d.ext,
                 d.hash,
                 d.src,
-                c.config AS "chunk_config: Option<Json<Chunker>>",
+                c.config AS "chunk_config: Option<Json<ChunkConfig>>",
                 p.config AS "parse_config: _"
             FROM documents d 
             LEFT JOIN chunkers c ON c.document_id = d.id
@@ -395,7 +395,7 @@ impl DocumentRepo for PgPool {
     ) -> Result<Option<DocumentChunkConfig>, ChonkitError> {
         Ok(map_err!(
             sqlx::query_as!(
-                SelectConfig::<Chunker>,
+                SelectConfig::<ChunkConfig>,
                 r#"SELECT 
                 id,
                 document_id,
@@ -438,7 +438,7 @@ impl DocumentRepo for PgPool {
     async fn upsert_chunk_config(
         &self,
         document_id: uuid::Uuid,
-        chunker: Chunker,
+        chunker: ChunkConfig,
     ) -> Result<DocumentChunkConfig, ChonkitError> {
         let config = InsertConfig::new(document_id, chunker);
 
@@ -450,7 +450,7 @@ impl DocumentRepo for PgPool {
 
         let config = map_err!(
             sqlx::query_as!(
-                SelectConfig::<Chunker>,
+                SelectConfig::<ChunkConfig>,
                 r#"INSERT INTO chunkers
                 (id, document_id, config)
              VALUES
@@ -461,7 +461,7 @@ impl DocumentRepo for PgPool {
             "#,
                 id,
                 document_id,
-                config as Json<Chunker>,
+                config as Json<ChunkConfig>,
             )
             .fetch_one(self)
             .await
@@ -508,7 +508,7 @@ impl DocumentRepo for PgPool {
         &self,
         document: DocumentInsert<'_>,
         parse_config: ParseConfig,
-        chunk_config: Chunker,
+        chunk_config: ChunkConfig,
         tx: &mut <Self as Atomic>::Tx,
     ) -> Result<DocumentConfig, ChonkitError>
     where
@@ -568,7 +568,7 @@ impl DocumentRepo for PgPool {
 
         let chunk_config = map_err!(
             sqlx::query_as!(
-                SelectConfig::<Chunker>,
+                SelectConfig::<ChunkConfig>,
                 r#"INSERT INTO chunkers
                 (id, document_id, config)
              VALUES
@@ -579,7 +579,7 @@ impl DocumentRepo for PgPool {
             "#,
                 chunk_insert.id,
                 chunk_insert.document_id,
-                chunk_insert.config as Json<Chunker>,
+                chunk_insert.config as Json<ChunkConfig>,
             )
             .fetch_one(tx)
             .await
@@ -633,7 +633,7 @@ struct SelectDocumentConfig {
     ext: String,
     hash: String,
     src: String,
-    chunk_config: Option<Json<Chunker>>,
+    chunk_config: Option<Json<ChunkConfig>>,
     parse_config: Option<Json<ParseConfig>>,
 }
 
@@ -671,8 +671,8 @@ struct SelectConfig<T: DeserializeOwned> {
     updated_at: DateTime<Utc>,
 }
 
-impl From<SelectConfig<Chunker>> for DocumentChunkConfig {
-    fn from(value: SelectConfig<Chunker>) -> Self {
+impl From<SelectConfig<ChunkConfig>> for DocumentChunkConfig {
+    fn from(value: SelectConfig<ChunkConfig>) -> Self {
         let SelectConfig {
             id,
             document_id,
@@ -716,7 +716,7 @@ mod tests {
     use crate::{
         app::test::{init_postgres, PostgresContainer},
         core::{
-            chunk::Chunker,
+            chunk::ChunkConfig,
             model::document::{DocumentInsert, DocumentType},
             repo::document::DocumentRepo,
         },
@@ -763,19 +763,19 @@ mod tests {
             "fs",
         );
         let doc = repo.insert(doc).await.unwrap();
-        let chunker = Chunker::sliding(420, 69).unwrap();
+        let chunker = ChunkConfig::sliding(420, 69).unwrap();
         repo.upsert_chunk_config(doc.id, chunker.clone())
             .await
             .unwrap();
         let config = repo.get_chunk_config(doc.id).await.unwrap().unwrap();
-        let Chunker::Sliding(sliding) = config.config else {
+        let ChunkConfig::Sliding(sliding) = config.config else {
             panic!("invalid config variant");
         };
-        let Chunker::Sliding(chunker) = chunker else {
+        let ChunkConfig::Sliding(chunker) = chunker else {
             panic!("the impossible happened");
         };
-        assert_eq!(chunker.config.size, sliding.config.size);
-        assert_eq!(chunker.config.overlap, sliding.config.overlap);
+        assert_eq!(chunker.size, sliding.size);
+        assert_eq!(chunker.overlap, sliding.overlap);
         repo.remove_by_id(doc.id).await.unwrap();
     }
 }

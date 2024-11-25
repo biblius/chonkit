@@ -1,4 +1,3 @@
-use crate::core::chunk::ChunkerError;
 use std::{num::ParseIntError, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
@@ -54,7 +53,7 @@ pub enum ChonkitErr {
     SerdeJson(#[from] serde_json::Error),
 
     #[error("Chunking; {0}")]
-    Chunk(#[from] ChunkerError),
+    Chunk(#[from] chunx::ChunkerError),
 
     #[error("Parse pdf; {0}")]
     ParsePdf(#[from] pdfium_render::prelude::PdfiumError),

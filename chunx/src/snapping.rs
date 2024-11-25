@@ -3,14 +3,11 @@ use super::{
     cursor::{
         byte_count, snap_back, snap_front, Cursor, CursorRev, DEFAULT_SKIP_B, DEFAULT_SKIP_F,
     },
-    ChunkBaseConfig, ChunkerError, DocumentChunker,
+    ChunkerError,
 };
-use crate::{error::ChonkitError, map_err};
-use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
 use tracing::trace;
-use validify::Validate;
 
 const SNAPPING_WINDOW_DEFAULT_SIZE: usize = 1000;
 const SNAPPING_WINDOW_DEFAULT_OVERLAP: usize = 5;
@@ -37,12 +34,13 @@ const SNAPPING_WINDOW_DEFAULT_OVERLAP: usize = 5;
 ///
 /// If the input has a lot of unicode with characters more than 1 byte, a larger `size` is
 /// recommended.
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct SnappingWindow {
     /// Here `size` represents the amount of bytes in the base chunk
     /// while `overlap` will represent the amount of leading/trailing sentences.
-    pub config: ChunkBaseConfig,
+    pub size: usize,
+
+    pub overlap: usize,
 
     /// The delimiter to use to split sentences. At time of writing the most common one is ".".
     pub delimiter: char,
@@ -74,8 +72,14 @@ impl Default for SnappingWindow {
 
 impl SnappingWindow {
     pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+        if overlap > size {
+            return Err(ChunkerError::Config(
+                "overlap must be less than size".to_string(),
+            ));
+        }
         Ok(Self {
-            config: ChunkBaseConfig::new(size, overlap)?,
+            size,
+            overlap,
             delimiter: '.',
             skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
             skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
@@ -107,18 +111,15 @@ impl SnappingWindow {
     }
 }
 
-impl<'a> DocumentChunker<'a> for SnappingWindow {
-    type Output = &'a str;
-
-    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
-        map_err!(self.config.validate());
-
+impl SnappingWindow {
+    pub fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
         if input.trim().is_empty() {
             return Ok(vec![]);
         }
 
         let Self {
-            config: ChunkBaseConfig { size, overlap },
+            size,
+            overlap,
             delimiter: delim,
             skip_forward,
             skip_back,
@@ -158,7 +159,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
 
             start += byte_count(piece);
 
-            chunk = map_err!(concat(chunk, piece));
+            chunk = concat(chunk, piece)?;
 
             if byte_count(chunk) < *size {
                 // If the cursor is not finished, take another batch.
@@ -169,7 +170,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
                 // Otherwise, we are at the end of input.
                 let prev = &input[..cursor.byte_offset - byte_count(chunk)];
                 let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
-                let chunk_full = map_err!(concat(prev, chunk));
+                let chunk_full = concat(prev, chunk)?;
                 chunks.push(chunk_full);
 
                 #[cfg(debug_assertions)]
@@ -191,7 +192,7 @@ impl<'a> DocumentChunker<'a> for SnappingWindow {
             let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
             let (next, next_offset) = next_chunk(next, *overlap, *delim, skip_forward, skip_back);
 
-            let chunk_full = map_err!(concat(map_err!(concat(prev, chunk)), next));
+            let chunk_full = concat(concat(prev, chunk)?, next)?;
 
             // Skip the first chunk since its contents will be in the following one.
             if !prev.is_empty() {
@@ -305,8 +306,8 @@ mod tests {
             .skip_back(skip_b.clone());
 
         assert_eq!(delimiter, chunker.delimiter);
-        assert_eq!(size, chunker.config.size);
-        assert_eq!(overlap, chunker.config.overlap);
+        assert_eq!(size, chunker.size);
+        assert_eq!(overlap, chunker.overlap);
         assert_eq!(skip_f, chunker.skip_forward);
         assert_eq!(skip_b, chunker.skip_back);
     }
@@ -321,7 +322,7 @@ mod tests {
             " It is not very long. Here is another. Long schlong ding dong.",
         ];
 
-        let chunks = chunker.chunk(input.trim()).await.unwrap();
+        let chunks = chunker.chunk(input.trim()).unwrap();
         assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -338,7 +339,7 @@ mod tests {
             .skip_back(vec!["etc".to_string(), "foobar".to_string()]);
         let expected = [input];
 
-        let chunks = chunker.chunk(input.trim()).await.unwrap();
+        let chunks = chunker.chunk(input.trim()).unwrap();
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -356,7 +357,7 @@ mod tests {
             .skip_forward(vec!["com".to_string(), "org".to_string()]);
         let expected = [input];
 
-        let chunks = chunker.chunk(input.trim()).await.unwrap();
+        let chunks = chunker.chunk(input.trim()).unwrap();
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -378,7 +379,7 @@ mod tests {
             " Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.",
         ];
 
-        let chunks = chunker.chunk(input.trim()).await.unwrap();
+        let chunks = chunker.chunk(input.trim()).unwrap();
         assert_eq!(4, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -406,7 +407,7 @@ mod tests {
 
         let expected = [input];
 
-        let chunks = chunker.chunk(input.trim()).await.unwrap();
+        let chunks = chunker.chunk(input.trim()).unwrap();
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -417,7 +418,7 @@ mod tests {
     #[tokio::test]
     async fn snapping_window_empty() {
         let chunker = SnappingWindow::new(1, 1).unwrap();
-        let chunks = chunker.chunk("").await.unwrap();
+        let chunks = chunker.chunk("").unwrap();
         assert!(chunks.is_empty());
     }
 }

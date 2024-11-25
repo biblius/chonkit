@@ -1,7 +1,7 @@
 //! Http specific DTOs.
 
 use crate::core::{
-    chunk::Chunker,
+    chunk::ChunkConfig,
     document::parser::ParseConfig,
     model::{document::DocumentConfig, Pagination, PaginationSort},
 };
@@ -27,7 +27,7 @@ pub(super) struct ConfigUpdatePayload {
     pub parser: Option<ParseConfig>,
 
     /// Chunking configuration.
-    pub chunker: Option<Chunker>,
+    pub chunker: Option<ChunkConfig>,
 }
 
 /// Used for single embeddings.

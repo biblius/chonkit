@@ -1,8 +1,5 @@
-use super::{ChunkerError, DocumentChunker};
-use crate::{core::chunk::ChunkBaseConfig, error::ChonkitError, map_err};
-use serde::{Deserialize, Serialize};
+use super::ChunkerError;
 use tracing::debug;
-use validify::Validate;
 
 const SLIDING_WINDOW_DEFAULT_SIZE: usize = 1000;
 const SLIDING_WINDOW_DEFAULT_OVERLAP: usize = 200;
@@ -12,17 +9,22 @@ const SLIDING_WINDOW_DEFAULT_OVERLAP: usize = 200;
 /// `size` determines the base amount for every chunk and
 /// `overlap` determines how much back and front characters
 /// to extend the base with.
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct SlidingWindow {
-    pub config: ChunkBaseConfig,
+    pub size: usize,
+    pub overlap: usize,
 }
 
 impl SlidingWindow {
+    /// Create a new `SlidingWindow` chunker.
+    /// Errors if `overlap` is greater than `size`.
     pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
-        Ok(Self {
-            config: ChunkBaseConfig::new(size, overlap)?,
-        })
+        if overlap > size {
+            return Err(ChunkerError::Config(
+                "overlap must be less than size".to_string(),
+            ));
+        }
+        Ok(Self { size, overlap })
     }
 }
 
@@ -33,15 +35,9 @@ impl Default for SlidingWindow {
     }
 }
 
-impl<'a> DocumentChunker<'a> for SlidingWindow {
-    type Output = &'a str;
-
-    async fn chunk(&self, input: &'a str) -> Result<Vec<&'a str>, ChonkitError> {
-        map_err!(self.config.validate());
-
-        let SlidingWindow {
-            config: ChunkBaseConfig { size, overlap },
-        } = self;
+impl SlidingWindow {
+    pub fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+        let SlidingWindow { size, overlap } = self;
 
         let input = input.trim();
 
@@ -105,7 +101,7 @@ mod tests {
     async fn sliding_window_works() {
         let input = "Sticks and stones may break my bones, but words will never leverage agile frameworks to provide a robust synopsis for high level overviews.";
         let window = SlidingWindow::new(30, 20).unwrap();
-        let chunks = window.chunk(input).await.unwrap();
+        let chunks = window.chunk(input).unwrap();
 
         assert_eq!(&input[0..50], chunks[0]);
         assert_eq!(&input[10..80], chunks[1]);
@@ -117,7 +113,7 @@ mod tests {
     async fn sliding_window_empty() {
         let input = "";
         let window = SlidingWindow::new(1, 0).unwrap();
-        let chunks = window.chunk(input).await.unwrap();
+        let chunks = window.chunk(input).unwrap();
 
         assert!(chunks.is_empty());
     }
@@ -126,7 +122,7 @@ mod tests {
     async fn sliding_window_small_input() {
         let input = "Foobar";
         let window = SlidingWindow::new(30, 20).unwrap();
-        let chunks = window.chunk(input).await.unwrap();
+        let chunks = window.chunk(input).unwrap();
 
         assert_eq!(input, chunks[0]);
     }

@@ -1,4 +1,4 @@
-use crate::core::{chunk::Chunker, document::parser::ParseConfig};
+use crate::core::{chunk::ChunkConfig, document::parser::ParseConfig};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -11,7 +11,7 @@ pub struct DocumentChunkConfig {
     /// References the document which this config belongs to.
     pub document_id: uuid::Uuid,
     /// JSON string of the chunking configuration.
-    pub config: Chunker,
+    pub config: ChunkConfig,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -4,6 +4,9 @@ name = "chonkit"
 version = "0.1.0"
 
 [dependencies]
+chonkit-embedders = { path = "../embedders", optional = true }
+chunx = { path = "../chunx" }
+
 tokio = { version = "1.35.1", features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.16"
 serde = "1.0.183"
@@ -38,7 +41,6 @@ pdfium-render = { version = "0.8.23" }
 testcontainers = "0.22.0"
 testcontainers-modules = { version = "0.10.0", features = ["postgres"] }
 
-chonkit-embedders = { path = "../embedders", optional = true }
 
 # weaviate
 weaviate-community = { version = "0.2.2", optional = true }

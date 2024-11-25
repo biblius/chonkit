@@ -1,11 +1,18 @@
-use super::{
-    cursor::{byte_count, Cursor, DEFAULT_SKIP_B, DEFAULT_SKIP_F},
-    ChunkerError, DocumentChunker,
-};
-use crate::{core::embedder::Embedder, error::ChonkitError, map_err};
+use super::cursor::{byte_count, Cursor, DEFAULT_SKIP_B, DEFAULT_SKIP_F};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Arc, usize};
+use std::{fmt::Debug, future::Future};
+
+/// Implement on types that can produce text embeddings for use with SemanticWindow.
+pub trait Embedder {
+    type Error;
+
+    fn embed(
+        &self,
+        input: &[&str],
+        model: &str,
+    ) -> impl Future<Output = Result<Vec<Vec<f64>>, Self::Error>>;
+}
 
 /// Semantic similarity chunker implementation.
 ///
@@ -19,18 +26,8 @@ use std::{fmt::Debug, sync::Arc, usize};
 ///
 /// This chunker will iterate through each batch of sentences determined by `size`
 /// and will group them together based on the given `threshold` and `distance_fn`.
-#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct SemanticWindow {
-    /// The embedder to use for embedding chunks.
-    #[serde(skip)]
-    pub embedder: Option<Arc<dyn Embedder + Send + Sync>>,
-    pub config: SemanticWindowConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SemanticWindowConfig {
     /// How many sentences to use as the base for semantic similarity.
     pub size: usize,
 
@@ -40,7 +37,7 @@ pub struct SemanticWindowConfig {
     /// to the current one.
     pub threshold: f64,
 
-    /// Distance function to use for semantic similarity.
+    /// Distance function.
     pub distance_fn: DistanceFn,
 
     /// The delimiter to use to split sentences. At time of writing the most common one is ".".
@@ -57,21 +54,6 @@ pub struct SemanticWindowConfig {
     ///
     /// Useful for common abbreviations and urls.
     pub skip_back: Vec<String>,
-
-    /// The model to use for embeddings.
-    pub embed_model: String,
-
-    /// Embedder provider used to load the appropriate embedder.
-    pub embed_provider: String,
-}
-
-impl Debug for SemanticWindow {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SemanticWindow")
-            .field("config", &self.config)
-            .field("embedder", &self.embedder.as_ref().map(|e| e.id()))
-            .finish()
-    }
 }
 
 impl SemanticWindow {
@@ -79,81 +61,59 @@ impl SemanticWindow {
         size: usize,
         threshold: f64,
         distance_fn: DistanceFn,
-        embedder: Arc<dyn Embedder + Send + Sync>,
-        model: String,
+        delimiter: char,
+        skip_forward: Vec<String>,
+        skip_back: Vec<String>,
     ) -> Self {
         Self {
-            config: SemanticWindowConfig {
-                size,
-                threshold,
-                distance_fn,
-                delimiter: '.',
-                embed_provider: embedder.id().to_string(),
-                embed_model: model,
-                skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
-                skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
-            },
-            embedder: Some(embedder),
+            size,
+            threshold,
+            distance_fn,
+            delimiter,
+            skip_forward,
+            skip_back,
         }
-    }
-
-    pub fn default(embedder: Arc<dyn Embedder + Send + Sync>) -> Self {
-        Self {
-            config: SemanticWindowConfig {
-                size: 10,
-                threshold: 0.9,
-                distance_fn: DistanceFn::Cosine,
-                delimiter: '.',
-                embed_model: embedder.default_model().0,
-                embed_provider: embedder.id().to_string(),
-                skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
-                skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
-            },
-            embedder: Some(embedder),
-        }
-    }
-
-    pub fn embedder(&mut self, embedder: Arc<dyn Embedder + Send + Sync>) {
-        self.embedder = Some(embedder);
     }
 }
 
-impl<'a> DocumentChunker<'a> for SemanticWindow {
-    type Output = String;
+impl Default for SemanticWindow {
+    fn default() -> Self {
+        Self {
+            size: 10,
+            threshold: 0.9,
+            distance_fn: DistanceFn::Cosine,
+            delimiter: '.',
+            skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+            skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+        }
+    }
+}
 
-    async fn chunk(&self, input: &'a str) -> Result<Vec<Self::Output>, ChonkitError> {
+impl SemanticWindow {
+    pub async fn chunk<E>(
+        &self,
+        input: &str,
+        embedder: &E,
+        model: &str,
+    ) -> Result<Vec<String>, E::Error>
+    where
+        E: Embedder + Send + Sync,
+    {
         let __chunking_start = std::time::Instant::now();
 
         let Self {
-            embedder,
-            config:
-                SemanticWindowConfig {
-                    size,
-                    threshold,
-                    distance_fn,
-                    delimiter: delim,
-                    skip_forward,
-                    skip_back,
-                    embed_model,
-                    ..
-                },
+            size,
+            threshold,
+            distance_fn,
+            delimiter,
+            skip_forward,
+            skip_back,
         } = self;
-
-        let embedder = embedder.clone().unwrap();
-
-        if embedder.size(embed_model).await?.is_none() {
-            let error = Err(ChunkerError::Embedder(format!(
-                "embedder {} does not support model {}",
-                embedder.id(),
-                embed_model
-            )));
-            return map_err!(error);
-        };
 
         let total_bytes = byte_count(input);
 
         let mut chunks: Vec<&str> = vec![];
-        let mut cursor = Cursor::new(input, *delim);
+        let mut cursor = Cursor::new(input, *delimiter);
 
         // Amount of sentences processed in the current chunk.
         let mut amount = 0;
@@ -186,7 +146,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
             start += byte_count(chunk);
 
-            cursor = Cursor::new(&input[start..], *delim);
+            cursor = Cursor::new(&input[start..], *delimiter);
 
             chunks.push(chunk);
         }
@@ -204,7 +164,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
 
         let __embedding_start = std::time::Instant::now();
 
-        let embedded_chunks = embedder.as_ref().embed(&chunks, &embed_model).await?;
+        let embedded_chunks = embedder.embed(&chunks, model).await?;
 
         debug_assert_eq!(embedded_chunks.len(), chunks.len());
 
@@ -227,8 +187,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
             let mut idx = None;
 
             for (i, (_, processed_chunk_embedding)) in out.iter().enumerate() {
-                let similarity =
-                    distance_fn.calculate(&chunk_embedding, &processed_chunk_embedding);
+                let similarity = distance_fn.calculate(&chunk_embedding, processed_chunk_embedding);
 
                 if similarity > max_similarity {
                     max_similarity = similarity;
@@ -274,8 +233,7 @@ impl<'a> DocumentChunker<'a> for SemanticWindow {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub enum DistanceFn {
     #[default]
     Cosine,
@@ -367,31 +325,44 @@ fn minkowski_distance(vec1: &[f64], vec2: &[f64], p: i32) -> f64 {
 }
 
 #[cfg(test)]
-#[cfg(feature = "fe-local")]
 #[suitest::suite(semantic_window_tests)]
 mod tests {
     use super::*;
-    use crate::app::embedder::fastembed::{local::LocalFastEmbedder, DEFAULT_COLLECTION_MODEL};
+    use chonkit_embedders::fastembed::local::LocalFastEmbedder;
     use suitest::before_all;
 
+    impl Embedder for LocalFastEmbedder {
+        type Error = chonkit_embedders::error::EmbeddingError;
+
+        async fn embed(&self, text: &[&str], model: &str) -> Result<Vec<Vec<f64>>, Self::Error> {
+            self.embed(text, model)
+        }
+    }
+
     #[before_all]
-    fn setup() -> Arc<LocalFastEmbedder> {
-        let embedder = Arc::new(
-            chonkit_embedders::fastembed::local::LocalFastEmbedder::new_with_model(
-                DEFAULT_COLLECTION_MODEL,
-            ),
+    fn setup() -> LocalFastEmbedder {
+        let embedder = chonkit_embedders::fastembed::local::LocalFastEmbedder::new_with_model(
+            "Xenova/bge-base-en-v1.5",
         );
         embedder
     }
 
     #[test]
-    async fn semantic_window_works(embedder: Arc<LocalFastEmbedder>) {
+    async fn semantic_window_works(embedder: LocalFastEmbedder) {
         let input = r#"Leverage agile frameworks to provide robust synopses for high level overviews. Pee, AKA urine is stored in the testicles. SCRUM is one of the agile frameworks used to facilitate the robust synopses. The testicles, do in fact, facilitate urine. SCRUM, an agile framework, is short for SCRotUM, which stands for Supervisors Circulating Redundant Orders to Thwart Underlings' Motivations. This is about pee, i.e. urine."#;
 
-        let model = embedder.default_model().0;
-        let chunker = SemanticWindow::new(1, 0.58, DistanceFn::Cosine, embedder.clone(), model);
+        let model = "Xenova/bge-base-en-v1.5";
+        let chunker = SemanticWindow::new(
+            1,
+            0.58,
+            DistanceFn::Cosine,
+            '.',
+            DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+            DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+        );
 
-        let chunks = chunker.chunk(input).await.unwrap();
+        let chunks = chunker.chunk(input, embedder, model).await.unwrap();
+        dbg!(&chunks);
 
         assert_eq!(2, chunks.len());
 
@@ -401,12 +372,12 @@ mod tests {
     }
 
     #[test]
-    async fn semantic_window_empty(embedder: Arc<LocalFastEmbedder>) {
+    async fn semantic_window_empty(embedder: LocalFastEmbedder) {
         let input = "";
-        let model = embedder.default_model().0;
-        let chunker = SemanticWindow::new(1, 0.7, DistanceFn::Cosine, embedder.clone(), model);
+        let model = "Xenova/bge-base-en-v1.5";
+        let chunker = SemanticWindow::new(1, 0.58, DistanceFn::Cosine, '.', vec![], vec![]);
 
-        let chunks = chunker.chunk(input).await.unwrap();
+        let chunks = chunker.chunk(input, embedder, model).await.unwrap();
         assert!(chunks.is_empty());
     }
 }

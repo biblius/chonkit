@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     core::{
-        chunk::Chunker,
+        chunk::ChunkConfig,
         document::store::{DocumentStore, DocumentSync},
         embedder::Embedder,
         provider::{ProviderFactory, ProviderState},
@@ -143,12 +143,19 @@ impl AppState {
     /// Used for metadata display.
     pub async fn get_configuration(&self) -> Result<AppConfig, ChonkitError> {
         let mut embedding_providers = HashMap::new();
-        let mut default_chunkers = vec![Chunker::sliding_default(), Chunker::snapping_default()];
+        let mut default_chunkers = vec![
+            ChunkConfig::sliding_default(),
+            ChunkConfig::snapping_default(),
+        ];
 
         for provider in self.providers.embedding.list_provider_ids() {
             let embedder = self.providers.embedding.get_provider(provider)?;
+            let default_model = embedder.default_model().0;
 
-            default_chunkers.push(Chunker::semantic_default(embedder.clone()));
+            default_chunkers.push(ChunkConfig::semantic_default(
+                embedder.id().to_string(),
+                default_model,
+            ));
 
             let models = embedder
                 .list_embedding_models()
@@ -229,7 +236,7 @@ pub struct AppConfig {
     pub document_providers: Vec<String>,
 
     /// A list of default chunking configurations.
-    pub default_chunkers: Vec<Chunker>,
+    pub default_chunkers: Vec<ChunkConfig>,
 }
 
 /// Implements functions for `$target` to easily get an instance of whatever

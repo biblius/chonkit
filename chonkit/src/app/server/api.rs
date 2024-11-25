@@ -40,10 +40,7 @@ use super::dto::{
 use crate::{
     app::state::AppConfig,
     core::{
-        chunk::{
-            ChunkBaseConfig, Chunker, DistanceFn, SemanticWindow, SemanticWindowConfig,
-            SlidingWindow, SnappingWindow,
-        },
+        chunk::{ChunkConfig, SemanticWindowConfig, SlidingWindowConfig, SnappingWindowConfig},
         document::parser::ParseConfig,
         model::{
             collection::{
@@ -99,13 +96,11 @@ use utoipa::OpenApi;
         Document,
         DocumentConfig,
         UploadResult,
-        Chunker,
-        SlidingWindow,
-        SnappingWindow,
-        SemanticWindow,
+        ChunkConfig,
+        SlidingWindowConfig,
+        SnappingWindowConfig,
         SemanticWindowConfig,
-        DistanceFn,
-        ChunkBaseConfig,
+        SemanticWindowConfig,
         ChunkPreviewPayload,
         ParseConfig,
         CreateCollectionPayload,

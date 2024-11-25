@@ -1,6 +1,6 @@
 use crate::{
     core::{
-        chunk::Chunker,
+        chunk::ChunkConfig,
         document::parser::ParseConfig,
         model::{
             document::{
@@ -120,7 +120,7 @@ pub trait DocumentRepo {
     async fn upsert_chunk_config(
         &self,
         document_id: uuid::Uuid,
-        chunker: Chunker,
+        chunker: ChunkConfig,
     ) -> Result<DocumentChunkConfig, ChonkitError>;
 
     /// Insert or update the document's configuration for parsing.
@@ -143,7 +143,7 @@ pub trait DocumentRepo {
         &self,
         document: DocumentInsert<'_>,
         parse_config: ParseConfig,
-        chunk_config: Chunker,
+        chunk_config: ChunkConfig,
         tx: &mut <Self as Atomic>::Tx,
     ) -> Result<DocumentConfig, ChonkitError>
     where

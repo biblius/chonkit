@@ -1,40 +1,62 @@
-use crate::error::ChonkitError;
-
 use super::embedder::Embedder;
+use crate::error::ChonkitError;
+use chunx::ChunkerError;
 use serde::{Deserialize, Serialize};
-use std::{future::Future, str::Utf8Error, sync::Arc};
-use thiserror::Error;
-use validify::{schema_err, schema_validation, Validate, ValidationErrors};
-
-mod cursor;
-mod semantic;
-mod sliding;
-mod snapping;
-
-pub use semantic::{DistanceFn, SemanticWindow, SemanticWindowConfig};
-pub use sliding::SlidingWindow;
-pub use snapping::SnappingWindow;
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub enum Chunker {
-    Sliding(SlidingWindow),
-    Snapping(SnappingWindow),
-    Semantic(SemanticWindow),
+pub enum ChunkConfig {
+    Sliding(SlidingWindowConfig),
+    Snapping(SnappingWindowConfig),
+    Semantic(SemanticWindowConfig),
 }
 
-impl Chunker {
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SlidingWindowConfig {
+    pub size: usize,
+    pub overlap: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnappingWindowConfig {
+    pub size: usize,
+    pub overlap: usize,
+    pub delimiter: char,
+    pub skip_f: Vec<String>,
+    pub skip_b: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticWindowConfig {
+    pub size: usize,
+    pub threshold: f64,
+    pub distance_fn: chunx::semantic::DistanceFn,
+    pub delimiter: char,
+    pub skip_f: Vec<String>,
+    pub skip_b: Vec<String>,
+    pub embedding_model: String,
+    pub embedding_provider: String,
+}
+
+impl ChunkConfig {
     /// Create a `SlidingWindow` chunker.
     ///
     /// * `size`: Chunk base size.
     /// * `overlap`: Chunk overlap.
     pub fn sliding(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
-        Ok(Self::Sliding(SlidingWindow::new(size, overlap)?))
+        Ok(Self::Sliding(SlidingWindowConfig { size, overlap }))
     }
 
     /// Create a default `SlidingWindow` chunker.
     pub fn sliding_default() -> Self {
-        Self::Sliding(SlidingWindow::default())
+        let config = chunx::SlidingWindow::default();
+        let config = SlidingWindowConfig {
+            size: config.size,
+            overlap: config.overlap,
+        };
+        Self::Sliding(config)
     }
 
     /// Create a `SnappingWindow` chunker.
@@ -49,16 +71,26 @@ impl Chunker {
         skip_f: Vec<String>,
         skip_b: Vec<String>,
     ) -> Result<Self, ChunkerError> {
-        Ok(Self::Snapping(
-            SnappingWindow::new(size, overlap)?
-                .skip_forward(skip_f)
-                .skip_back(skip_b),
-        ))
+        Ok(Self::Snapping(SnappingWindowConfig {
+            size,
+            overlap,
+            skip_f,
+            skip_b,
+            delimiter: '.',
+        }))
     }
 
     /// Create a default `SnappingWindow` chunker.
     pub fn snapping_default() -> Self {
-        Self::Snapping(SnappingWindow::default())
+        let config = chunx::SnappingWindow::default();
+        let config = SnappingWindowConfig {
+            size: config.size,
+            overlap: config.overlap,
+            skip_f: config.skip_forward,
+            skip_b: config.skip_back,
+            delimiter: '.',
+        };
+        Self::Snapping(config)
     }
 
     /// Create a `SemanticWindow` chunker.
@@ -71,42 +103,45 @@ impl Chunker {
     pub fn semantic(
         size: usize,
         threshold: f64,
-        distance_fn: DistanceFn,
-        embedder: Arc<dyn Embedder + Send + Sync>,
-        model: String,
+        delimiter: char,
+        distance_fn: chunx::semantic::DistanceFn,
+        embedding_provider: String,
+        embedding_model: String,
+        skip_f: Vec<String>,
+        skip_b: Vec<String>,
     ) -> Self {
-        Self::Semantic(SemanticWindow::new(
+        Self::Semantic(SemanticWindowConfig {
             size,
             threshold,
             distance_fn,
-            embedder,
-            model,
-        ))
+            delimiter,
+            embedding_provider,
+            embedding_model,
+            skip_f,
+            skip_b,
+        })
     }
 
     /// Create a default `SemanticWindow` chunker.
     ///
     /// * `embedder`: Embedder to use for embedding chunks, uses the default embedder model.
-    pub fn semantic_default(embedder: Arc<dyn Embedder + Send + Sync>) -> Self {
-        Self::Semantic(SemanticWindow::default(embedder))
-    }
-
-    /// Chunk the input using the current variant.
-    ///
-    /// * `input`: Input to chunk.
-    pub async fn chunk<'content>(
-        &self,
-        input: &'content str,
-    ) -> Result<ChunkedDocument<'content>, ChonkitError> {
-        match self {
-            Self::Sliding(chunker) => Ok(ChunkedDocument::Ref(chunker.chunk(input).await?)),
-            Self::Snapping(chunker) => Ok(ChunkedDocument::Ref(chunker.chunk(input).await?)),
-            Self::Semantic(chunker) => Ok(ChunkedDocument::Owned(chunker.chunk(input).await?)),
-        }
+    pub fn semantic_default(embedding_provider: String, embedding_model: String) -> Self {
+        let config = chunx::semantic::SemanticWindow::default();
+        let config = SemanticWindowConfig {
+            size: config.size,
+            delimiter: config.delimiter,
+            distance_fn: config.distance_fn,
+            threshold: config.threshold,
+            skip_f: config.skip_forward,
+            skip_b: config.skip_back,
+            embedding_provider,
+            embedding_model,
+        };
+        Self::Semantic(config)
     }
 }
 
-impl std::fmt::Display for Chunker {
+impl std::fmt::Display for ChunkConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Sliding(_) => write!(f, "SlidingWindow"),
@@ -123,76 +158,13 @@ pub enum ChunkedDocument<'content> {
     Owned(Vec<String>),
 }
 
-pub trait DocumentChunker<'a> {
-    type Output: AsRef<str> + 'a;
+pub struct SemanticEmbedder(pub std::sync::Arc<dyn Embedder + Send + Sync>);
 
-    fn chunk(
-        &self,
-        input: &'a str,
-    ) -> impl Future<Output = Result<Vec<Self::Output>, ChonkitError>> + Send;
-}
+impl chunx::semantic::Embedder for SemanticEmbedder {
+    type Error = ChonkitError;
 
-#[derive(Debug, Error)]
-pub enum ChunkerError {
-    #[error("{0}")]
-    Config(String),
-
-    #[error("utf-8: {0}")]
-    Utf8(#[from] Utf8Error),
-
-    #[error("semantic chunker embedder: {0}")]
-    Embedder(String),
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Validate, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-#[validate(Self::validate_schema)]
-pub struct ChunkBaseConfig {
-    /// Base chunk size.
-    #[validate(range(min = 1.))]
-    pub size: usize,
-
-    /// The overlap per chunk.
-    pub overlap: usize,
-}
-
-impl ChunkBaseConfig {
-    pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
-        if size < overlap {
-            return Err(ChunkerError::Config(
-                "size must be greater than overlap".to_string(),
-            ));
-        }
-        Ok(Self { size, overlap })
-    }
-
-    #[schema_validation]
-    fn validate_schema(&self) -> Result<(), ValidationErrors> {
-        if self.size < self.overlap {
-            schema_err!("size_overlap", "size must be greater than overlap");
-        }
-    }
-}
-
-#[inline(always)]
-fn concat<'a>(start_str: &'a str, end_str: &'a str) -> Result<&'a str, ChunkerError> {
-    let current_ptr =
-        std::ptr::slice_from_raw_parts(start_str.as_ptr(), start_str.len() + end_str.len());
-    Ok(unsafe { std::str::from_utf8(&*current_ptr) }?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pointer_sanity() {
-        let input = "Hello\nWorld";
-        let split = input.split_inclusive('\n').collect::<Vec<_>>();
-
-        let one = split[0];
-        let two = split[1];
-
-        assert_eq!(input, concat(one, two).unwrap())
+    async fn embed(&self, input: &[&str], model: &str) -> Result<Vec<Vec<f64>>, Self::Error> {
+        let embeddings = self.0.embed(input, model).await?;
+        Ok(embeddings)
     }
 }

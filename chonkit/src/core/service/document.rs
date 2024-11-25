@@ -1,6 +1,6 @@
 use crate::{
     core::{
-        chunk::{ChunkedDocument, Chunker},
+        chunk::{ChunkConfig, ChunkedDocument, SemanticEmbedder, SemanticWindowConfig},
         document::{
             parser::{ParseConfig, Parser},
             sha256,
@@ -115,7 +115,7 @@ where
         document: &Document,
         content: &'content str,
     ) -> Result<ChunkedDocument<'content>, ChonkitError> {
-        let Some(mut chunker) = self
+        let Some(config) = self
             .repo
             .get_chunk_config(document.id)
             .await?
@@ -128,16 +128,7 @@ where
             );
         };
 
-        // If it's a semantic chunker, it needs an embedder.
-        if let Chunker::Semantic(ref mut chunker) = chunker {
-            let embedder = self
-                .providers
-                .embedding
-                .get_provider(&chunker.config.embed_provider)?;
-            chunker.embedder(embedder);
-        }
-
-        Ok(chunker.chunk(content).await?)
+        self.chunk(config, content).await
     }
 
     /// Insert the document metadata to the repository and persist it
@@ -170,7 +161,7 @@ where
 
             let insert = DocumentInsert::new(name, &path, ty, &hash, store.id());
             let parse_config = ParseConfig::default();
-            let chunk_config = Chunker::snapping_default();
+            let chunk_config = ChunkConfig::snapping_default();
 
             let document = self
                 .repo
@@ -208,18 +199,9 @@ where
     pub async fn chunk_preview(
         &self,
         document_id: Uuid,
-        mut config: ChunkPreviewPayload,
+        config: ChunkPreviewPayload,
     ) -> Result<Vec<String>, ChonkitError> {
         map_err!(config.validate());
-
-        // If it's a semantic chunker, it needs an embedder.
-        if let Chunker::Semantic(ref mut chunker) = config.chunker {
-            let embedder = self
-                .providers
-                .embedding
-                .get_provider(&chunker.config.embed_provider)?;
-            chunker.embedder(embedder);
-        };
 
         let parser = if let Some(parser) = config.parser {
             parser
@@ -232,11 +214,72 @@ where
         };
 
         let content = self.parse_preview(document_id, parser).await?;
-        let chunked = config.chunker.chunk(&content).await?;
 
-        match chunked {
-            ChunkedDocument::Ref(chunked) => Ok(chunked.into_iter().map(String::from).collect()),
+        match self.chunk(config.chunker, &content).await? {
+            ChunkedDocument::Ref(chunked) => Ok(chunked.iter().map(|s| s.to_string()).collect()),
             ChunkedDocument::Owned(chunked) => Ok(chunked),
+        }
+    }
+
+    async fn chunk<'i>(
+        &self,
+        config: ChunkConfig,
+        input: &'i str,
+    ) -> Result<ChunkedDocument<'i>, ChonkitError> {
+        match config {
+            ChunkConfig::Sliding(config) => {
+                let chunker = chunx::SlidingWindow::new(config.size, config.overlap).unwrap();
+                let chunked = chunker.chunk(input).unwrap();
+                Ok(ChunkedDocument::Ref(chunked))
+            }
+            ChunkConfig::Snapping(config) => {
+                let chunker = chunx::SnappingWindow::new(config.size, config.overlap).unwrap();
+                let chunked = chunker.chunk(input).unwrap();
+                Ok(ChunkedDocument::Ref(chunked))
+            }
+            ChunkConfig::Semantic(config) => {
+                let SemanticWindowConfig {
+                    size,
+                    threshold,
+                    distance_fn,
+                    delimiter,
+                    embedding_provider,
+                    embedding_model,
+                    skip_f,
+                    skip_b,
+                } = config;
+
+                let chunker = chunx::SemanticWindow::new(
+                    size,
+                    threshold,
+                    distance_fn,
+                    delimiter,
+                    skip_f,
+                    skip_b,
+                );
+
+                let embedder = self
+                    .providers
+                    .embedding
+                    .get_provider(&embedding_provider)
+                    .unwrap();
+
+                if embedder.size(&embedding_model).await?.is_none() {
+                    return err!(
+                        InvalidEmbeddingModel,
+                        "Model '{embedding_model}' not supported by '{embedding_provider}'"
+                    );
+                };
+
+                let semantic_embedder = SemanticEmbedder(embedder.clone());
+
+                let chunked = chunker
+                    .chunk(&input, &semantic_embedder, &embedding_model)
+                    .await
+                    .unwrap();
+
+                Ok(ChunkedDocument::Owned(chunked))
+            }
         }
     }
 
@@ -290,7 +333,7 @@ where
     ///
     /// * `id`: Document ID.
     /// * `config`: Chunking configuration.
-    pub async fn update_chunker(&self, id: Uuid, config: Chunker) -> Result<(), ChonkitError> {
+    pub async fn update_chunker(&self, id: Uuid, config: ChunkConfig) -> Result<(), ChonkitError> {
         let document = self.repo.get_by_id(id).await?;
 
         if document.is_none() {
@@ -318,7 +361,7 @@ where
 /// Document service DTOs.
 pub mod dto {
     use crate::core::{
-        chunk::Chunker, document::parser::ParseConfig, model::document::DocumentType,
+        chunk::ChunkConfig, document::parser::ParseConfig, model::document::DocumentType,
     };
     use serde::Deserialize;
     use validify::{Validate, Validify};
@@ -351,6 +394,6 @@ pub mod dto {
         pub parser: Option<ParseConfig>,
 
         /// Chunking configuration.
-        pub chunker: Chunker,
+        pub chunker: ChunkConfig,
     }
 }
