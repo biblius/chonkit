@@ -18,8 +18,8 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    let args = chonkit::config::StartArgs::parse();
-    let app = chonkit::app::state::AppState::new(&args).await;
+    let args = crate::config::StartArgs::parse();
+    let app = crate::app::state::AppState::new(&args).await;
 
     let addr = args.address();
     let origins = args.allowed_origins();
@@ -28,7 +28,7 @@ async fn main() {
         .await
         .expect("error while starting TCP listener");
 
-    let router = chonkit::app::server::router::router(app, origins);
+    let router = crate::app::server::router::router(app, origins);
 
     info!("Listening on {addr}");
 

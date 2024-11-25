@@ -1,6 +1,7 @@
 use super::{DocumentParser, ParseConfig};
 use crate::core::model::document::DocumentType;
 use crate::error::ChonkitError;
+use crate::map_err;
 use docx_rs::read_docx;
 use docx_rs::{Paragraph, ParagraphChild, RunChild, Table};
 use serde::{Deserialize, Serialize};
@@ -23,14 +24,14 @@ impl DocumentParser for DocxParser {
     fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
         let start = Instant::now();
 
-        let input = read_docx(input)?;
+        let input = map_err!(read_docx(input));
         let mut out = String::new();
 
         for el in input.document.children {
             match el {
                 docx_rs::DocumentChild::Paragraph(ref el) => {
                     let mut paragraph = String::new();
-                    let text = extract_paragraph(el)?;
+                    let text = map_err!(extract_paragraph(el));
                     for text in text {
                         let text = text.trim();
                         if text.is_empty() {
@@ -41,8 +42,8 @@ impl DocumentParser for DocxParser {
                     let _ = writeln!(out, "{paragraph}");
                 }
                 docx_rs::DocumentChild::Table(el) => {
-                    let table = extract_table(*el)?;
-                    writeln!(out, "{table}")?;
+                    let table = map_err!(extract_table(*el));
+                    let _ = writeln!(out, "{table}");
                 }
                 _ => {}
             }

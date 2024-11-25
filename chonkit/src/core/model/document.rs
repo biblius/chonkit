@@ -1,6 +1,7 @@
 use super::collection::CollectionShort;
 use crate::{
     core::{chunk::Chunker, document::parser::ParseConfig},
+    err,
     error::ChonkitError,
 };
 use chrono::{DateTime, Utc};
@@ -119,9 +120,7 @@ pub enum DocumentType {
 impl DocumentType {
     pub fn try_from_file_name(name: &str) -> Result<Self, ChonkitError> {
         let Some((_, ext)) = name.rsplit_once('.') else {
-            return Err(ChonkitError::UnsupportedFileType(format!(
-                "{name} - missing extension"
-            )));
+            return err!(UnsupportedFileType, "{name} - missing extension");
         };
         Self::try_from(ext)
     }
@@ -145,7 +144,7 @@ impl TryFrom<&str> for DocumentType {
             "txt" | "md" | "xml" | "json" | "csv" => Ok(Self::Text),
             "pdf" => Ok(Self::Pdf),
             "docx" => Ok(Self::Docx),
-            _ => Err(ChonkitError::UnsupportedFileType(value.to_owned())),
+            _ => err!(UnsupportedFileType, "{}" value.to_owned()),
         }
     }
 }

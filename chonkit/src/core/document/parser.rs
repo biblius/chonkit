@@ -1,4 +1,4 @@
-use crate::{core::model::document::DocumentType, error::ChonkitError};
+use crate::{core::model::document::DocumentType, error::ChonkitError, map_err};
 use docx::DocxParser;
 use pdf::PdfParser;
 use regex::Regex;
@@ -62,7 +62,7 @@ impl ParseConfig {
     ///
     /// * `re`: The expression to match for.
     pub fn with_filter(mut self, re: &str) -> Result<Self, ChonkitError> {
-        self.filters.push(Regex::new(re)?);
+        self.filters.push(map_err!(Regex::new(re)));
         Ok(self)
     }
 

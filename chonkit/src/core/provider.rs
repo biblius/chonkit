@@ -12,6 +12,8 @@ type DynDocumentStore = Arc<dyn DocumentStore + Send + Sync>;
 /// or [Collections][crate::core::model::collection::Collection].
 pub trait ProviderFactory<T> {
     fn get_provider(&self, input: &str) -> Result<T, ChonkitError>;
+
+    fn list_provider_ids(&self) -> Vec<&'static str>;
 }
 
 /// Holds the factories for all available providers.

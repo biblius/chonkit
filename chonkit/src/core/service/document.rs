@@ -13,8 +13,9 @@ use crate::{
         provider::ProviderState,
         repo::{document::DocumentRepo, Atomic},
     },
+    err,
     error::ChonkitError,
-    transaction,
+    map_err, transaction,
 };
 use dto::{ChunkPreviewPayload, DocumentUpload};
 use tracing::info;
@@ -47,7 +48,7 @@ where
         src: Option<&str>,
         ready: Option<bool>,
     ) -> Result<List<Document>, ChonkitError> {
-        p.validate()?;
+        map_err!(p.validate());
         self.repo.list(p, src, ready).await
     }
 
@@ -60,7 +61,7 @@ where
         src: Option<&str>,
         document_id: Option<Uuid>,
     ) -> Result<List<DocumentDisplay>, ChonkitError> {
-        p.validate()?;
+        map_err!(p.validate());
         self.repo.list_with_collections(p, src, document_id).await
     }
 
@@ -68,10 +69,10 @@ where
     ///
     /// * `id`: Document ID.
     pub async fn get_document(&self, id: Uuid) -> Result<Document, ChonkitError> {
-        self.repo
-            .get_by_id(id)
-            .await?
-            .ok_or_else(|| ChonkitError::DoesNotExist(format!("Document with ID '{id}'")))
+        match self.repo.get_by_id(id).await? {
+            Some(doc) => Ok(doc),
+            None => err!(DoesNotExist, "Document with ID {id}"),
+        }
     }
 
     /// Get the full config for a document.
@@ -81,7 +82,7 @@ where
         let file = self.repo.get_config_by_id(id).await?;
 
         let Some(file) = file else {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+            return err!(DoesNotExist, "Document with ID {id}");
         };
 
         Ok(file)
@@ -93,7 +94,7 @@ where
     /// * `id`: Document ID.
     pub async fn get_content(&self, id: Uuid) -> Result<String, ChonkitError> {
         let Some(document) = self.repo.get_by_id(id).await? else {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+            return err!(DoesNotExist, "Document with ID {id}");
         };
 
         let store = self.providers.document.get_provider(&document.src)?;
@@ -114,17 +115,18 @@ where
         document: &Document,
         content: &'content str,
     ) -> Result<ChunkedDocument<'content>, ChonkitError> {
-        let mut chunker = self
+        let Some(mut chunker) = self
             .repo
             .get_chunk_config(document.id)
             .await?
             .map(|config| config.config)
-            .ok_or_else(|| {
-                ChonkitError::DoesNotExist(format!(
-                    "Chunking config for document with ID {}",
-                    document.id
-                ))
-            })?;
+        else {
+            return err!(
+                DoesNotExist,
+                "Chunking config for document with ID {}",
+                document.id
+            );
+        };
 
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = chunker {
@@ -148,7 +150,7 @@ where
         storage_provider: &str,
         mut params: DocumentUpload<'_>,
     ) -> Result<DocumentConfig, ChonkitError> {
-        params.validify()?;
+        map_err!(params.validify());
 
         let DocumentUpload { ref name, ty, file } = params;
         let hash = sha256(file);
@@ -157,9 +159,10 @@ where
         let existing = self.repo.get_by_hash(&hash).await?;
 
         if let Some(Document { name: existing, .. }) = existing {
-            return Err(ChonkitError::AlreadyExists(format!(
+            return err!(
+                AlreadyExists,
                 "New document ({name}) has same hash as existing ({existing})"
-            )));
+            );
         };
 
         transaction!(self.repo, |tx| async move {
@@ -183,7 +186,7 @@ where
     /// * `id`: Document ID.
     pub async fn delete(&self, id: Uuid) -> Result<(), ChonkitError> {
         let Some(document) = self.repo.get_by_id(id).await? else {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+            return err!(DoesNotExist, "Document with ID {id}");
         };
         let store = self.providers.document.get_provider(&document.src)?;
         self.repo.remove_by_id(document.id).await?;
@@ -207,7 +210,7 @@ where
         document_id: Uuid,
         mut config: ChunkPreviewPayload,
     ) -> Result<Vec<String>, ChonkitError> {
-        config.validate()?;
+        map_err!(config.validate());
 
         // If it's a semantic chunker, it needs an embedder.
         if let Chunker::Semantic(ref mut chunker) = config.chunker {
@@ -222,9 +225,10 @@ where
             parser
         } else {
             let config = self.get_config(document_id).await?;
-            config.parse_config.ok_or_else(|| {
-                ChonkitError::DoesNotExist(format!("Parsing configuration for {document_id}"))
-            })?
+            match config.parse_config {
+                Some(config) => config,
+                None => return err!(DoesNotExist, "Parsing configuration for {document_id}"),
+            }
         };
 
         let content = self.parse_preview(document_id, parser).await?;
@@ -246,12 +250,12 @@ where
         id: Uuid,
         config: ParseConfig,
     ) -> Result<String, ChonkitError> {
-        config.validate()?;
+        map_err!(config.validate());
 
         let document = self.repo.get_by_id(id).await?;
 
         let Some(document) = document else {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+            return err!(DoesNotExist, "Document with ID {id}");
         };
 
         let store = self.providers.document.get_provider(&document.src)?;
@@ -269,12 +273,12 @@ where
     /// * `id`: Document ID.
     /// * `config`: Parsing configuration.
     pub async fn update_parser(&self, id: Uuid, config: ParseConfig) -> Result<(), ChonkitError> {
-        config.validate()?;
+        map_err!(config.validate());
 
         let document = self.repo.get_by_id(id).await?;
 
         if document.is_none() {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+            return err!(DoesNotExist, "Document with ID {id}");
         }
 
         self.repo.upsert_parse_config(id, config).await?;
@@ -290,7 +294,7 @@ where
         let document = self.repo.get_by_id(id).await?;
 
         if document.is_none() {
-            return Err(ChonkitError::DoesNotExist(format!("Document with ID {id}")));
+            return err!(DoesNotExist, "Document with ID {id}");
         }
 
         self.repo.upsert_chunk_config(id, config).await?;

@@ -23,7 +23,7 @@ read fembed_url
 
 if [[ -z $fembed_url ]]; then
 	echo "Defaulting FEMBED_URL to 127.0.0.1:6969"
-	export FEMBED_URL=127.0.0.1:6969
+	export FEMBED_URL="http://127.0.0.1:6969"
 else 
 	export FEMBED_URL=$fembed_url
 fi

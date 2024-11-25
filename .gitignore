@@ -7,3 +7,4 @@ chonkit/test/docs/*
 .fastembed_cache
 /**/.fastembed_cache
 /upload
+/**/upload

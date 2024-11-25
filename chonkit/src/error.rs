@@ -10,7 +10,7 @@ use qdrant_client::QdrantError;
 pub mod http;
 
 #[derive(Debug, Error)]
-pub enum ChonkitError {
+pub enum ChonkitErr {
     #[error("Unable to send job to batch executor")]
     Batch,
 
@@ -81,4 +81,47 @@ pub enum ChonkitError {
 
     #[error("Axum; {0}")]
     Axum(#[from] axum::Error),
+}
+
+#[derive(Debug, Error)]
+#[error("{error}")]
+pub struct ChonkitError {
+    file: &'static str,
+    line: u32,
+    column: u32,
+    pub error: ChonkitErr,
+}
+
+impl ChonkitError {
+    pub fn new(file: &'static str, line: u32, column: u32, error: ChonkitErr) -> ChonkitError {
+        ChonkitError {
+            file,
+            line,
+            column,
+            error,
+        }
+    }
+
+    pub fn location(&self) -> String {
+        format!("{}:{}:{}", self.file, self.line, self.column)
+    }
+}
+
+#[macro_export]
+macro_rules! err {
+    ($ty:ident $(, $l:literal $(,)? $($args:expr),* )?) => {
+        Err(ChonkitError::new(
+            file!(),
+            line!(),
+            column!(),
+            $crate::error::ChonkitErr::$ty $( (format!($l, $( $args, )*)) )?,
+        ))
+    };
+}
+
+#[macro_export]
+macro_rules! map_err {
+    ($ex:expr) => {
+        $ex.map_err(|e| ChonkitError::new(file!(), line!(), column!(), e.into()))?
+    };
 }

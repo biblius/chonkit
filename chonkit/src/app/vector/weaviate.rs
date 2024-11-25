@@ -1,8 +1,9 @@
 use crate::{
     app::vector::DOCUMENT_ID_PROPERTY,
     core::{model::collection::VectorCollection, vector::VectorDb},
+    err,
     error::ChonkitError,
-    DEFAULT_COLLECTION_NAME,
+    map_err, DEFAULT_COLLECTION_NAME,
 };
 use dto::{QueryResult, WeaviateError};
 use serde_json::json;
@@ -37,11 +38,10 @@ impl VectorDb for WeaviateClient {
     }
 
     async fn list_vector_collections(&self) -> Result<Vec<VectorCollection>, ChonkitError> {
-        let classes = self
-            .schema
-            .get()
-            .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
+        let classes = match self.schema.get().await {
+            Ok(classes) => classes,
+            Err(e) => return err!(Weaviate, "{}", e),
+        };
 
         let mut collections = vec![];
 
@@ -60,28 +60,25 @@ impl VectorDb for WeaviateClient {
 
         let class = Class::builder(name).with_properties(props).build();
 
-        self.schema
-            .create_class(&class)
-            .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
+        if let Err(e) = self.schema.create_class(&class).await {
+            return err!(Weaviate, "{}", e);
+        }
 
         Ok(())
     }
 
     async fn get_collection(&self, name: &str) -> Result<VectorCollection, ChonkitError> {
-        self.schema
-            .get_class(&name)
-            .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?
-            .try_into()
+        match self.schema.get_class(&name).await {
+            Ok(class) => class.try_into(),
+            Err(e) => err!(Weaviate, "{}", e),
+        }
     }
 
     async fn delete_vector_collection(&self, name: &str) -> Result<(), ChonkitError> {
-        self.schema
-            .delete(&name)
-            .await
-            .map(|_| ())
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))
+        if let Err(e) = self.schema.delete(&name).await {
+            return err!(Weaviate, "{}", e);
+        }
+        Ok(())
     }
 
     async fn create_default_collection(&self, size: usize) {
@@ -119,27 +116,29 @@ impl VectorDb for WeaviateClient {
             .with_limit(limit)
             .build();
 
-        let response = self
-            .query
-            .get(query)
-            .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
-
-        let result: QueryResult = serde_json::from_value(response)?;
-
-        let Some(results) = result.data.get.get(&collection) else {
-            return Err(ChonkitError::Weaviate(format!(
-                "Response error - cannot index into '{collection}' in {}",
-                result.data.get
-            )));
+        let response = match self.query.get(query).await {
+            Ok(res) => res,
+            Err(e) => return err!(Weaviate, "{}", e),
         };
 
-        let results = serde_json::from_value::<Vec<serde_json::Value>>(results.clone())?
-            .into_iter()
-            .filter_map(|obj| obj.get(CONTENT_PROPERTY).cloned())
-            .map(serde_json::from_value::<String>)
-            .filter_map(Result::ok)
-            .collect();
+        let result: QueryResult = map_err!(serde_json::from_value(response));
+
+        let Some(results) = result.data.get.get(&collection) else {
+            return err!(
+                Weaviate,
+                "Response error - cannot index into '{collection}' in {}",
+                result.data.get
+            );
+        };
+
+        let results = map_err!(serde_json::from_value::<Vec<serde_json::Value>>(
+            results.clone()
+        ))
+        .into_iter()
+        .filter_map(|obj| obj.get(CONTENT_PROPERTY).cloned())
+        .map(serde_json::from_value::<String>)
+        .filter_map(Result::ok)
+        .collect();
 
         Ok(results)
     }
@@ -170,10 +169,13 @@ impl VectorDb for WeaviateClient {
 
         let objects = MultiObjects::new(objects);
 
-        self.batch
+        if let Err(e) = self
+            .batch
             .objects_batch_add(objects, Some(ConsistencyLevel::ONE), None)
             .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
+        {
+            return err!(Weaviate, "{}", e);
+        }
 
         Ok(())
     }
@@ -193,10 +195,13 @@ impl VectorDb for WeaviateClient {
         ))
         .build();
 
-        self.batch
+        if let Err(e) = self
+            .batch
             .objects_batch_delete(delete, Some(ConsistencyLevel::ALL), None)
             .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
+        {
+            return err!(Weaviate, "{}", e);
+        }
 
         Ok(())
     }
@@ -216,22 +221,25 @@ impl VectorDb for WeaviateClient {
             ))
             .build();
 
-        let response = self
-            .query
-            .get(query)
-            .await
-            .map_err(|e| ChonkitError::Weaviate(e.to_string()))?;
-
-        let result: QueryResult = serde_json::from_value(response)?;
-
-        let Some(results) = result.data.get.get(&collection) else {
-            return Err(ChonkitError::Weaviate(format!(
-                "Response error - cannot index into '{collection}' in {}",
-                result.data.get
-            )));
+        let response = match self.query.get(query).await {
+            Ok(res) => res,
+            Err(e) => return err!(Weaviate, "{}", e),
         };
 
-        let amount = serde_json::from_value::<Vec<serde_json::Value>>(results.clone())?.len();
+        let result: QueryResult = map_err!(serde_json::from_value(response));
+
+        let Some(results) = result.data.get.get(&collection) else {
+            return err!(
+                Weaviate,
+                "Response error - cannot index into '{collection}' in {}",
+                result.data.get
+            );
+        };
+
+        let amount = map_err!(serde_json::from_value::<Vec<serde_json::Value>>(
+            results.clone()
+        ))
+        .len();
 
         Ok(amount)
     }
@@ -263,9 +271,7 @@ impl TryFrom<Class> for VectorCollection {
         let class_name = &class.class;
 
         let Some(props) = class.properties else {
-            return Err(ChonkitError::Weaviate(format!(
-                "Missing 'properties' field in class {class_name}",
-            )));
+            return err!(Weaviate, "Missing 'properties' field in class {class_name}");
         };
 
         let mut v_collection = VectorCollection::default().with_name(class_name.clone());
@@ -274,18 +280,17 @@ impl TryFrom<Class> for VectorCollection {
             match prop.name.as_str() {
                 "size" => {
                     let Some(size) = prop.description else {
-                        return Err(ChonkitError::Weaviate(format!(
-                            "Missing 'size' property in class {class_name}",
-                        )));
+                        return err!(Weaviate, "Missing 'size' property in class {class_name}",);
                     };
-                    let size = size.parse()?;
+                    let size = map_err!(size.parse::<usize>());
                     v_collection = v_collection.with_size(size);
                 }
                 "original_name" => {
                     let Some(name) = prop.description else {
-                        return Err(ChonkitError::Weaviate(format!(
+                        return err!(
+                            Weaviate,
                             "Missing 'original_name' property in class {class_name}",
-                        )));
+                        );
                     };
                     v_collection = v_collection.with_name(name);
                 }
@@ -294,15 +299,14 @@ impl TryFrom<Class> for VectorCollection {
         }
 
         if v_collection.size == 0 {
-            return Err(ChonkitError::Weaviate(format!(
-                "Missing 'size' property in class {class_name}",
-            )));
+            return err!(Weaviate, "Missing 'size' property in class {class_name}",);
         }
 
         if v_collection.name.is_empty() {
-            return Err(ChonkitError::Weaviate(format!(
+            return err!(
+                Weaviate,
                 "Missing 'original_name' property in class {class_name}",
-            )));
+            );
         }
 
         Ok(v_collection)

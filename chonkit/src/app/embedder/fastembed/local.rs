@@ -1,5 +1,5 @@
 use super::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_SIZE};
-use crate::{core::embedder::Embedder, error::ChonkitError};
+use crate::{core::embedder::Embedder, error::ChonkitError, map_err};
 
 pub use chonkit_embedders::fastembed::local::LocalFastEmbedder;
 
@@ -25,6 +25,6 @@ impl Embedder for LocalFastEmbedder {
     }
 
     async fn embed(&self, content: &[&str], model: &str) -> Result<Vec<Vec<f64>>, ChonkitError> {
-        Ok(self.embed(content, model)?)
+        Ok(map_err!(self.embed(content, model)))
     }
 }

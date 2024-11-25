@@ -57,16 +57,20 @@ struct StartArgs {
 
 async fn embed(
     state: State<Arc<FastEmbedder>>,
-    Json(EmbedRequest { ref model, content }): axum::extract::Json<EmbedRequest>,
+    Json(EmbedRequest { ref model, input }): axum::extract::Json<EmbedRequest>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Uses the default batch size of 256
-    let content = content.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let content = input.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    info!("Embedding with model '{model}'");
     match state.embed(&content, model) {
-        Ok(embeddings) => (StatusCode::OK, Json(json! {embeddings})),
+        Ok(embeddings) => (StatusCode::OK, Json(json! {{ "embeddings": embeddings }})),
         Err(e) => {
             tracing::error!("{e}");
             let error = e.to_string();
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json! { error }))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json! {{ "error": error }}),
+            )
         }
     }
 }
@@ -92,5 +96,5 @@ async fn _health() -> impl IntoResponse {
 #[derive(Debug, Deserialize)]
 pub struct EmbedRequest {
     model: String,
-    content: Vec<String>,
+    input: Vec<String>,
 }
