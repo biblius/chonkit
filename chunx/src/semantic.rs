@@ -234,6 +234,7 @@ impl SemanticWindow {
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum DistanceFn {
     #[default]
     Cosine,

@@ -36,7 +36,9 @@ pub struct SemanticWindowConfig {
     pub delimiter: char,
     pub skip_f: Vec<String>,
     pub skip_b: Vec<String>,
+    #[serde(alias = "embedModel")]
     pub embedding_model: String,
+    #[serde(alias = "embedProvider")]
     pub embedding_provider: String,
 }
 
