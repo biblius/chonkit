@@ -35,11 +35,23 @@ COPY --from=builder /app/feserver/target/release/feserver ./feserver
 COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-${ONX_VERSION}/lib/libonnxruntime.so /usr/lib
 COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-gpu-${ONX_VERSION}/lib/libonnxruntime.so /usr/lib
 
-# ONNX providers
-COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-gpu-${ONX_VERSION}/lib/libonnxruntime_providers_cuda.so /usr/lib
-COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-${ONX_VERSION}/lib/libonnxruntime_providers_shared.so /usr/lib
+RUN apt-get update 
+RUN apt-get install wget -y
+RUN apt-get install software-properties-common -y
 
-RUN apt-get update && apt-get install -y libssl3 && apt clean && rm -rf /var/lib/apt/lists/*
+# https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Debian&target_version=12&target_type=deb_local
+RUN wget https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda-repo-debian12-12-6-local_12.6.3-560.35.05-1_amd64.deb
+RUN dpkg -i cuda-repo-debian12-12-6-local_12.6.3-560.35.05-1_amd64.deb
+RUN cp /var/cuda-repo-debian12-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/
+RUN add-apt-repository contrib
+RUN apt-get update
+
+RUN apt-get -y install cuda-toolkit-12-6 
+RUN apt-get install -y libssl3 
+
+RUN apt clean 
+RUN rm -rf /var/lib/apt/lists/*
+
 
 EXPOSE 6969
 
