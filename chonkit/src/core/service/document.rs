@@ -228,13 +228,13 @@ where
     ) -> Result<ChunkedDocument<'i>, ChonkitError> {
         match config {
             ChunkConfig::Sliding(config) => {
-                let chunker = chunx::SlidingWindow::new(config.size, config.overlap).unwrap();
-                let chunked = chunker.chunk(input).unwrap();
+                let chunker = map_err!(chunx::SlidingWindow::new(config.size, config.overlap));
+                let chunked = map_err!(chunker.chunk(input));
                 Ok(ChunkedDocument::Ref(chunked))
             }
             ChunkConfig::Snapping(config) => {
-                let chunker = chunx::SnappingWindow::new(config.size, config.overlap).unwrap();
-                let chunked = chunker.chunk(input).unwrap();
+                let chunker = map_err!(chunx::SnappingWindow::new(config.size, config.overlap));
+                let chunked = map_err!(chunker.chunk(input));
                 Ok(ChunkedDocument::Ref(chunked))
             }
             ChunkConfig::Semantic(config) => {
@@ -258,11 +258,7 @@ where
                     skip_b,
                 );
 
-                let embedder = self
-                    .providers
-                    .embedding
-                    .get_provider(&embedding_provider)
-                    .unwrap();
+                let embedder = self.providers.embedding.get_provider(&embedding_provider)?;
 
                 if embedder.size(&embedding_model).await?.is_none() {
                     return err!(
@@ -275,8 +271,7 @@ where
 
                 let chunked = chunker
                     .chunk(&input, &semantic_embedder, &embedding_model)
-                    .await
-                    .unwrap();
+                    .await?;
 
                 Ok(ChunkedDocument::Owned(chunked))
             }

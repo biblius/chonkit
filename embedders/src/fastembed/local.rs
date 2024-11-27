@@ -80,7 +80,7 @@ impl LocalFastEmbedder {
             EmbeddingError::InvalidModel(format!("model '{model}' not supported by fastembed",))
         })?;
 
-        let embeddings = embedder.embed(content.to_vec(), None).unwrap();
+        let embeddings = embedder.embed(content.to_vec(), None)?;
 
         debug_assert_eq!(
             embeddings.len(),
