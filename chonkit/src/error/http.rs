@@ -13,7 +13,7 @@ impl ChonkitError {
             E::DoesNotExist(_) => SC::NOT_FOUND,
             E::Validation(_)
             | E::Regex(_)
-            | E::Chunk(_)
+            | E::Chunker(_)
             | E::InvalidFileName(_)
             | E::UnsupportedFileType(_)
             | E::InvalidProvider(_)
@@ -35,6 +35,8 @@ impl ChonkitError {
 
             #[cfg(feature = "weaviate")]
             E::Weaviate(_) => SC::INTERNAL_SERVER_ERROR,
+            E::Chunks(_) => SC::UNPROCESSABLE_ENTITY,
+            E::ParseConfig(_) => SC::UNPROCESSABLE_ENTITY,
         }
     }
 }
@@ -72,25 +74,14 @@ where
 
 impl IntoResponse for ChonkitError {
     fn into_response(self) -> axum::response::Response {
-        let location = self.location();
         let status = self.status();
 
-        error!("{self}");
-
-        let err = anyhow::Error::new(self.error);
-
-        error!("Causes:");
-        let mut src = err.source();
-        while let Some(source) = src {
-            error!(" - : {source}");
-            src = source.source();
-        }
-        error!("{location}");
+        self.print();
 
         use ChonkitErr as CE;
         use ErrorType as ET;
 
-        match err.downcast::<CE>().unwrap() {
+        match self.error {
             CE::InvalidProvider(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
             CE::DoesNotExist(e) => (status, ResponseError::new(ET::Api, e)).into_response(),
 
@@ -119,7 +110,7 @@ impl IntoResponse for ChonkitError {
             | CE::ParseInt(_)
             | CE::Utf8(_)
             | CE::Sqlx(_)
-            | CE::Chunk(_)
+            | CE::Chunker(_)
             | CE::InvalidFileName(_)
             | CE::Http(_) => (status, "Internal".to_string()).into_response(),
             CE::ParsePdf(_) => todo!(),
@@ -140,6 +131,8 @@ impl IntoResponse for ChonkitError {
             CE::Qdrant(_) => (status, "qdrant".to_string()).into_response(),
 
             CE::Axum(_) => (status, "axum".to_string()).into_response(),
+            CE::Chunks(e) => (status, e).into_response(),
+            CE::ParseConfig(e) => (status, e).into_response(),
         }
     }
 }

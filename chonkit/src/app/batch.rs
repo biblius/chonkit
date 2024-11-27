@@ -108,7 +108,8 @@ impl BatchEmbedder {
                 match $e {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::debug!("Sending error to channel ({e:?})");
+                        tracing::debug!("Sending error to channel ({:?})", e.error);
+                        e.print();
                         let result = JobEvent {
                             job_id,
                             result: JobResult::Err(e),

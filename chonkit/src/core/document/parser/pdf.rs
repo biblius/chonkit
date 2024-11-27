@@ -1,5 +1,5 @@
 use super::{DocumentParser, ParseConfig};
-use crate::{core::model::document::DocumentType, error::ChonkitError, map_err};
+use crate::{core::model::document::DocumentType, err, error::ChonkitError, map_err};
 use pdfium_render::prelude::Pdfium;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Write, time::Instant};
@@ -89,6 +89,18 @@ impl DocumentParser for PdfParser {
             "Finished processing PDF, {page_count}/{total_pages} pages took {}ms",
             Instant::now().duration_since(_start).as_millis()
         );
+
+        if out.is_empty() {
+            tracing::error!(
+                "Parsing resulted in empty output. Config: {:?}",
+                self.config
+            );
+
+            return err!(
+                ParseConfig,
+                "empty output (total pages: {total_pages} | start: {start} | end: {end} | range: {range})",
+            );
+        }
 
         Ok(out)
     }

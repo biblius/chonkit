@@ -1,4 +1,4 @@
-use std::{num::ParseIntError, string::FromUtf8Error};
+use std::{error::Error as _, num::ParseIntError, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
 use validify::ValidationErrors;
@@ -28,6 +28,9 @@ pub enum ChonkitErr {
     #[error("Invalid embedding model; {0}")]
     InvalidEmbeddingModel(String),
 
+    #[error("chunks: {0}")]
+    Chunks(String),
+
     #[error("embedding error; {0}")]
     Embedding(#[from] chonkit_embedders::error::EmbeddingError),
 
@@ -46,14 +49,17 @@ pub enum ChonkitErr {
     #[error("Parse int; {0}")]
     ParseInt(#[from] ParseIntError),
 
+    #[error("parse configuration: {0}")]
+    ParseConfig(String),
+
     #[error("SQL; {0}")]
     Sqlx(#[from] sqlx::Error),
 
     #[error("JSON error; {0}")]
     SerdeJson(#[from] serde_json::Error),
 
-    #[error("Chunking; {0}")]
-    Chunk(#[from] chunx::ChunkerError),
+    #[error("chunker: {0}")]
+    Chunker(#[from] chunx::ChunkerError),
 
     #[error("Parse pdf; {0}")]
     ParsePdf(#[from] pdfium_render::prelude::PdfiumError),
@@ -103,6 +109,22 @@ impl ChonkitError {
 
     pub fn location(&self) -> String {
         format!("{}:{}:{}", self.file, self.line, self.column)
+    }
+
+    pub fn print(&self) {
+        let location = self.location();
+
+        error!("{location} | {self}");
+
+        if self.error.source().is_some() {
+            error!("Causes:");
+        }
+
+        let mut src = self.error.source();
+        while let Some(source) = src {
+            error!(" - {source}");
+            src = source.source();
+        }
     }
 }
 

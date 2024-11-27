@@ -1,5 +1,8 @@
+use std::error::Error;
+
 use crate::error::EmbeddingError;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::debug;
 
 const DEFAULT_OPENAI_ENDPOINT: &str = "https://api.openai.com";
@@ -29,27 +32,66 @@ impl OpenAiEmbeddings {
 
     pub async fn embed(
         &self,
-        content: &[&str],
+        input: &[&str],
         model: &str,
     ) -> Result<Vec<Vec<f64>>, EmbeddingError> {
         let request = EmbeddingRequest {
             model: model.to_string(),
-            input: content.iter().map(|s| s.to_string()).collect(),
+            input: input.iter().map(|s| s.to_string()).collect(),
         };
 
-        let response = self
+        if input.is_empty() {
+            return Err(EmbeddingError::InvalidInput(format!(
+                "cannot be empty (len = {})",
+                input.len()
+            )));
+        }
+
+        let response = match self
             .client
             .post(format!("{}/v1/embeddings", self.endpoint))
             .bearer_auth(&self.key)
             .json(&request)
             .send()
-            .await?
-            .json::<EmbeddingResponse>()
-            .await?;
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                tracing::error!("Error in OpenAI request: {e}");
+                return Err(EmbeddingError::Reqwest(e));
+            }
+        };
+
+        if response.status() != 200 {
+            tracing::error!(
+                "Request to {} failed with status {}",
+                response.url(),
+                response.status()
+            );
+            let response = match response.json::<OpenAIError>().await {
+                Ok(res) => res,
+                Err(e) => {
+                    tracing::error!("Error reading OpenAI response: {}", e);
+                    tracing::error!("Source: {:?}", e.source());
+                    return Err(EmbeddingError::Reqwest(e));
+                }
+            };
+            tracing::error!("Response: {response:?}");
+            return Err(EmbeddingError::OpenAI(response));
+        }
+
+        let response = match response.json::<EmbeddingResponse>().await {
+            Ok(res) => res,
+            Err(e) => {
+                tracing::error!("Error decoding OpenAI response: {}", e);
+                tracing::error!("Source: {:?}", e.source());
+                return Err(EmbeddingError::Reqwest(e));
+            }
+        };
 
         debug!(
             "Embedded {} chunk(s) with '{}', used tokens {}-{} (prompt-total)",
-            content.len(),
+            input.len(),
             response.model,
             response.usage.prompt_tokens,
             response.usage.total_tokens
@@ -86,6 +128,21 @@ struct EmbeddingObject {
 struct Usage {
     prompt_tokens: usize,
     total_tokens: usize,
+}
+
+#[derive(Debug, Deserialize, Error)]
+#[error("{message}, type: {r#type}, param: {param:?}, code: {code:?}")]
+pub struct OpenAIErrorParams {
+    pub message: String,
+    pub r#type: String,
+    pub param: Option<String>,
+    pub code: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, Error)]
+#[error("Open AI error response {{ {error} }}")]
+pub struct OpenAIError {
+    pub error: OpenAIErrorParams,
 }
 
 const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";

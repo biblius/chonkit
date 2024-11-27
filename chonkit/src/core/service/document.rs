@@ -226,16 +226,18 @@ where
         config: ChunkConfig,
         input: &'i str,
     ) -> Result<ChunkedDocument<'i>, ChonkitError> {
-        match config {
+        let chunks = match config {
             ChunkConfig::Sliding(config) => {
                 let chunker = map_err!(chunx::SlidingWindow::new(config.size, config.overlap));
                 let chunked = map_err!(chunker.chunk(input));
-                Ok(ChunkedDocument::Ref(chunked))
+
+                ChunkedDocument::Ref(chunked)
             }
             ChunkConfig::Snapping(config) => {
                 let chunker = map_err!(chunx::SnappingWindow::new(config.size, config.overlap));
                 let chunked = map_err!(chunker.chunk(input));
-                Ok(ChunkedDocument::Ref(chunked))
+
+                ChunkedDocument::Ref(chunked)
             }
             ChunkConfig::Semantic(config) => {
                 let SemanticWindowConfig {
@@ -273,9 +275,15 @@ where
                     .chunk(&input, &semantic_embedder, &embedding_model)
                     .await?;
 
-                Ok(ChunkedDocument::Owned(chunked))
+                ChunkedDocument::Owned(chunked)
             }
+        };
+
+        if chunks.is_empty() {
+            return err!(Chunks, "cannot be empty");
         }
+
+        Ok(chunks)
     }
 
     /// Preview how the document gets parsed to text.

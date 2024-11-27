@@ -160,6 +160,15 @@ pub enum ChunkedDocument<'content> {
     Owned(Vec<String>),
 }
 
+impl ChunkedDocument<'_> {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Ref(v) => v.is_empty(),
+            Self::Owned(v) => v.is_empty(),
+        }
+    }
+}
+
 pub struct SemanticEmbedder(pub std::sync::Arc<dyn Embedder + Send + Sync>);
 
 impl chunx::semantic::Embedder for SemanticEmbedder {
