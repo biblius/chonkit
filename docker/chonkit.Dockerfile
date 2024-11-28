@@ -32,7 +32,14 @@ COPY --from=builder /app/chonkit/migrations ./migrations
 COPY --from=builder /app/pdfium/lib/libpdfium.so /usr/lib
 COPY --from=builder /app/onnxruntime/onnxruntime-linux-x64-${ONX_VERSION}/lib/libonnxruntime.so /usr/lib
 
-RUN apt-get update && apt-get install -y libssl3 && apt clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update 
+
+RUN apt-get install -y ca-certificates 
+RUN apt-get install -y libssl3 
+
+RUN update-ca-certificates 
+
+RUN apt clean 
 
 EXPOSE 42069
 
