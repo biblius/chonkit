@@ -40,8 +40,11 @@ impl TestState {
         #[cfg(feature = "fe-local")]
         let fastembed = Arc::new(crate::app::embedder::fastembed::local::LocalFastEmbedder::new());
         #[cfg(feature = "fe-remote")]
-        let fastembed =
-            Arc::new(crate::app::embedder::fastembed::remote::RemoteFastEmbedder::new());
+        let fastembed = Arc::new(
+            crate::app::embedder::fastembed::remote::RemoteFastEmbedder::new(
+                String::new(), /* TODO */
+            ),
+        );
 
         let vector = VectorStoreProvider {
             #[cfg(feature = "qdrant")]

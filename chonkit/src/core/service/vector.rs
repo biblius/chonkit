@@ -1,3 +1,4 @@
+use crate::config::DEFAULT_COLLECTION_NAME;
 use crate::core::model::collection::{
     Collection, CollectionDisplay, CollectionInsert, Embedding, EmbeddingInsert,
 };
@@ -5,8 +6,9 @@ use crate::core::model::{List, Pagination, PaginationSort};
 use crate::core::provider::ProviderState;
 use crate::core::repo::vector::VectorRepo;
 use crate::core::repo::Atomic;
+use crate::core::vector::CreateVectorCollection;
 use crate::error::{ChonkitErr, ChonkitError};
-use crate::{err, map_err, transaction, DEFAULT_COLLECTION_NAME};
+use crate::{err, map_err, transaction};
 use dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -108,33 +110,49 @@ where
             .vector
             .get_provider(vector_db)
             .expect("invalid vector provider");
+
         let embedder = self
             .providers
             .embedding
             .get_provider(embedder)
             .expect("invalid embedding provider");
 
-        let (model, size) = embedder.default_model();
+        transaction!(infallible self.repo, |tx| async move {
+            let (model, size) = embedder.default_model();
 
-        vector_db.create_default_collection(size).await;
+            let db_insert = CollectionInsert::new(
+                DEFAULT_COLLECTION_NAME,
+                &model,
+                embedder.id(),
+                vector_db.id(),
+            );
 
-        let insert = CollectionInsert::new(
-            DEFAULT_COLLECTION_NAME,
-            &model,
-            embedder.id(),
-            vector_db.id(),
-        );
+            let collection = match self.repo.insert_collection(db_insert, Some(tx)).await {
+                Ok(c) => { info!("Created default collection '{DEFAULT_COLLECTION_NAME}'"); c },
+                Err(ChonkitError {
+                    error: ChonkitErr::AlreadyExists(_),
+                    ..
+                }) => {
+                    info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists");
+                    let collection = self.repo.get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id()).await?;
+                    match collection {
+                        Some(c) => c,
+                        None => panic!("irrecoverable state: collection '{DEFAULT_COLLECTION_NAME}' not found in {}", vector_db.id()),
+                    }
+                }
+                Err(e) =>  {
+                    error!("Failed to create default collection: {e}");
+                    return Err(e)
+                },
+            };
 
-        match self.repo.insert_collection(insert, None).await {
-            Ok(_) => info!("Created default collection '{DEFAULT_COLLECTION_NAME}'"),
-            Err(ChonkitError {
-                error: ChonkitErr::AlreadyExists(_),
-                ..
-            }) => {
-                info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists")
-            }
-            Err(e) => error!("Failed to create default collection: {e}"),
-        }
+            let vector_db_insert =
+                CreateVectorCollection::new(collection.id, DEFAULT_COLLECTION_NAME, size, embedder.id(), &model);
+
+            vector_db.create_default_collection(vector_db_insert).await?;
+
+            Result::<(), ChonkitError>::Ok(())
+        })
     }
 
     /// Create a collection in the vector DB and store its info in the repository.
@@ -167,11 +185,18 @@ where
         info!("Creating collection '{name}' of size '{size}'",);
 
         transaction!(self.repo, |tx| async move {
-            vector_db.create_vector_collection(&name, size).await?;
-
             let insert = CollectionInsert::new(&name, &model, embedder.id(), vector_db.id());
-
             let collection = self.repo.insert_collection(insert, Some(tx)).await?;
+
+            let data = CreateVectorCollection::new(
+                collection.id,
+                &name,
+                size,
+                &embedding_provider,
+                &model,
+            );
+
+            vector_db.create_vector_collection(data).await?;
 
             Ok(collection)
         })
@@ -396,7 +421,7 @@ pub mod dto {
         #[modify(trim)]
         pub name: String,
 
-        /// Collection model.
+        /// Collection embedding model.
         pub model: String,
 
         /// Vector database provider.

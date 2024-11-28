@@ -7,6 +7,3 @@ pub mod local;
 
 #[cfg(feature = "fe-remote")]
 pub mod remote;
-
-pub const DEFAULT_COLLECTION_MODEL: &str = "Xenova/bge-base-en-v1.5";
-pub const DEFAULT_COLLECTION_SIZE: usize = 768;

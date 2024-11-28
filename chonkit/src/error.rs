@@ -86,6 +86,9 @@ pub enum ChonkitErr {
 
     #[error("Axum; {0}")]
     Axum(#[from] axum::Error),
+
+    #[error("uuid: {0}")]
+    Uuid(#[from] uuid::Error),
 }
 
 #[derive(Debug, Error)]

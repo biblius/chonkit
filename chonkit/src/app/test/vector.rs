@@ -7,6 +7,7 @@
 mod vector_service_integration_tests {
     use crate::{
         app::test::{TestState, TestStateConfig},
+        config::DEFAULT_COLLECTION_NAME,
         core::{
             embedder::Embedder,
             model::document::{DocumentInsert, DocumentType},
@@ -15,7 +16,6 @@ mod vector_service_integration_tests {
             service::vector::dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload},
         },
         error::ChonkitErr,
-        DEFAULT_COLLECTION_NAME,
     };
     use suitest::{after_all, before_all, cleanup};
 

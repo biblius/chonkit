@@ -38,4 +38,26 @@ macro_rules! transaction {
             }
         }
     }};
+
+    (infallible $repo:expr, $op:expr) => {{
+        let mut tx = $repo
+            .start_tx()
+            .await
+            .expect("error in starting transaction");
+        let result = { $op(&mut tx) }.await;
+        match result {
+            Ok(_) => {
+                $repo
+                    .commit_tx(tx)
+                    .await
+                    .expect("error in commiting transaction");
+            }
+            Err(_) => {
+                $repo
+                    .abort_tx(tx)
+                    .await
+                    .expect("error in aborting transaction");
+            }
+        }
+    }};
 }

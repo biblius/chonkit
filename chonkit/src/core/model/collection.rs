@@ -4,33 +4,6 @@ use serde::Serialize;
 use sqlx::prelude::FromRow;
 use uuid::Uuid;
 
-/// Used by vector databases.
-#[derive(Debug, Serialize, Default, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct VectorCollection {
-    /// Unique collection name.
-    pub name: String,
-
-    /// Collection vector size
-    pub size: usize,
-}
-
-impl VectorCollection {
-    pub fn new(name: String, size: usize) -> Self {
-        Self { name, size }
-    }
-
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = name;
-        self
-    }
-
-    pub fn with_size(mut self, size: usize) -> Self {
-        self.size = size;
-        self
-    }
-}
-
 /// Vector collection model.
 #[derive(Debug, Serialize, FromRow, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]

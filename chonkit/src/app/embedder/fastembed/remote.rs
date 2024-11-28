@@ -1,4 +1,4 @@
-use super::{DEFAULT_COLLECTION_MODEL, DEFAULT_COLLECTION_SIZE};
+use crate::config::{DEFAULT_COLLECTION_EMBEDDING_MODEL, DEFAULT_COLLECTION_SIZE};
 use crate::{core::embedder::Embedder, error::ChonkitError, map_err};
 
 pub use chonkit_embedders::fastembed::remote::RemoteFastEmbedder;
@@ -11,7 +11,7 @@ impl Embedder for RemoteFastEmbedder {
 
     fn default_model(&self) -> (String, usize) {
         (
-            String::from(DEFAULT_COLLECTION_MODEL),
+            String::from(DEFAULT_COLLECTION_EMBEDDING_MODEL),
             DEFAULT_COLLECTION_SIZE,
         )
     }

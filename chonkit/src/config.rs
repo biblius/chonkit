@@ -1,5 +1,16 @@
 use clap::Parser;
 
+/// The ID for the default collection created on application startup.
+pub const DEFAULT_COLLECTION_ID: uuid::Uuid = uuid::Uuid::nil();
+/// The name for the default collection created on application startup.
+pub const DEFAULT_COLLECTION_NAME: &str = "Chonkit_Default_Collection";
+/// The size for the default collection created on application startup.
+pub const DEFAULT_COLLECTION_SIZE: usize = 768;
+/// The embedding provider for the default collection created on application startup.
+pub const DEFAULT_COLLECTION_EMBEDDING_PROVIDER: &str = "fastembed";
+/// The embedding model for the default collection created on application startup.
+pub const DEFAULT_COLLECTION_EMBEDDING_MODEL: &str = "Xenova/bge-base-en-v1.5";
+
 const DEFAULT_UPLOAD_PATH: &str = "upload";
 
 const DEFAULT_ADDRESS: &str = "0.0.0.0:42069";

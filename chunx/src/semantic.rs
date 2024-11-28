@@ -363,7 +363,6 @@ mod tests {
         );
 
         let chunks = chunker.chunk(input, embedder, model).await.unwrap();
-        dbg!(&chunks);
 
         assert_eq!(2, chunks.len());
 

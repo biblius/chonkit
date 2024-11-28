@@ -43,9 +43,7 @@ use crate::{
         chunk::{ChunkConfig, SemanticWindowConfig, SlidingWindowConfig, SnappingWindowConfig},
         document::parser::ParseConfig,
         model::{
-            collection::{
-                Collection, CollectionDisplay, CollectionShort, Embedding, VectorCollection,
-            },
+            collection::{Collection, CollectionDisplay, CollectionShort, Embedding},
             document::{Document, DocumentConfig, DocumentDisplay, DocumentShort},
             List, Pagination, PaginationSort, SortDirection,
         },
@@ -53,6 +51,7 @@ use crate::{
             document::dto::ChunkPreviewPayload,
             vector::dto::{CreateCollectionPayload, SearchPayload},
         },
+        vector::VectorCollection,
     },
 };
 use utoipa::OpenApi;

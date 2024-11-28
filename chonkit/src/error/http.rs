@@ -1,7 +1,6 @@
 use super::{ChonkitErr, ChonkitError};
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
-use tracing::error;
 
 impl ChonkitError {
     pub fn status(&self) -> StatusCode {
@@ -35,6 +34,7 @@ impl ChonkitError {
 
             #[cfg(feature = "weaviate")]
             E::Weaviate(_) => SC::INTERNAL_SERVER_ERROR,
+            E::Uuid(_) => SC::INTERNAL_SERVER_ERROR,
             E::Chunks(_) => SC::UNPROCESSABLE_ENTITY,
             E::ParseConfig(_) => SC::UNPROCESSABLE_ENTITY,
         }
@@ -110,7 +110,6 @@ impl IntoResponse for ChonkitError {
             | CE::ParseInt(_)
             | CE::Utf8(_)
             | CE::Sqlx(_)
-            | CE::Chunker(_)
             | CE::InvalidFileName(_)
             | CE::Http(_) => (status, "Internal".to_string()).into_response(),
             CE::ParsePdf(_) => todo!(),
@@ -131,8 +130,10 @@ impl IntoResponse for ChonkitError {
             CE::Qdrant(_) => (status, "qdrant".to_string()).into_response(),
 
             CE::Axum(_) => (status, "axum".to_string()).into_response(),
-            CE::Chunks(e) => (status, e).into_response(),
-            CE::ParseConfig(e) => (status, e).into_response(),
+            CE::Uuid(e) => (status, e.to_string()).into_response(),
+            CE::Chunks(e) => (status, e.to_string()).into_response(),
+            CE::Chunker(e) => (status, e.to_string()).into_response(),
+            CE::ParseConfig(e) => (status, e.to_string()).into_response(),
         }
     }
 }
