@@ -20,7 +20,7 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
     let origins = origins
         .into_iter()
         .map(|origin| {
-            tracing::debug!("Adding {origin} to allowed origins");
+            tracing::info!("Adding {origin} to allowed origins");
             HeaderValue::from_str(&origin)
         })
         .map(Result::unwrap);
@@ -37,7 +37,6 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
         ]);
 
     let app_state_router = Router::new()
-        .route("/_health", get(health_check))
         .route("/info", get(app_config))
         .with_state(state.clone());
 
@@ -49,12 +48,41 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
         .merge(sync)
         .merge(app_state_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .layer(TraceLayer::new_for_http().on_failure(
-            |error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
-                tracing::error!("{error}")
-            },
-        ))
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(|req: &axum::http::Request<_>, _span: &Span| {
+                    let ctype = req
+                        .headers()
+                        .get("content-type")
+                        .map(|v| v.to_str().unwrap_or_else(|_| "none"))
+                        .unwrap_or_else(|| "none");
+
+                    tracing::info!("Processing request | content-type: {ctype}");
+                })
+                .on_response(
+                    |res: &axum::http::Response<_>, latency: Duration, _span: &Span| {
+                        let status = res.status();
+                        let ctype = res
+                            .headers()
+                            .get("content-type")
+                            .map(|v| v.to_str().unwrap_or_else(|_| "none"))
+                            .unwrap_or_else(|| "none");
+
+                        tracing::info!(
+                            "Sending response | {status} | {}ms | {ctype}",
+                            latency.as_millis()
+                        );
+                    },
+                )
+                .on_failure(
+                    |error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
+                        tracing::error!("Error in request: {error}")
+                    },
+                ),
+        )
         .layer(cors)
+        // Has to go last to exclude all the tracing/cors layers
+        .route("/_health", get(health_check))
 }
 
 fn service_api(state: AppState) -> Router {
