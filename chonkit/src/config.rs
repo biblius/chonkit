@@ -10,9 +10,9 @@ pub const DEFAULT_COLLECTION_SIZE: usize = 768;
 pub const DEFAULT_COLLECTION_EMBEDDING_PROVIDER: &str = "fastembed";
 /// The embedding model for the default collection created on application startup.
 pub const DEFAULT_COLLECTION_EMBEDDING_MODEL: &str = "Xenova/bge-base-en-v1.5";
-
+/// The default upload path for the `fs` document storage provider.
 const DEFAULT_UPLOAD_PATH: &str = "upload";
-
+/// The default address to listen on.
 const DEFAULT_ADDRESS: &str = "0.0.0.0:42069";
 
 #[derive(Debug, Parser)]
@@ -57,75 +57,53 @@ pub struct StartArgs {
     #[cfg(feature = "fe-remote")]
     #[arg(short, long)]
     fembed_url: Option<String>,
+
+    #[cfg(feature = "auth-vault")]
+    #[arg(long)]
+    vault_url: Option<String>,
+    #[cfg(feature = "auth-vault")]
+    #[arg(long)]
+    vault_role_id: Option<String>,
+    #[cfg(feature = "auth-vault")]
+    #[arg(long)]
+    vault_secret_id: Option<String>,
+    #[cfg(feature = "auth-vault")]
+    #[arg(long)]
+    vault_key_name: Option<String>,
+}
+
+/// Implement a getter method on [StartArgs], using the `$var` environment variable as a fallback
+/// and either panic or default if neither the argument nor the environment variable is set.
+macro_rules! arg {
+    ($id:ident, $var:literal, panic $msg:literal) => {
+        impl StartArgs {
+            pub fn $id(&self) -> String {
+                match &self.$id {
+                    Some(val) => val.to_string(),
+                    None => match std::env::var($var) {
+                        Ok(val) => val,
+                        Err(_) => panic!($msg),
+                    },
+                }
+            }
+        }
+    };
+    ($id:ident, $var:literal, default $value:expr) => {
+        impl StartArgs {
+            pub fn $id(&self) -> String {
+                match &self.$id {
+                    Some(val) => val.to_string(),
+                    None => match std::env::var($var) {
+                        Ok(val) => val,
+                        Err(_) => $value,
+                    },
+                }
+            }
+        }
+    };
 }
 
 impl StartArgs {
-    pub fn db_url(&self) -> String {
-        match &self.db_url {
-            Some(url) => url.to_string(),
-            None => match std::env::var("DATABASE_URL") {
-                Ok(url) => url,
-                Err(_) => panic!("Database url not found; Pass --db-url or set DATABASE_URL"),
-            },
-        }
-    }
-
-    pub fn log(&self) -> String {
-        match &self.log {
-            Some(log) => log.to_string(),
-            None => match std::env::var("RUST_LOG") {
-                Ok(url) => url,
-                Err(_) => "info".to_string(),
-            },
-        }
-    }
-
-    pub fn upload_path(&self) -> String {
-        match &self.upload_path {
-            Some(path) => path.to_string(),
-            None => match std::env::var("UPLOAD_PATH") {
-                Ok(path) => path,
-                Err(_) => DEFAULT_UPLOAD_PATH.to_string(),
-            },
-        }
-    }
-
-    #[cfg(feature = "qdrant")]
-    pub fn qdrant_url(&self) -> String {
-        match &self.qdrant_url {
-            Some(url) => url.to_string(),
-            None => match std::env::var("QDRANT_URL") {
-                Ok(url) => url,
-                Err(_) => {
-                    panic!("Qdrant url not found; Pass --qdrant-url (-q) or set QDRANT_URL")
-                }
-            },
-        }
-    }
-
-    #[cfg(feature = "weaviate")]
-    pub fn weaviate_url(&self) -> String {
-        match &self.weaviate_url {
-            Some(url) => url.to_string(),
-            None => match std::env::var("WEAVIATE_URL") {
-                Ok(url) => url,
-                Err(_) => {
-                    panic!("Weaviate url not found; Pass --weaviate-url (-w) or set WEAVIATE_URL")
-                }
-            },
-        }
-    }
-
-    pub fn address(&self) -> String {
-        match &self.address {
-            Some(addr) => addr.to_string(),
-            None => match std::env::var("ADDRESS") {
-                Ok(addr) => addr,
-                Err(_) => DEFAULT_ADDRESS.to_string(),
-            },
-        }
-    }
-
     pub fn allowed_origins(&self) -> Vec<String> {
         match &self.allowed_origins {
             Some(origins) => origins.split(',').map(String::from).collect(),
@@ -142,17 +120,27 @@ impl StartArgs {
     pub fn open_ai_key(&self) -> String {
         std::env::var("OPENAI_KEY").expect("Missing OPENAI_KEY in env")
     }
-
-    #[cfg(feature = "fe-remote")]
-    pub fn fembed_url(&self) -> String {
-        match &self.fembed_url {
-            Some(url) => url.to_string(),
-            None => match std::env::var("FEMBED_URL") {
-                Ok(url) => url,
-                Err(_) => {
-                    panic!("Fembed url not found; Pass --fembed-url (-f) or set FEMBED_URL")
-                }
-            },
-        }
-    }
 }
+
+arg!(db_url,          "DATABASE_URL",    panic   "Database url not found; Pass --db-url or set DATABASE_URL");
+arg!(log,             "RUST_LOG",        default "info".to_string());
+arg!(upload_path,     "UPLOAD_PATH",     default DEFAULT_UPLOAD_PATH.to_string());
+arg!(address,         "ADDRESS",         default DEFAULT_ADDRESS.to_string());
+
+#[cfg(feature = "qdrant")]
+arg!(qdrant_url,      "QDRANT_URL",      panic   "Qdrant url not found; Pass --qdrant-url or set QDRANT_URL");
+
+#[cfg(feature = "weaviate")]
+arg!(weaviate_url,    "WEAVIATE_URL",    panic   "Weaviate url not found; Pass --weaviate-url or set WEAVIATE_URL");
+
+#[cfg(feature = "fe-remote")]
+arg!(fembed_url,      "FEMBED_URL",      panic   "Fembed url not found; Pass --fembed-url or set FEMBED_URL");
+
+#[cfg(feature = "auth-vault")]
+arg!(vault_url,  "VAULT_URL",   panic "Vault url not found; Pass --vault-url or set VAULT_URL");
+#[cfg(feature = "auth-vault")]
+arg!(vault_role_id,   "VAULT_ROLE_ID",     panic "Vault role id not found; Pass --vault-role-id or set VAULT_ROLE_ID");
+#[cfg(feature = "auth-vault")]
+arg!(vault_secret_id, "VAULT_SECRET_ID", panic "Vault secret id not found; Pass --vault-secret-id or set VAULT_SECRET_ID");
+#[cfg(feature = "auth-vault")]
+arg!(vault_key_name, "VAULT_KEY_NAME", panic "Vault key name not found; Pass --vault-key-name or set VAULT_KEY_NAME");

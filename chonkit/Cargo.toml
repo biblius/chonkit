@@ -41,7 +41,6 @@ pdfium-render = { version = "0.8.23" }
 testcontainers = "0.22.0"
 testcontainers-modules = { version = "0.10.0", features = ["postgres"] }
 
-
 # weaviate
 weaviate-community = { version = "0.2.2", optional = true }
 
@@ -68,11 +67,16 @@ utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
 serde_with = "3.11.0"
 anyhow = { version = "1.0.93", features = ["backtrace"] }
 
+# vault-auth
+vaultrs = { version = "0.7.3", optional = true }
+base64 = "0.22.1"
+
 [features]
-default = ["weaviate", "qdrant", "fe-local", "openai"]
+default = ["weaviate", "qdrant", "fe-local", "openai", "auth-vault"]
 fe-local = ["chonkit-embedders", "chonkit-embedders?/fe-local"]
 fe-remote = ["chonkit-embedders", "chonkit-embedders?/fe-remote"]
 cuda = ["chonkit-embedders?/cuda"]
 openai = ["chonkit-embedders", "chonkit-embedders?/openai"]
 weaviate = ["weaviate-community"]
 qdrant = ["qdrant-client"]
+auth-vault = ["vaultrs"]

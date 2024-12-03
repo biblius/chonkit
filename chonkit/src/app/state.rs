@@ -31,6 +31,9 @@ pub struct AppState {
     /// Downstream service providers for chonkit services.
     /// Used for displaying some metadata and in tests.
     pub providers: AppProviderState,
+
+    #[cfg(feature = "auth-vault")]
+    pub vault: crate::app::auth::VaultAuthenticator,
 }
 
 impl AppState {
@@ -67,11 +70,27 @@ impl AppState {
 
         let batch_embedder = Self::spawn_batch_embedder(service_state.clone());
 
+        #[cfg(feature = "auth-vault")]
+        let vault = Self::init_vault(args).await;
+
         Self {
             services: service_state,
             batch_embedder,
             providers,
+            #[cfg(feature = "auth-vault")]
+            vault,
         }
+    }
+
+    #[cfg(feature = "auth-vault")]
+    async fn init_vault(args: &crate::config::StartArgs) -> crate::app::auth::VaultAuthenticator {
+        crate::app::auth::VaultAuthenticator::new(
+            args.vault_url(),
+            args.vault_role_id(),
+            args.vault_secret_id(),
+            args.vault_key_name(),
+        )
+        .await
     }
 
     fn init_vector_providers(args: &crate::config::StartArgs) -> Arc<VectorStoreProvider> {

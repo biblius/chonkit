@@ -13,6 +13,9 @@ pub enum ChonkitErr {
     #[error("Unable to send job to batch executor")]
     Batch,
 
+    #[error("Unauthorized")]
+    Unauthorized,
+
     #[error("Does not exist; {0}")]
     DoesNotExist(String),
 
@@ -89,6 +92,9 @@ pub enum ChonkitErr {
 
     #[error("uuid: {0}")]
     Uuid(#[from] uuid::Error),
+
+    #[error("encoding: {0}")]
+    Encoding(#[from] base64::DecodeError),
 }
 
 #[derive(Debug, Error)]

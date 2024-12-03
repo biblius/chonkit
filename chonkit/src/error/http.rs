@@ -37,6 +37,8 @@ impl ChonkitError {
             E::Uuid(_) => SC::INTERNAL_SERVER_ERROR,
             E::Chunks(_) => SC::UNPROCESSABLE_ENTITY,
             E::ParseConfig(_) => SC::UNPROCESSABLE_ENTITY,
+            E::Unauthorized => SC::UNAUTHORIZED,
+            E::Encoding(_) => SC::UNPROCESSABLE_ENTITY,
         }
     }
 }
@@ -134,6 +136,8 @@ impl IntoResponse for ChonkitError {
             CE::Chunks(e) => (status, e.to_string()).into_response(),
             CE::Chunker(e) => (status, e.to_string()).into_response(),
             CE::ParseConfig(e) => (status, e.to_string()).into_response(),
+            CE::Unauthorized => (status, "Unauthorized".to_string()).into_response(),
+            CE::Encoding(e) => (status, e.to_string()).into_response(),
         }
     }
 }

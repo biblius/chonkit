@@ -36,18 +36,57 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
             Method::PATCH,
         ]);
 
-    let app_state_router = Router::new()
-        .route("/info", get(app_config))
-        .with_state(state.clone());
+    use document::*;
+    use vector::*;
 
     let sync = Router::new()
         .route("/documents/sync/:provider", get(document::sync))
+        .route("/info", get(app_config))
         .with_state(state.clone());
 
-    service_api(state)
-        .merge(sync)
-        .merge(app_state_router)
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+    let batch_router = Router::new()
+        .route("/embeddings/batch", post(batch_embed))
+        .with_state(state.batch_embedder.clone());
+
+    let router = Router::new()
+        .route("/documents", get(list_documents))
+        .route("/documents", post(upload_documents))
+        .layer(DefaultBodyLimit::max(50_000_000))
+        .route("/documents/:id", get(get_document))
+        .route("/documents/:id", delete(delete_document))
+        .route("/documents/:id/config", put(update_document_config))
+        .route("/documents/:id/chunk/preview", post(chunk_preview))
+        .route("/documents/:id/parse/preview", post(parse_preview))
+        .route("/collections", get(list_collections))
+        .route("/collections", post(create_collection))
+        .route("/collections/:id", get(get_collection))
+        .route("/collections/:id", delete(delete_collection))
+        .route(
+            "/collections/:collection_id/documents/:document_id",
+            delete(delete_embeddings),
+        )
+        .route(
+            "/collections/:collection_id/documents/:document_id/count",
+            get(count_embeddings),
+        )
+        .route("/embeddings", get(list_embedded_documents))
+        .route("/embeddings", post(embed))
+        .route("/embeddings/:provider/models", get(list_embedding_models))
+        .route("/search", post(search))
+        .route("/display/documents", get(list_documents_display))
+        .route("/display/collections", get(list_collections_display))
+        .route("/display/collections/:id", get(collection_display))
+        .with_state(state.services.clone())
+        .merge(batch_router)
+        .merge(sync);
+
+    #[cfg(feature = "auth-vault")]
+    let router = router.layer(axum::middleware::from_fn_with_state(
+        state.vault.clone(),
+        crate::app::auth::auth_check,
+    ));
+
+    router
         .layer(
             TraceLayer::new_for_http()
                 .on_request(|req: &axum::http::Request<_>, _span: &Span| {
@@ -81,48 +120,10 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
                 ),
         )
         .layer(cors)
+        // Unprotected at all times
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         // Has to go last to exclude all the tracing/cors layers
         .route("/_health", get(health_check))
-}
-
-fn service_api(state: AppState) -> Router {
-    use document::*;
-    use vector::*;
-
-    let batch_router = Router::new()
-        .route("/embeddings/batch", post(batch_embed))
-        .with_state(state.batch_embedder);
-
-    Router::new()
-        .route("/documents", get(list_documents))
-        .route("/documents", post(upload_documents))
-        .layer(DefaultBodyLimit::max(50_000_000))
-        .route("/documents/:id", get(get_document))
-        .route("/documents/:id", delete(delete_document))
-        .route("/documents/:id/config", put(update_document_config))
-        .route("/documents/:id/chunk/preview", post(chunk_preview))
-        .route("/documents/:id/parse/preview", post(parse_preview))
-        .route("/collections", get(list_collections))
-        .route("/collections", post(create_collection))
-        .route("/collections/:id", get(get_collection))
-        .route("/collections/:id", delete(delete_collection))
-        .route(
-            "/collections/:collection_id/documents/:document_id",
-            delete(delete_embeddings),
-        )
-        .route(
-            "/collections/:collection_id/documents/:document_id/count",
-            get(count_embeddings),
-        )
-        .route("/embeddings", get(list_embedded_documents))
-        .route("/embeddings", post(embed))
-        .route("/embeddings/:provider/models", get(list_embedding_models))
-        .route("/search", post(search))
-        .route("/display/documents", get(list_documents_display))
-        .route("/display/collections", get(list_collections_display))
-        .route("/display/collections/:id", get(collection_display))
-        .with_state(state.services)
-        .merge(batch_router)
 }
 
 async fn health_check() -> impl IntoResponse {

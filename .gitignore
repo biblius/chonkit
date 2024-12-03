@@ -8,3 +8,4 @@ chonkit/test/docs/*
 /**/.fastembed_cache
 /upload
 /**/upload
+.env

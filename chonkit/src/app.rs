@@ -23,3 +23,6 @@ pub mod server;
 
 #[cfg(test)]
 pub mod test;
+
+#[cfg(feature = "auth-vault")]
+pub mod auth;

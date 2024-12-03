@@ -15,14 +15,12 @@ Chunk documents.
   - [Sqlx 'offline' compilation](#sqlx-offline-compilation)
   - [Local quickstart](#local-quickstart)
 - [Running](#running)
+- [Authorization](#authorization)
 
 ## General information
 
 Chonkit is an application for chunking documents
 whose chunks can then be used for retrieval augmented generation (RAG).
-
-I suggest you read about [text embeddings](https://stackoverflow.blog/2023/11/09/an-intuitive-introduction-to-text-embeddings/) if you don't know what they are.
-It will clarify the following explanation.
 
 RAG is a technique to provide LLMs contextual information about arbitrary data.
 The jist of RAG is the following:
@@ -203,17 +201,77 @@ Starts the http API with the default features; Qdrant and local fastembed.
 
 Chonkit accepts the following arguments:
 
-| Arg                 | Flag | Description                                           | Env               | Feature     | Default         |
-| ------------------- | ---- | ----------------------------------------------------- | ----------------- | ----------- | --------------- |
-| `--db-url`          | `-d` | The database URL.                                     | `DATABASE_URL`    | \*          | -               |
-| `--log`             | `-l` | The `RUST_LOG` env filter string to use.              | `RUST_LOG`        | \*          | `info`          |
-| `--upload-path`     | `-u` | If using the `FsDocumentStore`, sets its upload path. | `UPLOAD_PATH`     | \*          | `./upload`      |
-| `--address`         | `-a` | The address (host:port) to bind the server to.        | `ADDRESS`         | \*          | `0.0.0.0:42069` |
-| `--allowed-origins` | `-c` | Comma separated list of origins allowed to connect.   | `ALLOWED_ORIGINS` | \*          | -               |
-| `--qdrant-url`      | `-q` | Qdrant vector database URL.                           | `QDRANT_URL`      | `qdrant`    | -               |
-| `--weaviate-url`    | `-w` | Weaviate vector database URL.                         | `WEAVIATE_URL`    | `weaviate`  | -               |
-| `--fembed-url`      | `-f` | Remote fastembed URL.                                 | `FEMBED_URL`      | `fe-remote` | -               |
-| -                   | -    | OpenAI API key.                                       | `OPENAI_KEY`      | `openai`    | -               |
+| Arg                 | Flag | Env               | Feature     | Default         | Description                                           |
+| ------------------- | ---- | ----------------- | ----------- | --------------- | ----------------------------------------------------- |
+| `--db-url`          | `-d` | `DATABASE_URL`    | \*          | -               | The database URL.                                     |
+| `--log`             | `-l` | `RUST_LOG`        | \*          | `info`          | The `RUST_LOG` env filter string to use.              |
+| `--upload-path`     | `-u` | `UPLOAD_PATH`     | \*          | `./upload`      | If using the `FsDocumentStore`, sets its upload path. |
+| `--address`         | `-a` | `ADDRESS`         | \*          | `0.0.0.0:42069` | The address (host:port) to bind the server to.        |
+| `--allowed-origins` | `-c` | `ALLOWED_ORIGINS` | \*          | -               | Comma separated list of origins allowed to connect.   |
+| `--qdrant-url`      | `-q` | `QDRANT_URL`      | `qdrant`    | -               | Qdrant vector database URL.                           |
+| `--weaviate-url`    | `-w` | `WEAVIATE_URL`    | `weaviate`  | -               | Weaviate vector database URL.                         |
+| `--fembed-url`      | `-f` | `FEMBED_URL`      | `fe-remote` | -               | Remote fastembed URL.                                 |
+| -                   | -    | `OPENAI_KEY`      | `openai`    | -               | OpenAI API key.                                       |
 
 The arguments have priority over the environment variables.
 See `RUST_LOG` syntax [here](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html#configure-logging).
+See [Authorization](#authorization) for more information about authz specific arguments.
+
+## Authorization
+
+By default, Chonkit does not use any authentication mechanisms. This is
+fine for local deployments, but is problematic when chonkit is exposed to
+the outside world. The following is a list of supported authorization mechanisms.
+
+### Vault JWT Authorization
+
+**Feature**: `auth-vault`
+
+### Required variables
+
+| Arg                 | Env               | Description                                                               |
+| ------------------- | ----------------- | ------------------------------------------------------------------------- |
+| `--vault-url`       | `VAULT_URL`       | The endpoint of the vault server.                                         |
+| `--vault-role-id`   | `VAULT_ROLE_ID`   | Role ID for the application. Used to log in and obtain an access token.   |
+| `--vault-secret-id` | `VAULT_SECRET_ID` | Secret ID for the application. Used to log in and obtain an access token. |
+| `--vault-key-name`  | `VAULT_KEY_NAME`  | Name of the key to use for verifying signatures.                          |
+
+### Description
+
+Chonkit can be configured to hook up to Hashicorp's [Vault](https://www.vaultproject.io/)
+with [approle](https://developer.hashicorp.com/vault/docs/auth/approle) authentication.
+If enabled, at the start of the application Chonkit will log in to the vault and
+middleware will be registered on all routes. The middleware will check for the
+existence of a token in the following request parameters:
+
+- A cookie with the name `chonkit_access_token` (for web clients).
+  If using this, the web frontend must be deployed on the same domain as Chonkit.
+- `Authorization` request header (Bearer) (for API clients).
+
+The token is expected to be a valid JWT signed by Vault's
+[transit engine](https://developer.hashicorp.com/vault/docs/secrets/transit).
+The JWT must contain the version of the key used to sign it, specified by the
+`version` claim.
+
+**The signature must have the `vault:vN:` prefix stripped,
+Chonkit will add it when verifying using the `version` claim.**
+
+If the signature is valid, additional claims are checked to ensure the
+validity of the token ( expiration, audience, etc.).
+Specifically, it checks for the following claims:
+
+- `aud == chonkit`
+- `exp > now`
+
+To summarize:
+
+1. An authorization server, i.e. an endpoint that generates JWTs intended to be used
+   by Chonkit is set up on the same Vault as Chonkit.
+
+2. An application that intends to use Chonkit obtains the access token.
+
+3. The authorization server uses the [sign](https://developer.hashicorp.com/vault/api-docs/secret/transit#sign-data) endpoint
+   to generate a signature for a JWT payload and constructs the JWT with it.
+
+4. Chonkit uses the [verify](https://developer.hashicorp.com/vault/api-docs/secret/transit#verify-signed-data) endpoint
+   to verify the token signature on the same Vault mount the data was signed.
