@@ -19,6 +19,11 @@ if [[ " $@ " == *" -c "* ]]; then
     unset VAULT_URL
     unset VAULT_ROLE_ID
     unset VAULT_SECRET_ID
+    unset VAULT_KEY_NAME
+    unset ADDRESS
+    unset UPLOAD_PATH
+    unset CORS_ALLOWED_ORIGINS
+    unset CORS_ALLOWED_HEADERS
     echo "Cleaned up environment variables."
     return 0
 fi
@@ -64,7 +69,7 @@ fi
 
 docker compose up -d
 
-# Setting other environment variables
+# Variables that are configured for docker-compose
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
 echo "DATABASE_URL set to $DATABASE_URL"
 export QDRANT_URL=http://localhost:6334

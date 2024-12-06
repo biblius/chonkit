@@ -189,7 +189,7 @@ unset DATABASE_URL
 
 ```bash
 source setup.sh
-cargo run --bin server
+cargo run -p chonkit
 ```
 
 Creates the 'upload' directory for storing uploaded documents.
@@ -197,21 +197,29 @@ Starts the infrastructure containers (postgres, qdrant, weaviate).
 Exports the necessary environment variables to run chonkit.
 Starts the http API with the default features; Qdrant and local fastembed.
 
+If you want to set up the environment variables from a file, create a `.env`
+file with the necessary exports (see `.env.example`) and run
+
+```bash
+source setup.sh -e
+```
+
 ## Running
 
 Chonkit accepts the following arguments:
 
-| Arg                 | Flag | Env               | Feature     | Default         | Description                                           |
-| ------------------- | ---- | ----------------- | ----------- | --------------- | ----------------------------------------------------- |
-| `--db-url`          | `-d` | `DATABASE_URL`    | \*          | -               | The database URL.                                     |
-| `--log`             | `-l` | `RUST_LOG`        | \*          | `info`          | The `RUST_LOG` env filter string to use.              |
-| `--upload-path`     | `-u` | `UPLOAD_PATH`     | \*          | `./upload`      | If using the `FsDocumentStore`, sets its upload path. |
-| `--address`         | `-a` | `ADDRESS`         | \*          | `0.0.0.0:42069` | The address (host:port) to bind the server to.        |
-| `--allowed-origins` | `-c` | `ALLOWED_ORIGINS` | \*          | -               | Comma separated list of origins allowed to connect.   |
-| `--qdrant-url`      | `-q` | `QDRANT_URL`      | `qdrant`    | -               | Qdrant vector database URL.                           |
-| `--weaviate-url`    | `-w` | `WEAVIATE_URL`    | `weaviate`  | -               | Weaviate vector database URL.                         |
-| `--fembed-url`      | `-f` | `FEMBED_URL`      | `fe-remote` | -               | Remote fastembed URL.                                 |
-| -                   | -    | `OPENAI_KEY`      | `openai`    | -               | OpenAI API key.                                       |
+| Arg                      | Flag | Env                    | Feature     | Default         | Description                                           |
+| ------------------------ | ---- | ---------------------- | ----------- | --------------- | ----------------------------------------------------- |
+| `--db-url`               | `-d` | `DATABASE_URL`         | \*          | -               | The database URL.                                     |
+| `--log`                  | `-l` | `RUST_LOG`             | \*          | `info`          | The `RUST_LOG` env filter string to use.              |
+| `--upload-path`          | `-u` | `UPLOAD_PATH`          | \*          | `./upload`      | If using the `FsDocumentStore`, sets its upload path. |
+| `--address`              | `-a` | `ADDRESS`              | \*          | `0.0.0.0:42069` | The address (host:port) to bind the server to.        |
+| `--cors-allowed-origins` | -    | `CORS_ALLOWED_ORIGINS` | \*          | -               | Comma separated list of origins allowed to connect.   |
+| `--cors-allowed-headers` | -    | `CORS_ALLOWED_HEADERS` | \*          | -               | Comma separated list of accepted headers.             |
+| `--qdrant-url`           | `-q` | `QDRANT_URL`           | `qdrant`    | -               | Qdrant vector database URL.                           |
+| `--weaviate-url`         | `-w` | `WEAVIATE_URL`         | `weaviate`  | -               | Weaviate vector database URL.                         |
+| `--fembed-url`           | `-f` | `FEMBED_URL`           | `fe-remote` | -               | Remote fastembed URL.                                 |
+| -                        | -    | `OPENAI_KEY`           | `openai`    | -               | OpenAI API key.                                       |
 
 The arguments have priority over the environment variables.
 See `RUST_LOG` syntax [here](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html#configure-logging).

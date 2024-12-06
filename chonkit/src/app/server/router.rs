@@ -2,12 +2,12 @@ use super::api::ApiDoc;
 use crate::{app::state::AppState, error::ChonkitError};
 use axum::{
     extract::{DefaultBodyLimit, State},
-    http::{HeaderValue, Method},
+    http::{HeaderName, HeaderValue, Method},
     response::IntoResponse,
     routing::{delete, get, post, put},
     Json, Router,
 };
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 use tower_http::{
     classify::ServerErrorsFailureClass,
     cors::{AllowCredentials, CorsLayer},
@@ -20,18 +20,26 @@ use utoipa_swagger_ui::SwaggerUi;
 pub(super) mod document;
 pub(super) mod vector;
 
-pub fn router(state: AppState, origins: Vec<String>) -> Router {
-    let origins = origins
+pub fn router(state: AppState, cors_origins: Vec<String>, cors_headers: Vec<String>) -> Router {
+    let origins = cors_origins
         .into_iter()
         .map(|origin| {
-            tracing::info!("Adding {origin} to allowed origins");
+            tracing::info!("CORS - Adding {origin} to allowed origins");
             HeaderValue::from_str(&origin)
+        })
+        .map(Result::unwrap);
+
+    let headers = cors_headers
+        .into_iter()
+        .map(|header| {
+            tracing::info!("CORS - Adding {header} to allowed headers");
+            HeaderName::from_str(&header)
         })
         .map(Result::unwrap);
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::AllowOrigin::list(origins))
-        .allow_headers(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::AllowHeaders::list(headers))
         .allow_credentials(AllowCredentials::yes())
         .allow_methods([
             Method::GET,
@@ -56,7 +64,7 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
     let router = Router::new()
         .route("/documents", get(list_documents))
         .route("/documents", post(upload_documents))
-        .layer(DefaultBodyLimit::max(50_000_000))
+        .route_layer(DefaultBodyLimit::max(100_000_000))
         .route("/documents/:id", get(get_document))
         .route("/documents/:id", delete(delete_document))
         .route("/documents/:id/config", put(update_document_config))

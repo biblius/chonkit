@@ -35,8 +35,12 @@ pub struct StartArgs {
     address: Option<String>,
 
     /// CORS allowed origins.
-    #[arg(short = 'c', long)]
-    allowed_origins: Option<String>,
+    #[arg(long)]
+    cors_allowed_origins: Option<String>,
+
+    /// CORS allowed headers.
+    #[arg(long)]
+    cors_allowed_headers: Option<String>,
 
     /// Qdrant URL.
     #[cfg(feature = "qdrant")]
@@ -58,15 +62,22 @@ pub struct StartArgs {
     #[arg(short, long)]
     fembed_url: Option<String>,
 
+    /// Vault endpoint.
     #[cfg(feature = "auth-vault")]
     #[arg(long)]
     vault_url: Option<String>,
+
+    /// Vault approle role ID.
     #[cfg(feature = "auth-vault")]
     #[arg(long)]
     vault_role_id: Option<String>,
+
+    /// Vault approle secret ID.
     #[cfg(feature = "auth-vault")]
     #[arg(long)]
     vault_secret_id: Option<String>,
+
+    /// Vault transit engine key name to use for signature verification.
     #[cfg(feature = "auth-vault")]
     #[arg(long)]
     vault_key_name: Option<String>,
@@ -105,12 +116,36 @@ macro_rules! arg {
 
 impl StartArgs {
     pub fn allowed_origins(&self) -> Vec<String> {
-        match &self.allowed_origins {
-            Some(origins) => origins.split(',').map(String::from).collect(),
-            None => match std::env::var("ALLOWED_ORIGINS") {
-                Ok(origins) => origins.split(',').map(String::from).collect(),
+        match &self.cors_allowed_origins {
+            Some(origins) => origins
+                .split(',')
+                .filter_map(|o| (!o.is_empty()).then_some(String::from(o)))
+                .collect(),
+            None => match std::env::var("CORS_ALLOWED_ORIGINS") {
+                Ok(origins) => origins
+                    .split(',')
+                    .filter_map(|o| (!o.is_empty()).then_some(String::from(o)))
+                    .collect(),
                 Err(_) => panic!(
-                    "Allowed origins not found; Pass --allowed-origins (-c) or set ALLOWED_ORIGINS as a comma separated list"
+                    "Allowed origins not found; Pass --allowed-origins (-c) or set CORS_ALLOWED_ORIGINS as a comma separated list"
+                ),
+            },
+        }
+    }
+
+    pub fn allowed_headers(&self) -> Vec<String> {
+        match &self.cors_allowed_headers {
+            Some(headers) => headers
+                .split(',')
+                .filter_map(|h| (!h.is_empty()).then_some(String::from(h)))
+                .collect(),
+            None => match std::env::var("CORS_ALLOWED_HEADERS") {
+                Ok(headers) => headers
+                    .split(',')
+                    .filter_map(|h| (!h.is_empty()).then_some(String::from(h)))
+                    .collect(),
+                Err(_) => panic!(
+                    "Allowed headers not found; Pass --allowed-headers or set CORS_ALLOWED_HEADERS as a comma separated list"
                 ),
             },
         }

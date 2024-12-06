@@ -20,12 +20,13 @@ async fn main() {
 
     let addr = args.address();
     let origins = args.allowed_origins();
+    let headers = args.allowed_headers();
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("error while starting TCP listener");
 
-    let router = crate::app::server::router::router(app, origins);
+    let router = crate::app::server::router::router(app, origins, headers);
 
     info!("Listening on {addr}");
 
