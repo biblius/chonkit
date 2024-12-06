@@ -8,7 +8,11 @@ use axum::{
     Json, Router,
 };
 use std::time::Duration;
-use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
+use tower_http::{
+    classify::ServerErrorsFailureClass,
+    cors::{AllowCredentials, CorsLayer},
+    trace::TraceLayer,
+};
 use tracing::Span;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -28,6 +32,7 @@ pub fn router(state: AppState, origins: Vec<String>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::AllowOrigin::list(origins))
         .allow_headers(tower_http::cors::Any)
+        .allow_credentials(AllowCredentials::yes())
         .allow_methods([
             Method::GET,
             Method::POST,
