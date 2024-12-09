@@ -299,14 +299,20 @@ impl TryFrom<Class> for VectorCollection {
             match prop.name.as_str() {
                 COLLECTION_SIZE_PROPERTY => {
                     let Some(size) = prop.description else {
-                        return err!(Weaviate, "Missing 'size' property in class {class_name}",);
+                        return err!(
+                            Weaviate,
+                            "Missing '{COLLECTION_SIZE_PROPERTY}' property in class {class_name}",
+                        );
                     };
                     let size = map_err!(size.parse::<usize>());
                     v_collection = v_collection.with_size(size);
                 }
                 COLLECTION_NAME_PROPERTY => {
                     let Some(name) = prop.description else {
-                        return err!(Weaviate, "Missing 'name' property in class {class_name}",);
+                        return err!(
+                            Weaviate,
+                            "Missing '{COLLECTION_NAME_PROPERTY}' property in class {class_name}",
+                        );
                     };
                     v_collection = v_collection.with_name(name);
                 }
@@ -314,7 +320,7 @@ impl TryFrom<Class> for VectorCollection {
                     let Some(embedding_provider) = prop.description else {
                         return err!(
                             Weaviate,
-                            "Missing 'embedding_provider' property in class {class_name}",
+                            "Missing '{COLLECTION_EMBEDDING_PROVIDER_PROPERTY}' property in class {class_name}",
                         );
                     };
                     v_collection = v_collection.with_embedding_provider(embedding_provider);
@@ -323,7 +329,7 @@ impl TryFrom<Class> for VectorCollection {
                     let Some(embedding_model) = prop.description else {
                         return err!(
                             Weaviate,
-                            "Missing 'embedding_model' property in class {class_name}",
+                            "Missing '{COLLECTION_EMBEDDING_MODEL_PROPERTY}' property in class {class_name}",
                         );
                     };
                     v_collection = v_collection.with_embedding_model(embedding_model);
@@ -332,7 +338,7 @@ impl TryFrom<Class> for VectorCollection {
                     let Some(id) = prop.description else {
                         return err!(
                             Weaviate,
-                            "Missing 'collection_id' property in class {class_name}",
+                            "Missing '{COLLECTION_ID_PROPERTY}' property in class {class_name}",
                         );
                     };
                     let id = map_err!(id.parse::<Uuid>());

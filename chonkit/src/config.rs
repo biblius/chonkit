@@ -26,7 +26,7 @@ pub struct StartArgs {
     #[arg(short, long)]
     log: Option<String>,
 
-    /// If using the `FsDocumentStore`, sets its path.
+    /// Set the upload path for `FsDocumentStore`.
     #[arg(short, long)]
     upload_path: Option<String>,
 

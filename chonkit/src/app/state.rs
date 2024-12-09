@@ -66,6 +66,11 @@ impl AppState {
         let document = DocumentService::new(postgres.clone(), providers.clone().into());
         let vector = VectorService::new(postgres, providers.clone().into());
 
+        document.create_default_document(&args.upload_path()).await;
+        for provider in providers.vector.list_provider_ids() {
+            vector.create_default_collection(provider, "fembed").await;
+        }
+
         let service_state = ServiceState { document, vector };
 
         let batch_embedder = Self::spawn_batch_embedder(service_state.clone());

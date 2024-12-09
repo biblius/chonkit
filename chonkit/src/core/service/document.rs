@@ -348,6 +348,26 @@ where
         Ok(())
     }
 
+    pub async fn create_default_document(&self, path: &str) {
+        let content =
+            b"Lex is an application for creating knowledge bases and exposing them to the outside world through LLMs.";
+        match self
+            .upload(
+                "fs",
+                DocumentUpload::new(String::from("HelloLex.txt"), DocumentType::Text, content),
+            )
+            .await
+        {
+            Ok(_) => tracing::info!("Created default document 'HelloLex.txt'"),
+            Err(e) => {
+                if let crate::error::ChonkitErr::AlreadyExists(_) = e.error {
+                    let _ = tokio::fs::write(format!("{path}/HelloLex.txt"), content);
+                }
+                tracing::info!("Default document 'Hello Lex' already exists");
+            }
+        }
+    }
+
     /// Get a parser for a document, or a default parser if the document has no configuration.
     ///
     /// * `id`: Document ID.
