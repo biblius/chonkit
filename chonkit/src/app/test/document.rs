@@ -8,7 +8,7 @@ mod document_service_integration_tests {
             document::parser::{
                 docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser, ParseConfig,
             },
-            model::document::DocumentType,
+            model::document::{DocumentType, TextDocumentType},
             service::document::dto::DocumentUpload,
         },
     };
@@ -50,7 +50,7 @@ mod document_service_integration_tests {
         let content = b"Hello world";
         let upload = DocumentUpload {
             name: "UPLOAD_TEST_TXT".to_string(),
-            ty: DocumentType::Text,
+            ty: DocumentType::Text(TextDocumentType::Txt),
             file: content,
         };
 

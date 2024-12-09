@@ -717,7 +717,7 @@ mod tests {
         app::test::{init_postgres, PostgresContainer},
         core::{
             chunk::ChunkConfig,
-            model::document::{DocumentInsert, DocumentType},
+            model::document::{DocumentInsert, DocumentType, TextDocumentType},
             repo::document::DocumentRepo,
         },
     };
@@ -735,7 +735,7 @@ mod tests {
         let doc = DocumentInsert::new(
             "My file",
             "path/to/file",
-            DocumentType::Text,
+            DocumentType::Text(TextDocumentType::Txt),
             "SHA256",
             "fs",
         );
@@ -758,7 +758,7 @@ mod tests {
         let doc = DocumentInsert::new(
             "My file",
             "path/to/file/2",
-            DocumentType::Text,
+            DocumentType::Text(TextDocumentType::Txt),
             "Other hash",
             "fs",
         );

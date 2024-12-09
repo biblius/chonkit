@@ -108,13 +108,22 @@ impl DocumentDisplay {
 pub enum DocumentType {
     /// Encapsulates any files that can be read as strings.
     /// Does not necessarily have to be `.txt`, could be `.json`, `.csv`, etc.
-    Text,
+    Text(TextDocumentType),
 
     /// Microschlong steaming pile of garbage document.
     Docx,
 
     /// PDF document.
     Pdf,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TextDocumentType {
+    Md,
+    Xml,
+    Json,
+    Csv,
+    Txt,
 }
 
 impl DocumentType {
@@ -129,7 +138,13 @@ impl DocumentType {
 impl std::fmt::Display for DocumentType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DocumentType::Text => write!(f, "txt"),
+            DocumentType::Text(ty) => match ty {
+                TextDocumentType::Md => write!(f, "md"),
+                TextDocumentType::Xml => write!(f, "xml"),
+                TextDocumentType::Json => write!(f, "json"),
+                TextDocumentType::Csv => write!(f, "csv"),
+                TextDocumentType::Txt => write!(f, "txt"),
+            },
             DocumentType::Docx => write!(f, "docx"),
             DocumentType::Pdf => write!(f, "pdf"),
         }
@@ -141,7 +156,11 @@ impl TryFrom<&str> for DocumentType {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "txt" | "md" | "xml" | "json" | "csv" => Ok(Self::Text),
+            "md" => Ok(Self::Text(TextDocumentType::Md)),
+            "xml" => Ok(Self::Text(TextDocumentType::Xml)),
+            "json" => Ok(Self::Text(TextDocumentType::Json)),
+            "csv" => Ok(Self::Text(TextDocumentType::Csv)),
+            "txt" => Ok(Self::Text(TextDocumentType::Txt)),
             "pdf" => Ok(Self::Pdf),
             "docx" => Ok(Self::Docx),
             _ => err!(UnsupportedFileType, "{}" value.to_owned()),

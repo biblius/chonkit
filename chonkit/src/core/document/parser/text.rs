@@ -1,5 +1,8 @@
 use super::{DocumentParser, ParseConfig};
-use crate::{core::model::document::DocumentType, error::ChonkitError};
+use crate::{
+    core::model::document::{DocumentType, TextDocumentType},
+    error::ChonkitError,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -20,6 +23,7 @@ impl DocumentParser for TextParser {
     }
 
     fn dtype(&self) -> DocumentType {
-        DocumentType::Text
+        // TODO
+        DocumentType::Text(TextDocumentType::Txt)
     }
 }

@@ -7,7 +7,10 @@ use crate::{
             store::DocumentSync,
         },
         model::{
-            document::{Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType},
+            document::{
+                Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType,
+                TextDocumentType,
+            },
             List, PaginationSort,
         },
         provider::ProviderState,
@@ -354,7 +357,11 @@ where
         match self
             .upload(
                 "fs",
-                DocumentUpload::new(String::from("HelloLex.txt"), DocumentType::Text, content),
+                DocumentUpload::new(
+                    String::from("HelloLex.txt"),
+                    DocumentType::Text(TextDocumentType::Txt),
+                    content,
+                ),
             )
             .await
         {

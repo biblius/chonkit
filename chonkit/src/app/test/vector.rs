@@ -10,7 +10,7 @@ mod vector_service_integration_tests {
         config::DEFAULT_COLLECTION_NAME,
         core::{
             embedder::Embedder,
-            model::document::{DocumentInsert, DocumentType},
+            model::document::{DocumentInsert, DocumentType, TextDocumentType},
             provider::ProviderFactory,
             repo::{document::DocumentRepo, vector::VectorRepo},
             service::vector::dto::{CreateCollectionPayload, CreateEmbeddings, SearchPayload},
@@ -205,7 +205,7 @@ mod vector_service_integration_tests {
             let create = DocumentInsert::new(
                 "test_document",
                 "test_path_1",
-                DocumentType::Text,
+                DocumentType::Text(TextDocumentType::Txt),
                 "SHA256_1",
                 "fs",
             );
@@ -286,7 +286,7 @@ mod vector_service_integration_tests {
             let create = DocumentInsert::new(
                 "test_document",
                 "test_path_2",
-                DocumentType::Text,
+                DocumentType::Text(TextDocumentType::Txt),
                 "SHA256_2",
                 "fs",
             );
@@ -328,7 +328,7 @@ mod vector_service_integration_tests {
             let create = DocumentInsert::new(
                 "test_document",
                 "test_path_3",
-                DocumentType::Text,
+                DocumentType::Text(TextDocumentType::Txt),
                 "SHA256_3",
                 "fs",
             );

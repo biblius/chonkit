@@ -93,7 +93,8 @@ impl Parser {
     /// Returns the default parser for a document.
     pub fn new(ty: DocumentType) -> Self {
         match ty {
-            DocumentType::Text => Self::Text(TextParser::default()),
+            // TODO
+            DocumentType::Text(_) => Self::Text(TextParser::default()),
             DocumentType::Docx => Self::Docx(DocxParser::default()),
             DocumentType::Pdf => Self::Pdf(PdfParser::default()),
         }
@@ -102,7 +103,8 @@ impl Parser {
     /// Returns a configured parser for a document.
     pub fn new_from(ty: DocumentType, config: ParseConfig) -> Self {
         match ty {
-            DocumentType::Text => Self::Text(TextParser::new(config)),
+            // TODO
+            DocumentType::Text(_) => Self::Text(TextParser::new(config)),
             DocumentType::Docx => Self::Docx(DocxParser::new(config)),
             DocumentType::Pdf => Self::Pdf(PdfParser::new(config)),
         }
