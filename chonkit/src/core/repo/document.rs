@@ -49,6 +49,8 @@ pub trait DocumentRepo {
     /// * `hash`: Document content hash.
     async fn get_by_hash(&self, hash: &str) -> Result<Option<Document>, ChonkitError>;
 
+    async fn get_document_count(&self) -> Result<usize, ChonkitError>;
+
     /// List documents with limit and offset
     ///
     /// * `p`: Pagination params.

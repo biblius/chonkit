@@ -103,6 +103,16 @@ impl DocumentRepo for PgPool {
         ))
     }
 
+    async fn get_document_count(&self) -> Result<usize, ChonkitError> {
+        Ok(map_err!(
+            sqlx::query!("SELECT COUNT(id) FROM documents")
+                .fetch_one(self)
+                .await
+        )
+        .count
+        .unwrap_or(0) as usize)
+    }
+
     async fn list(
         &self,
         params: PaginationSort,

@@ -66,7 +66,7 @@ impl AppState {
         let document = DocumentService::new(postgres.clone(), providers.clone().into());
         let vector = VectorService::new(postgres, providers.clone().into());
 
-        document.create_default_document(&args.upload_path()).await;
+        document.create_default_document().await;
         for provider in providers.vector.list_provider_ids() {
             vector.create_default_collection(provider, "fembed").await;
         }

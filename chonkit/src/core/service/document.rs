@@ -1,4 +1,5 @@
 use crate::{
+    config::{DEFAULT_DOCUMENT_CONTENT, DEFAULT_DOCUMENT_NAME},
     core::{
         chunk::{ChunkConfig, ChunkedDocument, SemanticEmbedder, SemanticWindowConfig},
         document::{
@@ -351,26 +352,30 @@ where
         Ok(())
     }
 
-    pub async fn create_default_document(&self, path: &str) {
-        let content =
-            b"Lex is an application for creating knowledge bases and exposing them to the outside world through LLMs.";
+    /// Creates the default document if no other document exists.
+    pub async fn create_default_document(&self) {
+        let count = self.repo.get_document_count().await.unwrap_or(0);
+
+        if count > 0 {
+            return;
+        }
+
         match self
             .upload(
                 "fs",
                 DocumentUpload::new(
-                    String::from("HelloLex.txt"),
+                    String::from(DEFAULT_DOCUMENT_NAME),
                     DocumentType::Text(TextDocumentType::Txt),
-                    content,
+                    DEFAULT_DOCUMENT_CONTENT.as_bytes(),
                 ),
             )
             .await
         {
-            Ok(_) => tracing::info!("Created default document 'HelloLex.txt'"),
+            Ok(_) => tracing::info!("Created default document '{DEFAULT_DOCUMENT_NAME}'"),
             Err(e) => {
                 if let crate::error::ChonkitErr::AlreadyExists(_) = e.error {
-                    let _ = tokio::fs::write(format!("{path}/HelloLex.txt"), content);
+                    tracing::info!("Default document '{DEFAULT_DOCUMENT_NAME}' already exists");
                 }
-                tracing::info!("Default document 'Hello Lex' already exists");
             }
         }
     }
