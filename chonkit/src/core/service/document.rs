@@ -241,7 +241,7 @@ where
                 let chunker = map_err!(chunx::SnappingWindow::new(config.size, config.overlap));
                 let chunked = map_err!(chunker.chunk(input));
 
-                ChunkedDocument::Ref(chunked)
+                ChunkedDocument::Owned(chunked)
             }
             ChunkConfig::Semantic(config) => {
                 let SemanticWindowConfig {

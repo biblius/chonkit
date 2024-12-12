@@ -1,3 +1,5 @@
+use std::{iter::Peekable, str::Chars};
+
 /// Default patterns to skip in front of delimiters.
 /// `___. some text`
 pub(super) const DEFAULT_SKIP_F: &[&str] = &[
@@ -13,8 +15,6 @@ pub(super) const DEFAULT_SKIP_B: &[&str] = &[
     "etc", "e.g", "i.e", // Common acronyms
 ];
 
-/// TODO: Maybe check if we can remove skip_b because fullstops are usually followed by spaces.
-/// It would save a lot of work in the long run.
 #[derive(Debug)]
 pub(super) struct Cursor<'a> {
     /// Input.
@@ -27,20 +27,18 @@ pub(super) struct Cursor<'a> {
     /// Always gets advanced past the delimiter.
     pub byte_offset: usize,
 
-    /// How many chars were skipped during advancing.
-    pub char_offset: usize,
-
     /// Delimiter to split by.
     pub delim: char,
+    pub chars: Peekable<Chars<'a>>,
 }
 
 impl<'a> Cursor<'a> {
     pub fn new(input: &'a str, delim: char) -> Self {
         Self {
             buf: input,
+            chars: input.chars().peekable(),
             byte_count: byte_count(input),
             byte_offset: 0,
-            char_offset: 0,
             delim,
         }
     }
@@ -63,17 +61,12 @@ impl<'a> Cursor<'a> {
             return;
         }
 
-        // TODO: See if we can keep the char iterator in the cursor
-        // itself to prevent constantly skipping over chars.
-        let mut chars = self.buf.chars().skip(self.char_offset);
-
         loop {
-            let Some(ch) = chars.next() else {
+            let Some(ch) = self.chars.next() else {
                 break;
             };
 
             self.byte_offset += ch.len_utf8();
-            self.char_offset += 1;
 
             if self.byte_offset == self.byte_count - 1 {
                 break;
@@ -88,30 +81,27 @@ impl<'a> Cursor<'a> {
             // of the sentence
             let mut stop = true;
 
-            while chars.next().is_some_and(|ch| ch == self.delim) {
-                self.byte_offset += ch.len_utf8();
-                self.char_offset += 1;
-                stop = false;
+            while let Some(ch) = self.chars.peek().cloned() {
+                if ch == self.delim {
+                    self.chars.next();
+                    self.byte_offset += ch.len_utf8();
+                    stop = false;
+                } else {
+                    break;
+                }
             }
 
             if stop {
                 break;
             }
-
-            self.byte_offset += ch.len_utf8();
-            self.char_offset += 1;
         }
     }
 
     pub fn advance_exact(&mut self, pat: &str) {
-        let amt = byte_count(pat);
-        if self.byte_offset + amt >= self.byte_count {
-            self.byte_offset = self.byte_count - 1;
-            self.char_offset = self.buf.chars().count();
-            return;
+        for ch in pat.chars() {
+            self.chars.next();
+            self.byte_offset += ch.len_utf8();
         }
-        self.byte_offset += amt;
-        self.char_offset += pat.chars().count();
     }
 
     pub fn peek_back(&self, pat: &str) -> bool {
@@ -136,7 +126,6 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn peek_forward(&self, pat: &str) -> bool {
-        // Skip if we are done.
         if self.byte_offset + byte_count(pat) >= self.byte_count {
             return false;
         }
@@ -145,9 +134,6 @@ impl<'a> Cursor<'a> {
         &self.buf[self.byte_offset..end] == pat
     }
 
-    /// TODO: I'm pretty sure that we can only iterate through
-    /// one of the skip vectors in this one if we change the implementation
-    /// to always advance if it doesn't encounter a character behind a delimiter.
     pub fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
         for s in back {
             if self.peek_back(s) {
@@ -413,6 +399,7 @@ mod tests {
         assert!(!cursor.peek_back("This"));
         for test in expected {
             cursor.advance();
+            dbg!(cursor.get_slice(), cursor.byte_offset);
             assert!(cursor.peek_back(test));
         }
     }

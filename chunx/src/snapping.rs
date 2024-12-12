@@ -1,13 +1,7 @@
 use super::{
-    concat,
-    cursor::{
-        byte_count, snap_back, snap_front, Cursor, CursorRev, DEFAULT_SKIP_B, DEFAULT_SKIP_F,
-    },
+    cursor::{byte_count, Cursor, CursorRev, DEFAULT_SKIP_B, DEFAULT_SKIP_F},
     ChunkerError,
 };
-
-#[cfg(debug_assertions)]
-use tracing::trace;
 
 const SNAPPING_WINDOW_DEFAULT_SIZE: usize = 1000;
 const SNAPPING_WINDOW_DEFAULT_OVERLAP: usize = 5;
@@ -112,7 +106,7 @@ impl SnappingWindow {
 }
 
 impl SnappingWindow {
-    pub fn chunk<'a>(&self, input: &'a str) -> Result<Vec<&'a str>, ChunkerError> {
+    pub fn chunk(&self, input: &str) -> Result<Vec<String>, ChunkerError> {
         if input.trim().is_empty() {
             return Ok(vec![]);
         }
@@ -120,123 +114,106 @@ impl SnappingWindow {
         let Self {
             size,
             overlap,
-            delimiter: delim,
+            delimiter,
             skip_forward,
             skip_back,
         } = self;
 
         let total_bytes = byte_count(input);
-
         let mut chunks = vec![];
 
-        let mut cursor = Cursor::new(input, *delim);
+        let mut chars = input.chars().peekable();
 
-        // Cursor position
-        let mut start = 1;
+        // The current byte offset
+        let mut current_offset = 0;
 
-        snap_front(&mut start, input);
+        let mut chunk = String::with_capacity(*size + *overlap * 2);
+        let mut chunk_byte_size = 0;
 
-        let mut chunk = &input[..start];
+        'outer: while let Some(char) = chars.next() {
+            current_offset += char.len_utf8();
 
-        loop {
-            // Cursor has reached the end.
-            if start >= total_bytes {
-                if !chunk.is_empty() {
-                    chunks.push(chunk)
-                }
-                break;
-            }
-
-            // Advance until delim
-            cursor.advance();
-
-            // Check for skips
-            if cursor.advance_if_peek(skip_forward, skip_back) {
+            if char != *delimiter {
+                chunk.push(char);
+                chunk_byte_size += char.len_utf8();
                 continue;
             }
 
-            let piece = &input[start..cursor.byte_offset];
+            // If we haven't reached the size yet, push the delimiter
 
-            start += byte_count(piece);
+            if chunk_byte_size < *size {
+                chunk.push(char);
+                chunk_byte_size += char.len_utf8();
+                continue;
+            }
 
-            chunk = concat(chunk, piece)?;
+            // Maximum chunk size reached, check skips
 
-            if byte_count(chunk) < *size {
-                // If the cursor is not finished, take another batch.
-                if !cursor.finished() {
+            for skip in skip_back {
+                if chunk.ends_with(skip) {
+                    chunk.push(char);
+                    chunk_byte_size += char.len_utf8();
+
+                    // Special case if skip is at the end of the input
+                    if current_offset == total_bytes {
+                        let prev = &input[..current_offset - chunk_byte_size];
+                        let prev =
+                            previous_chunk(prev, *overlap, *delimiter, skip_forward, skip_back);
+                        chunks.push(format!("{prev}{chunk}"));
+                        break 'outer;
+                    }
+
+                    continue 'outer;
+                }
+            }
+
+            // Skip any delimiters not followed by a space
+            // so as to skip the next check
+            if let Some(ch) = chars.peek() {
+                if *ch != ' ' {
+                    chunk.push(char);
+                    chunk_byte_size += char.len_utf8();
                     continue;
                 }
+            }
 
-                // Otherwise, we are at the end of input.
-                let prev = &input[..cursor.byte_offset - byte_count(chunk)];
-                let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
-                let chunk_full = concat(prev, chunk)?;
-                chunks.push(chunk_full);
-
-                #[cfg(debug_assertions)]
-                {
-                    trace!(
-                        "Added last chunk (full:{}|base:{}|prev:{}), total: {}",
-                        chunk_full.len(),
-                        chunk.len(),
-                        prev.len(),
-                        chunks.len()
-                    );
+            for skip in skip_forward {
+                if input[current_offset..].starts_with(skip) {
+                    chunk.push(char);
+                    chunk_byte_size += char.len_utf8();
+                    continue 'outer;
                 }
+            }
+
+            // Add the delimiter to the chunk
+            chunk.push(char);
+            chunk_byte_size += char.len_utf8();
+
+            let prev = &input[..current_offset - chunk_byte_size];
+
+            // Don't add anything if the prev is empty, we are at the start
+            // and the next chunk will account for that
+            if prev.is_empty() {
+                chunk.clear();
+                chunk_byte_size = 0;
+                continue;
+            }
+
+            let next = &input[current_offset..];
+
+            let prev = previous_chunk(prev, *overlap, *delimiter, skip_forward, skip_back);
+            let (next, next_offset) =
+                next_chunk(next, *overlap, *delimiter, skip_forward, skip_back);
+
+            // No point in going further if the lookahead has reached the end
+            if current_offset + next_offset == total_bytes - 1 {
+                chunks.push(format!("{prev}{chunk}{next}"));
                 break;
             }
 
-            let prev = &input[..cursor.byte_offset - byte_count(chunk)];
-            let next = &input[cursor.byte_offset..];
-
-            let prev = previous_chunk(prev, *overlap, *delim, skip_forward, skip_back);
-            let (next, next_offset) = next_chunk(next, *overlap, *delim, skip_forward, skip_back);
-
-            let chunk_full = concat(concat(prev, chunk)?, next)?;
-
-            // Skip the first chunk since its contents will be in the following one.
-            if !prev.is_empty() {
-                chunks.push(chunk_full);
-                #[cfg(debug_assertions)]
-                {
-                    trace!(
-                        "Added chunk (full:{}|base:{}|prev:{}|next:{}), total: {}",
-                        chunk_full.len(),
-                        chunk.len(),
-                        prev.len(),
-                        next.len(),
-                        chunks.len()
-                    );
-                }
-            }
-
-            start += 1;
-            snap_front(&mut start, input);
-
-            if start + next_offset >= total_bytes {
-                // Handles case where the full text is chunked
-                // and there is no previous chunk
-                if chunks.is_empty() {
-                    chunks.push(chunk_full);
-                    #[cfg(debug_assertions)]
-                    {
-                        trace!(
-                            "Added last chunk (full:{}|base:{}|prev:{}|next:{}), total: {}",
-                            chunk_full.len(),
-                            chunk.len(),
-                            prev.len(),
-                            next.len(),
-                            chunks.len()
-                        );
-                    }
-                }
-                break;
-            }
-
-            let mut chunk_start = start - 1;
-            snap_back(&mut chunk_start, input);
-
-            chunk = &input[chunk_start..start];
+            chunks.push(format!("{prev}{chunk}{next}"));
+            chunk.clear();
+            chunk_byte_size = 0;
         }
 
         Ok(chunks)
@@ -323,6 +300,7 @@ mod tests {
         ];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
+        dbg!(&chunks);
         assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -340,6 +318,7 @@ mod tests {
         let expected = [input];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
+        dbg!(&chunks);
         assert_eq!(1, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
