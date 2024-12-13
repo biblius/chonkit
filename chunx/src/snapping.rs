@@ -57,15 +57,22 @@ impl Default for SnappingWindow {
         Self::new(
             SNAPPING_WINDOW_DEFAULT_SIZE,
             SNAPPING_WINDOW_DEFAULT_OVERLAP,
+            '.',
+            DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
+            DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
         )
         .expect("overlap is greater than size")
-        .skip_forward(DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect())
-        .skip_back(DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect())
     }
 }
 
 impl SnappingWindow {
-    pub fn new(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+    pub fn new(
+        size: usize,
+        overlap: usize,
+        delimiter: char,
+        skip_forward: Vec<String>,
+        skip_back: Vec<String>,
+    ) -> Result<Self, ChunkerError> {
         if overlap > size {
             return Err(ChunkerError::Config(
                 "overlap must be less than size".to_string(),
@@ -74,9 +81,9 @@ impl SnappingWindow {
         Ok(Self {
             size,
             overlap,
-            delimiter: '.',
-            skip_forward: DEFAULT_SKIP_F.iter().map(|e| e.to_string()).collect(),
-            skip_back: DEFAULT_SKIP_B.iter().map(|e| e.to_string()).collect(),
+            delimiter,
+            skip_forward,
+            skip_back,
         })
     }
 
@@ -170,7 +177,7 @@ impl SnappingWindow {
             // Skip any delimiters not followed by a space
             // so as to skip the next check
             if let Some(ch) = chars.peek() {
-                if *ch != ' ' {
+                if !ch.is_whitespace() {
                     chunk.push(char);
                     chunk_byte_size += char.len_utf8();
                     continue;
@@ -190,25 +197,25 @@ impl SnappingWindow {
             chunk_byte_size += char.len_utf8();
 
             let prev = &input[..current_offset - chunk_byte_size];
-
-            // Don't add anything if the prev is empty, we are at the start
-            // and the next chunk will account for that
-            if prev.is_empty() {
-                chunk.clear();
-                chunk_byte_size = 0;
-                continue;
-            }
-
             let next = &input[current_offset..];
 
             let prev = previous_chunk(prev, *overlap, *delimiter, skip_forward, skip_back);
             let (next, next_offset) =
                 next_chunk(next, *overlap, *delimiter, skip_forward, skip_back);
 
+            let offset = current_offset;
+
             // No point in going further if the lookahead has reached the end
             if current_offset + next_offset == total_bytes - 1 {
                 chunks.push(format!("{prev}{chunk}{next}"));
                 break;
+            }
+
+            while current_offset < offset + next_offset {
+                let Some(ch) = chars.next() else {
+                    break;
+                };
+                current_offset += ch.len_utf8();
             }
 
             chunks.push(format!("{prev}{chunk}{next}"));
@@ -295,12 +302,11 @@ mod tests {
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
         let chunker = SnappingWindow::new(1, 1).unwrap();
         let expected = [
-            "I have a sentence. It is not very long. Here is another.",
+            "I have a sentence. It is not very long.",
             " It is not very long. Here is another. Long schlong ding dong.",
         ];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
-        dbg!(&chunks);
         assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
@@ -312,14 +318,18 @@ mod tests {
     async fn snapping_skips_back() {
         let input =
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
+
         let chunker = SnappingWindow::new(1, 1)
             .unwrap()
             .skip_back(vec!["etc".to_string(), "foobar".to_string()]);
-        let expected = [input];
+
+        let expected = [
+            "I have a sentence. It contains letters, words, etc. and it contains more.",
+            " It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped."
+        ];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
-        dbg!(&chunks);
-        assert_eq!(1, chunks.len());
+        assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
             assert_eq!(test, chunk);
@@ -334,10 +344,14 @@ mod tests {
         let chunker = SnappingWindow::new(1, 1)
             .unwrap()
             .skip_forward(vec!["com".to_string(), "org".to_string()]);
-        let expected = [input];
+
+        let expected = [
+            "Go to sentences.org for more words. 50% off on words with >4 syllables.",
+            " 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.",
+        ];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
-        assert_eq!(1, chunks.len());
+        assert_eq!(2, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
             assert_eq!(test, chunk);
@@ -352,14 +366,13 @@ mod tests {
         let chunker = SnappingWindow::new(1, 1).unwrap();
 
         let expected = [
-            "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning.",
+            "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see.",
             " There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews.",
-            " My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal.",
             " Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.",
         ];
 
         let chunks = chunker.chunk(input.trim()).unwrap();
-        assert_eq!(4, chunks.len());
+        assert_eq!(3, chunks.len());
 
         for (chunk, test) in chunks.into_iter().zip(expected.into_iter()) {
             assert_eq!(test, chunk);

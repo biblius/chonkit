@@ -44,7 +44,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn finished(&self) -> bool {
-        self.byte_offset == self.byte_count - 1
+        self.byte_offset == self.byte_count - self.delim.len_utf8()
     }
 
     pub fn get_slice(&self) -> &'a str {
@@ -68,7 +68,7 @@ impl<'a> Cursor<'a> {
 
             self.byte_offset += ch.len_utf8();
 
-            if self.byte_offset == self.byte_count - 1 {
+            if self.byte_offset == self.byte_count - self.delim.len_utf8() {
                 break;
             }
 
@@ -86,6 +86,12 @@ impl<'a> Cursor<'a> {
                     self.chars.next();
                     self.byte_offset += ch.len_utf8();
                     stop = false;
+                    // We don't count delimiters behind non-whitespace as actual delimiters
+                } else if !ch.is_whitespace() {
+                    self.chars.next();
+                    self.byte_offset += ch.len_utf8();
+                    stop = false;
+                    break;
                 } else {
                     break;
                 }
@@ -135,15 +141,15 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
-        for s in back {
-            if self.peek_back(s) {
+        for s in forward {
+            if self.peek_forward(s) {
+                self.advance_exact(s);
                 return true;
             }
         }
 
-        for s in forward {
-            if self.peek_forward(s) {
-                self.advance_exact(s);
+        for s in back {
+            if self.peek_back(s) {
                 return true;
             }
         }
@@ -157,32 +163,34 @@ impl<'a> Cursor<'a> {
 #[derive(Debug)]
 pub(super) struct CursorRev<'a> {
     /// The str being scanned.
-    pub buf: &'a str,
+    buf: &'a str,
 
-    pub byte_count: usize,
+    byte_count: usize,
 
     /// The current byte byte offset of the cursor in the str.
     /// Is kept on delimiter when advancing.
-    pub byte_offset: usize,
+    byte_offset: usize,
 
-    /// Total input UTF-8 chars
-    pub char_count: usize,
-
-    /// The current byte byte offset of the cursor in the str.
-    pub char_offset: usize,
+    chars: Peekable<std::iter::Rev<Chars<'a>>>,
 
     /// The delimiter to snap to
-    pub delim: char,
+    delim: char,
 }
 
 impl<'a> CursorRev<'a> {
     pub fn new(input: &'a str, delim: char) -> Self {
+        let mut chars = input.chars().rev().peekable();
+        let byte_count = byte_count(input);
+
+        // Skip the delimiter at the end of input
+        chars.next();
+        let byte_offset = byte_count.saturating_sub(delim.len_utf8());
+
         Self {
             buf: input,
-            byte_count: byte_count(input),
-            byte_offset: input.len().saturating_sub(1),
-            char_count: input.chars().count(),
-            char_offset: input.chars().count(),
+            byte_count,
+            byte_offset,
+            chars,
             delim,
         }
     }
@@ -195,9 +203,7 @@ impl<'a> CursorRev<'a> {
         if self.finished() {
             self.buf
         } else {
-            let mut start = self.byte_offset + 1;
-            snap_front(&mut start, self.buf);
-            &self.buf[start..]
+            &self.buf[self.byte_offset + self.delim.len_utf8()..]
         }
     }
 
@@ -206,19 +212,8 @@ impl<'a> CursorRev<'a> {
             return;
         }
 
-        self.byte_offset -= self.delim.len_utf8();
-        self.char_offset -= 1;
-
-        let mut chars = self
-            .buf
-            .chars()
-            .rev()
-            .skip(self.char_count - self.char_offset);
-
         loop {
-            let Some(ch) = chars.next() else {
-                self.byte_offset = 0;
-                self.char_offset = self.char_count;
+            let Some(ch) = self.chars.next() else {
                 break;
             };
 
@@ -227,7 +222,6 @@ impl<'a> CursorRev<'a> {
             }
 
             self.byte_offset -= ch.len_utf8();
-            self.char_offset -= 1;
 
             if ch != self.delim {
                 continue;
@@ -235,23 +229,21 @@ impl<'a> CursorRev<'a> {
 
             let mut stop = true;
 
-            // Advance until end of delimiter sequence
-            while chars.next().is_some_and(|ch| ch == self.delim) {
-                self.byte_offset -= ch.len_utf8();
-                self.char_offset -= 1;
-                stop = false;
+            while let Some(peek) = self.chars.peek().cloned() {
+                if peek == self.delim {
+                    self.chars.next();
+                    self.byte_offset -= peek.len_utf8();
+                    stop = false;
+                } else {
+                    break;
+                }
             }
 
             if stop {
-                // Since we are at a single fullstop, we want to increment the
-                // byte_offset so as not to include it at the start of the slice.
-                self.byte_offset += ch.len_utf8();
-                self.char_offset += 1;
+                // self.byte_offset += ch.len_utf8();
+                // self.chars.next();
                 break;
             }
-
-            self.byte_offset -= ch.len_utf8();
-            self.char_offset -= 1;
         }
     }
 
@@ -283,15 +275,15 @@ impl<'a> CursorRev<'a> {
     }
 
     pub fn advance_if_peek(&mut self, forward: &[String], back: &[String]) -> bool {
-        for s in back {
-            if self.peek_back(s) {
-                self.advance_exact(s);
+        for s in forward {
+            if self.peek_forward(s) {
                 return true;
             }
         }
 
-        for s in forward {
-            if self.peek_forward(s) {
+        for s in back {
+            if self.peek_back(s) {
+                self.advance_exact(s);
                 return true;
             }
         }
@@ -300,9 +292,10 @@ impl<'a> CursorRev<'a> {
     }
 
     pub fn advance_exact(&mut self, pat: &str) {
-        let amt = byte_count(pat);
-        self.char_offset -= pat.chars().count();
-        self.byte_offset = self.byte_offset.saturating_sub(amt);
+        for ch in pat.chars() {
+            self.chars.next();
+            self.byte_offset = self.byte_offset.saturating_sub(ch.len_utf8());
+        }
     }
 }
 
@@ -399,7 +392,6 @@ mod tests {
         assert!(!cursor.peek_back("This"));
         for test in expected {
             cursor.advance();
-            dbg!(cursor.get_slice(), cursor.byte_offset);
             assert!(cursor.peek_back(test));
         }
     }
