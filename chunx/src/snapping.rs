@@ -87,28 +87,23 @@ impl SnappingWindow {
         })
     }
 
-    pub fn delimiter(mut self, delimiter: char) -> Self {
-        self.delimiter = delimiter;
-        self
-    }
-
-    /// Set the forward skips.
-    pub fn skip_forward(mut self, skip_forward: Vec<String>) -> Self {
-        self.skip_forward = skip_forward;
-        self
-    }
-
-    /// Set the backward skips.
-    pub fn skip_back(mut self, skip_back: Vec<String>) -> Self {
-        self.skip_back = skip_back;
-        self
+    pub fn default_with_size(size: usize, overlap: usize) -> Result<Self, ChunkerError> {
+        if overlap > size {
+            return Err(ChunkerError::Config(
+                "overlap must be less than size".to_string(),
+            ));
+        }
+        Ok(Self {
+            size,
+            overlap,
+            ..Default::default()
+        })
     }
 
     /// Extend the forward and backward skips.
-    pub fn extend_skips(mut self, skip_forward: Vec<String>, skip_back: Vec<String>) -> Self {
+    pub fn extend_skips(&mut self, skip_forward: Vec<String>, skip_back: Vec<String>) {
         self.skip_forward.extend(skip_forward);
         self.skip_back.extend(skip_back);
-        self
     }
 }
 
@@ -274,33 +269,11 @@ mod tests {
         assert_eq!(2, ch.encode_utf8(&mut bytes).len());
     }
 
-    #[test]
-    fn constructor() {
-        // For lifetime sanity checks
-        let skip_f = vec![String::from("foo"), String::from("bar")];
-        let skip_b = vec![String::from("foo"), String::from("bar")];
-        let size = 1;
-        let overlap = 1;
-        let delimiter = '!';
-
-        let chunker = SnappingWindow::new(size, overlap)
-            .unwrap()
-            .delimiter(delimiter)
-            .skip_forward(skip_f.clone())
-            .skip_back(skip_b.clone());
-
-        assert_eq!(delimiter, chunker.delimiter);
-        assert_eq!(size, chunker.size);
-        assert_eq!(overlap, chunker.overlap);
-        assert_eq!(skip_f, chunker.skip_forward);
-        assert_eq!(skip_b, chunker.skip_back);
-    }
-
     #[tokio::test]
     async fn snapping_works() {
         let input =
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
-        let chunker = SnappingWindow::new(1, 1).unwrap();
+        let chunker = SnappingWindow::default_with_size(1, 1).unwrap();
         let expected = [
             "I have a sentence. It is not very long.",
             " It is not very long. Here is another. Long schlong ding dong.",
@@ -319,9 +292,8 @@ mod tests {
         let input =
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
 
-        let chunker = SnappingWindow::new(1, 1)
-            .unwrap()
-            .skip_back(vec!["etc".to_string(), "foobar".to_string()]);
+        let mut chunker = SnappingWindow::default_with_size(1, 1).unwrap();
+        chunker.extend_skips(vec![], vec!["etc".to_string(), "foobar".to_string()]);
 
         let expected = [
             "I have a sentence. It contains letters, words, etc. and it contains more.",
@@ -341,9 +313,8 @@ mod tests {
         let input =
             "Go to sentences.org for more words. 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.";
 
-        let chunker = SnappingWindow::new(1, 1)
-            .unwrap()
-            .skip_forward(vec!["com".to_string(), "org".to_string()]);
+        let mut chunker = SnappingWindow::default_with_size(1, 1).unwrap();
+        chunker.extend_skips(vec!["com".to_string(), "org".to_string()], vec![]);
 
         let expected = [
             "Go to sentences.org for more words. 50% off on words with >4 syllables.",
@@ -363,7 +334,7 @@ mod tests {
         let input =
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
-        let chunker = SnappingWindow::new(1, 1).unwrap();
+        let chunker = SnappingWindow::default_with_size(1, 1).unwrap();
 
         let expected = [
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see.",
@@ -384,9 +355,10 @@ mod tests {
         let input =
             "Table of contents:\n1 Super cool stuff\n1.1 Some chonkers in rust\n1.2 Some data for your LLM\n1.3 ??? \n1.4 Profit \n1.4.1 Lambo\nHope you liked the table of contents. See more at content.co.com.";
 
-        let chunker = SnappingWindow::new(1, 1)
-            .unwrap()
-            .skip_forward(vec![
+        let mut chunker = SnappingWindow::default_with_size(1, 1).unwrap();
+
+        chunker.extend_skips(
+            vec![
                 "0".to_string(),
                 "1".to_string(),
                 "2".to_string(),
@@ -394,8 +366,9 @@ mod tests {
                 "4".to_string(),
                 "co".to_string(),
                 "com".to_string(),
-            ])
-            .skip_back(vec!["com".to_string()]);
+            ],
+            vec!["com".to_string()],
+        );
 
         let expected = [input];
 
@@ -409,7 +382,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapping_window_empty() {
-        let chunker = SnappingWindow::new(1, 1).unwrap();
+        let chunker = SnappingWindow::default_with_size(1, 1).unwrap();
         let chunks = chunker.chunk("").unwrap();
         assert!(chunks.is_empty());
     }
