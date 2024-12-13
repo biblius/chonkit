@@ -5,9 +5,7 @@ mod document_service_integration_tests {
     use crate::{
         app::test::{TestState, TestStateConfig},
         core::{
-            document::parser::{
-                docx::DocxParser, pdf::PdfParser, text::TextParser, DocumentParser, ParseConfig,
-            },
+            document::parser::{docx::DocxParser, pdf::PdfParser, text::TextParser, ParseConfig},
             model::document::{DocumentType, TextDocumentType},
             service::document::dto::DocumentUpload,
         },

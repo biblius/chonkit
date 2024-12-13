@@ -3,8 +3,6 @@
 mod document;
 mod vector;
 
-use crate::core::service::{document::DocumentService, vector::VectorService};
-
 use super::{
     document::store::FsDocumentStore,
     state::{
@@ -12,6 +10,8 @@ use super::{
         VectorStoreProvider,
     },
 };
+use crate::core::service::{document::DocumentService, vector::VectorService};
+use crate::{config::DEFAULT_COLLECTION_EMBEDDING_MODEL, core::embedder::Embedder as _};
 use std::sync::Arc;
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
 use testcontainers_modules::postgres::Postgres;
@@ -37,15 +37,6 @@ impl TestState {
         #[cfg(feature = "weaviate")]
         let (weaviate, weaviate_img) = init_weaviate().await;
 
-        #[cfg(feature = "fe-local")]
-        let fastembed = Arc::new(crate::app::embedder::fastembed::local::LocalFastEmbedder::new());
-        #[cfg(feature = "fe-remote")]
-        let fastembed = Arc::new(
-            crate::app::embedder::fastembed::remote::RemoteFastEmbedder::new(
-                String::new(), /* TODO */
-            ),
-        );
-
         let vector = VectorStoreProvider {
             #[cfg(feature = "qdrant")]
             qdrant: qdrant.clone(),
@@ -58,24 +49,36 @@ impl TestState {
             fs_store: Arc::new(FsDocumentStore::new(&config.fs_store_path)),
         };
 
-        let embedding = EmbeddingProvider {
-            #[cfg(feature = "fe-local")]
-            fastembed: fastembed.clone(),
-            #[cfg(feature = "fe-remote")]
-            fastembed: fastembed.clone(),
+        let mut embedding = EmbeddingProvider::default();
 
-            #[cfg(feature = "openai")]
-            openai: panic!("cannot run test with `openai` enabled"),
-        };
+        #[cfg(feature = "fe-local")]
+        {
+            let fastembed = Arc::new(
+                crate::app::embedder::fastembed::local::LocalFastEmbedder::new_with_model(
+                    DEFAULT_COLLECTION_EMBEDDING_MODEL,
+                ),
+            );
+            embedding.register(fastembed.id(), fastembed);
+        }
+
+        #[cfg(feature = "fe-remote")]
+        {
+            let fastembed = Arc::new(
+                crate::app::embedder::fastembed::remote::RemoteFastEmbedder::new(
+                    String::new(), /* TODO */
+                ),
+            );
+            embedding.register(fastembed.id(), fastembed);
+        }
 
         let providers = AppProviderState {
             database: postgres.clone(),
             vector: Arc::new(vector.clone()),
-            embedding: Arc::new(embedding.clone()),
+            embedding: Arc::new(embedding),
             document: Arc::new(store.clone()),
         };
 
-        let containers = TestContainers {
+        let _containers = TestContainers {
             _postgres: postgres_img,
             #[cfg(feature = "qdrant")]
             _qdrant: qdrant_img,
@@ -88,12 +91,14 @@ impl TestState {
             document: DocumentService::new(postgres, providers.clone().into()),
         };
 
-        let app = AppState::new_test(services, providers);
+        let app = AppState::new_test(
+            services,
+            providers,
+            #[cfg(feature = "auth-vault")]
+            todo!(),
+        );
 
-        TestState {
-            _containers: containers,
-            app,
-        }
+        TestState { _containers, app }
     }
 
     fn load_vector_providers_for_test(&self) -> Vec<&'static str> {

@@ -106,7 +106,7 @@ pub fn router(state: AppState, cors_origins: Vec<String>, cors_headers: Vec<Stri
                     let ctype = req
                         .headers()
                         .get("content-type")
-                        .map(|v| v.to_str().unwrap_or_else(|_| "none"))
+                        .map(|v| v.to_str().unwrap_or("none"))
                         .unwrap_or_else(|| "none");
 
                     tracing::info!("Processing request | content-type: {ctype}");
@@ -117,7 +117,7 @@ pub fn router(state: AppState, cors_origins: Vec<String>, cors_headers: Vec<Stri
                         let ctype = res
                             .headers()
                             .get("content-type")
-                            .map(|v| v.to_str().unwrap_or_else(|_| "none"))
+                            .map(|v| v.to_str().unwrap_or("none"))
                             .unwrap_or_else(|| "none");
 
                         tracing::info!(

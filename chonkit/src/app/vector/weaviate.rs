@@ -68,14 +68,14 @@ impl VectorDb for WeaviateClient {
     }
 
     async fn get_collection(&self, name: &str) -> Result<VectorCollection, ChonkitError> {
-        match self.schema.get_class(&name).await {
+        match self.schema.get_class(name).await {
             Ok(class) => class.try_into(),
             Err(e) => err!(Weaviate, "{}", e),
         }
     }
 
     async fn delete_vector_collection(&self, name: &str) -> Result<(), ChonkitError> {
-        if let Err(e) = self.schema.delete(&name).await {
+        if let Err(e) = self.schema.delete(name).await {
             return err!(Weaviate, "{}", e);
         }
         Ok(())
@@ -117,7 +117,7 @@ impl VectorDb for WeaviateClient {
     ) -> Result<Vec<String>, ChonkitError> {
         // God help us all
         let near_vector = &format!("{{ vector: {search:?} }}");
-        let query = GetQuery::builder(&collection, vec![CONTENT_PROPERTY])
+        let query = GetQuery::builder(collection, vec![CONTENT_PROPERTY])
             .with_near_vector(near_vector)
             .with_limit(limit)
             .build();
@@ -129,7 +129,7 @@ impl VectorDb for WeaviateClient {
 
         let result: QueryResult = map_err!(serde_json::from_value(response));
 
-        let Some(results) = result.data.get.get(&collection) else {
+        let Some(results) = result.data.get.get(collection) else {
             return err!(
                 Weaviate,
                 "Response error - cannot index into '{collection}' in {}",
@@ -166,7 +166,7 @@ impl VectorDb for WeaviateClient {
                     CONTENT_PROPERTY: content,
                     DOCUMENT_ID_PROPERTY: document_id
                 });
-                Object::builder(&collection, properties)
+                Object::builder(collection, properties)
                     .with_vector(vector)
                     .with_id(uuid::Uuid::new_v4())
                     .build()
@@ -192,7 +192,7 @@ impl VectorDb for WeaviateClient {
         document_id: Uuid,
     ) -> Result<(), ChonkitError> {
         let delete = BatchDeleteRequest::builder(MatchConfig::new(
-            &collection,
+            collection,
             json!({
                 "path": [DOCUMENT_ID_PROPERTY],
                 "operator": "Equal",
@@ -217,7 +217,7 @@ impl VectorDb for WeaviateClient {
         collection: &str,
         document_id: Uuid,
     ) -> Result<usize, ChonkitError> {
-        let query = GetQuery::builder(&collection, vec![DOCUMENT_ID_PROPERTY])
+        let query = GetQuery::builder(collection, vec![DOCUMENT_ID_PROPERTY])
             .with_where(&format!(
                 "{{ 
                     path: [\"{DOCUMENT_ID_PROPERTY}\"],
@@ -234,7 +234,7 @@ impl VectorDb for WeaviateClient {
 
         let result: QueryResult = map_err!(serde_json::from_value(response));
 
-        let Some(results) = result.data.get.get(&collection) else {
+        let Some(results) = result.data.get.get(collection) else {
             return err!(
                 Weaviate,
                 "Response error - cannot index into '{collection}' in {}",

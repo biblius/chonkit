@@ -24,7 +24,6 @@ use crate::{
     error::ChonkitError,
     map_err, transaction,
 };
-use chunx::SnappingWindow;
 use dto::{ChunkPreviewPayload, DocumentUpload};
 use tracing::info;
 use uuid::Uuid;
@@ -291,7 +290,7 @@ where
                 let semantic_embedder = SemanticEmbedder(embedder.clone());
 
                 let chunked = chunker
-                    .chunk(&input, &semantic_embedder, &embedding_model)
+                    .chunk(input, &semantic_embedder, &embedding_model)
                     .await?;
 
                 ChunkedDocument::Owned(chunked)

@@ -358,15 +358,7 @@ mod tests {
         let mut chunker = SnappingWindow::default_with_size(1, 1).unwrap();
 
         chunker.extend_skips(
-            vec![
-                "0".to_string(),
-                "1".to_string(),
-                "2".to_string(),
-                "3".to_string(),
-                "4".to_string(),
-                "co".to_string(),
-                "com".to_string(),
-            ],
+            vec!["co".to_string(), "com".to_string()],
             vec!["com".to_string()],
         );
 

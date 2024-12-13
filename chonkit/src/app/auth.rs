@@ -111,7 +111,7 @@ impl VaultAuthenticator {
             "llmao-transit-engine",
             &self.key,
             &input,
-            Some(request.signature(&format!("vault:v{version}:{signature}"))),
+            Some(request.signature(format!("vault:v{version}:{signature}"))),
         )
         .await
         {
@@ -197,11 +197,9 @@ pub async fn auth_check(
         }
     };
 
-    if let Err(e) = vault.verify_token(&access_token).await {
+    if let Err(e) = vault.verify_token(access_token).await {
         return e.into_response();
     };
 
-    let response = next.run(request).await;
-
-    response
+    next.run(request).await
 }

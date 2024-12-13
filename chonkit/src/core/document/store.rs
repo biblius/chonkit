@@ -1,4 +1,4 @@
-use super::parser::DocumentParser;
+use super::parser::Parser;
 use crate::{
     core::{model::document::Document, repo::document::DocumentRepo},
     error::ChonkitError,
@@ -13,11 +13,7 @@ pub trait DocumentStore {
     /// Get the content of document located on `path`.
     ///
     /// * `path`: The path to read from.
-    async fn read(
-        &self,
-        document: &Document,
-        parser: &(dyn DocumentParser + Sync),
-    ) -> Result<String, ChonkitError>;
+    async fn read(&self, document: &Document, parser: &Parser) -> Result<String, ChonkitError>;
 
     /// Delete the document contents from the underlying storage.
     ///

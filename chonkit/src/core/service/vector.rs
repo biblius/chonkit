@@ -100,7 +100,7 @@ where
         embedder: &str,
     ) -> Result<Vec<(String, usize)>, ChonkitError> {
         let embedder = self.providers.embedding.get_provider(embedder)?;
-        Ok(embedder.list_embedding_models().await?)
+        embedder.list_embedding_models().await
     }
 
     /// Create the default vector collection if it doesn't already exist.
@@ -271,12 +271,12 @@ where
             );
         }
 
-        let embeddings = embedder.embed(&chunks, &collection.model).await?;
+        let embeddings = embedder.embed(chunks, &collection.model).await?;
 
         debug_assert_eq!(chunks.len(), embeddings.len());
 
         vector_db
-            .insert_embeddings(document_id, &collection.name, &chunks, embeddings)
+            .insert_embeddings(document_id, &collection.name, chunks, embeddings)
             .await?;
 
         let embeddings = self

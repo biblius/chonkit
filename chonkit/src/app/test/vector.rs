@@ -9,7 +9,6 @@ mod vector_service_integration_tests {
         app::test::{TestState, TestStateConfig},
         config::DEFAULT_COLLECTION_NAME,
         core::{
-            embedder::Embedder,
             model::document::{DocumentInsert, DocumentType, TextDocumentType},
             provider::ProviderFactory,
             repo::{document::DocumentRepo, vector::VectorRepo},
@@ -39,7 +38,13 @@ mod vector_service_integration_tests {
             service
                 .create_default_collection(
                     provider,
-                    test_state.app.providers.embedding.fastembed.id(),
+                    test_state
+                        .app
+                        .providers
+                        .embedding
+                        .get_provider("fembed")
+                        .unwrap()
+                        .id(),
                 )
                 .await;
         }
@@ -62,7 +67,13 @@ mod vector_service_integration_tests {
         state: TestState,
         vector_providers: Vec<&'static str>,
     ) {
-        let embedder = state.app.providers.embedding.fastembed.clone();
+        let embedder = state
+            .app
+            .providers
+            .embedding
+            .get_provider("fembed")
+            .unwrap()
+            .clone();
         let service = &state.app.services.vector;
 
         for provider in vector_providers.iter() {
@@ -99,7 +110,13 @@ mod vector_service_integration_tests {
 
     #[test]
     async fn create_collection_works(state: TestState, vector_providers: Vec<&'static str>) {
-        let embedder = state.app.providers.embedding.fastembed.clone();
+        let embedder = state
+            .app
+            .providers
+            .embedding
+            .get_provider("fembed")
+            .unwrap()
+            .clone();
         let service = &state.app.services.vector;
 
         for provider in vector_providers.iter() {
@@ -141,7 +158,13 @@ mod vector_service_integration_tests {
         state: TestState,
         vector_providers: Vec<&'static str>,
     ) {
-        let embedder = state.app.providers.embedding.fastembed.clone();
+        let embedder = state
+            .app
+            .providers
+            .embedding
+            .get_provider("fembed")
+            .unwrap()
+            .clone();
         let service = &state.app.services.vector;
 
         for provider in vector_providers.iter() {
@@ -167,7 +190,13 @@ mod vector_service_integration_tests {
         state: TestState,
         vector_providers: Vec<&'static str>,
     ) {
-        let embedder = state.app.providers.embedding.fastembed.clone();
+        let embedder = state
+            .app
+            .providers
+            .embedding
+            .get_provider("fembed")
+            .unwrap()
+            .clone();
         let service = &state.app.services.vector;
 
         for provider in vector_providers.iter() {
@@ -265,7 +294,13 @@ mod vector_service_integration_tests {
         state: TestState,
         vector_providers: Vec<&'static str>,
     ) {
-        let embedder = state.app.providers.embedding.fastembed.clone();
+        let embedder = state
+            .app
+            .providers
+            .embedding
+            .get_provider("fembed")
+            .unwrap()
+            .clone();
         let service = &state.app.services.vector;
         let postgres = &state.app.providers.database;
 

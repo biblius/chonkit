@@ -1,5 +1,5 @@
-use super::{DocumentParser, ParseConfig};
-use crate::{core::model::document::DocumentType, err, error::ChonkitError, map_err};
+use super::ParseConfig;
+use crate::{err, error::ChonkitError, map_err};
 use pdfium_render::prelude::Pdfium;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Write, time::Instant};
@@ -22,8 +22,8 @@ impl PdfParser {
     }
 }
 
-impl DocumentParser for PdfParser {
-    fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
+impl PdfParser {
+    pub fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
         let _start = Instant::now();
 
         let ParseConfig {
@@ -103,9 +103,5 @@ impl DocumentParser for PdfParser {
         }
 
         Ok(out)
-    }
-
-    fn dtype(&self) -> DocumentType {
-        DocumentType::Pdf
     }
 }

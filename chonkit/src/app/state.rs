@@ -118,30 +118,34 @@ impl AppState {
         #[cfg(not(any(feature = "fe-local", feature = "fe-remote", feature = "openai")))]
         compile_error!("one of `fe-local`, `fe-remote` or `openai` features must be enabled");
 
+        let mut provider = EmbeddingProvider::default();
+
         #[cfg(feature = "fe-local")]
-        let fastembed =
-            { Arc::new(crate::app::embedder::fastembed::local::LocalFastEmbedder::new()) };
+        {
+            let fastembed =
+                Arc::new(crate::app::embedder::fastembed::local::LocalFastEmbedder::new());
+            provider.register(fastembed.id(), fastembed);
+        }
 
         #[cfg(feature = "fe-remote")]
-        let fastembed = Arc::new(
-            crate::app::embedder::fastembed::remote::RemoteFastEmbedder::new(_args.fembed_url()),
-        );
+        {
+            let fastembed = Arc::new(
+                crate::app::embedder::fastembed::remote::RemoteFastEmbedder::new(
+                    _args.fembed_url(),
+                ),
+            );
+            provider.register(fastembed.id(), fastembed);
+        }
 
         #[cfg(feature = "openai")]
-        let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
-            &_args.open_ai_key(),
-        ));
+        {
+            let openai = Arc::new(crate::app::embedder::openai::OpenAiEmbeddings::new(
+                &_args.open_ai_key(),
+            ));
+            provider.register(openai.id(), openai);
+        }
 
-        Arc::new(EmbeddingProvider {
-            #[cfg(feature = "fe-local")]
-            fastembed,
-
-            #[cfg(feature = "fe-remote")]
-            fastembed,
-
-            #[cfg(feature = "openai")]
-            openai,
-        })
+        Arc::new(provider)
     }
 
     fn spawn_batch_embedder(state: ServiceState) -> BatchEmbedderHandle {
@@ -213,11 +217,17 @@ impl AppState {
     }
 
     #[cfg(test)]
-    pub fn new_test(services: ServiceState, providers: AppProviderState) -> Self {
+    pub fn new_test(
+        services: ServiceState,
+        providers: AppProviderState,
+        #[cfg(feature = "auth-vault")] vault: super::auth::VaultAuthenticator,
+    ) -> Self {
         Self {
             services: services.clone(),
             providers,
             batch_embedder: Self::spawn_batch_embedder(services),
+            #[cfg(feature = "auth-vault")]
+            vault,
         }
     }
 }
@@ -304,21 +314,21 @@ macro_rules! provider {
     }
 }
 
-#[cfg(all(not(feature = "fe-remote"), feature = "fe-local"))]
-provider! {
-    EmbeddingProvider -> Embedder,
-        "fe-local" => fastembed,
-        "openai" =>  openai;
-    EMBEDDING_PROVIDERS
-}
+// #[cfg(all(not(feature = "fe-remote"), feature = "fe-local"))]
+// provider! {
+//     EmbeddingProvider -> Embedder,
+//         "fe-local" => fastembed,
+//         "openai" =>  openai;
+//     EMBEDDING_PROVIDERS
+// }
 
-#[cfg(all(not(feature = "fe-local"), feature = "fe-remote"))]
-provider! {
-    EmbeddingProvider -> Embedder,
-        "fe-remote" => fastembed,
-        "openai" =>  openai;
-    EMBEDDING_PROVIDERS
-}
+// #[cfg(all(not(feature = "fe-local"), feature = "fe-remote"))]
+// provider! {
+//     EmbeddingProvider -> Embedder,
+//         "fe-remote" => fastembed,
+//         "openai" =>  openai;
+//     EMBEDDING_PROVIDERS
+// }
 
 provider! {
     VectorStoreProvider -> VectorDb,
@@ -334,16 +344,40 @@ provider! {
 }
 
 /// Provides concrete implementations of [Embedder] for each provider.
-#[derive(Clone)]
+// #[derive(Clone)]
+// pub struct EmbeddingProvider {
+// #[cfg(feature = "openai")]
+// pub openai: Arc<super::embedder::openai::OpenAiEmbeddings>,
+//
+// #[cfg(feature = "fe-local")]
+// pub fastembed: Arc<super::embedder::fastembed::local::LocalFastEmbedder>,
+//
+// #[cfg(feature = "fe-remote")]
+// pub fastembed: Arc<super::embedder::fastembed::remote::RemoteFastEmbedder>,
+//}
+
+#[derive(Clone, Default)]
 pub struct EmbeddingProvider {
-    #[cfg(feature = "openai")]
-    pub openai: Arc<super::embedder::openai::OpenAiEmbeddings>,
+    embedders: HashMap<&'static str, Arc<dyn Embedder + Send + Sync>>,
+}
 
-    #[cfg(feature = "fe-local")]
-    pub fastembed: Arc<super::embedder::fastembed::local::LocalFastEmbedder>,
+impl EmbeddingProvider {
+    pub fn register(&mut self, id: &'static str, embedder: Arc<dyn Embedder + Send + Sync>) {
+        self.embedders.insert(id, embedder);
+    }
+}
 
-    #[cfg(feature = "fe-remote")]
-    pub fastembed: Arc<super::embedder::fastembed::remote::RemoteFastEmbedder>,
+impl ProviderFactory<Arc<dyn Embedder + Send + Sync>> for EmbeddingProvider {
+    fn get_provider(&self, input: &str) -> Result<Arc<dyn Embedder + Send + Sync>, ChonkitError> {
+        match self.embedders.get(input).cloned() {
+            Some(e) => Ok(e),
+            None => err!(InvalidProvider, "{input}"),
+        }
+    }
+
+    fn list_provider_ids(&self) -> Vec<&'static str> {
+        self.embedders.keys().cloned().collect()
+    }
 }
 
 /// Provides concrete implementations of [VectorDb] for each provider.

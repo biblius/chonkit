@@ -178,7 +178,7 @@ impl VectorDb for Qdrant {
             );
         };
 
-        let info = get_id_vector(self, &name, size).await?;
+        let info = get_id_vector(self, name, size).await?;
 
         Ok(info)
     }

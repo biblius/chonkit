@@ -10,13 +10,6 @@ pub mod docx;
 pub mod pdf;
 pub mod text;
 
-/// Implement on anything that has to parse document bytes.
-pub trait DocumentParser {
-    fn dtype(&self) -> DocumentType;
-
-    fn parse(&self, input: &[u8]) -> Result<String, ChonkitError>;
-}
-
 /// General parsing configuration for documents.
 /// A text element is parser specific, it could be PDF pages,
 /// DOCX paragraphs, CSV rows, etc.
@@ -109,22 +102,12 @@ impl Parser {
             DocumentType::Pdf => Self::Pdf(PdfParser::new(config)),
         }
     }
-}
 
-impl DocumentParser for Parser {
-    fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
+    pub fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
         match self {
             Self::Text(p) => p.parse(input),
             Self::Pdf(p) => p.parse(input),
             Self::Docx(p) => p.parse(input),
-        }
-    }
-
-    fn dtype(&self) -> DocumentType {
-        match self {
-            Self::Text(p) => p.dtype(),
-            Self::Pdf(p) => p.dtype(),
-            Self::Docx(p) => p.dtype(),
         }
     }
 }

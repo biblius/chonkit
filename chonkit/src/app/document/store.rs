@@ -1,7 +1,7 @@
 use crate::{
     core::{
         document::{
-            parser::DocumentParser,
+            parser::Parser,
             sha256,
             store::{DocumentStore, DocumentSync},
         },
@@ -64,11 +64,7 @@ impl DocumentStore for FsDocumentStore {
         "fs"
     }
 
-    async fn read(
-        &self,
-        document: &Document,
-        parser: &(dyn DocumentParser + Sync),
-    ) -> Result<String, ChonkitError> {
+    async fn read(&self, document: &Document, parser: &Parser) -> Result<String, ChonkitError> {
         debug!("Reading {}", document.path);
         let file = map_err!(tokio::fs::read(&document.path).await);
         parser.parse(&file)
@@ -173,7 +169,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::{DocumentStore, FsDocumentStore};
-    use crate::core::{document::parser::text::TextParser, model::document::Document};
+    use crate::core::{
+        document::parser::{text::TextParser, Parser},
+        model::document::Document,
+    };
 
     const DIR: &str = "__fs_doc_store_tests";
     const CONTENT: &str = "Hello world.";
@@ -195,7 +194,10 @@ mod tests {
         let file = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(CONTENT, file);
 
-        let read = store.read(&d, &TextParser::default()).await.unwrap();
+        let read = store
+            .read(&d, &Parser::Text(TextParser::default()))
+            .await
+            .unwrap();
         assert_eq!(CONTENT, read);
 
         store.delete(&path).await.unwrap();

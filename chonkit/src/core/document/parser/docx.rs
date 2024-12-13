@@ -1,5 +1,4 @@
-use super::{DocumentParser, ParseConfig};
-use crate::core::model::document::DocumentType;
+use super::ParseConfig;
 use crate::error::ChonkitError;
 use crate::map_err;
 use docx_rs::read_docx;
@@ -20,8 +19,8 @@ impl DocxParser {
     }
 }
 
-impl DocumentParser for DocxParser {
-    fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
+impl DocxParser {
+    pub fn parse(&self, input: &[u8]) -> Result<String, ChonkitError> {
         let start = Instant::now();
 
         let input = map_err!(read_docx(input));
@@ -55,10 +54,6 @@ impl DocumentParser for DocxParser {
         );
 
         Ok(out)
-    }
-
-    fn dtype(&self) -> DocumentType {
-        DocumentType::Docx
     }
 }
 

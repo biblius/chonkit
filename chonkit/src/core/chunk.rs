@@ -97,11 +97,7 @@ impl ChunkConfig {
 
     /// Create a `SemanticWindow` chunker.
     ///
-    /// * `size`: Amount of sentences per chunk.
-    /// * `threshold`: Threshold for semantic similarity.
-    /// * `distance_fn`: Distance function to use for semantic similarity.
-    /// * `embedder`: Embedder to use for embedding chunks.
-    /// * `model`: Model to use for embeddings.
+    /// See [SemanticWindow](chunx::semantic::SemanticWindow) for more details.
     pub fn semantic(
         size: usize,
         threshold: f64,
