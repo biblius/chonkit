@@ -1,7 +1,10 @@
 use crate::{
     config::{DEFAULT_DOCUMENT_CONTENT, DEFAULT_DOCUMENT_NAME},
     core::{
-        chunk::{ChunkConfig, ChunkedDocument, SemanticEmbedder, SemanticWindowConfig},
+        chunk::{
+            ChunkConfig, ChunkedDocument, SemanticEmbedder, SemanticWindowConfig,
+            SnappingWindowConfig,
+        },
         document::{
             parser::{ParseConfig, Parser},
             sha256,
@@ -21,6 +24,7 @@ use crate::{
     error::ChonkitError,
     map_err, transaction,
 };
+use chunx::SnappingWindow;
 use dto::{ChunkPreviewPayload, DocumentUpload};
 use tracing::info;
 use uuid::Uuid;
@@ -238,7 +242,18 @@ where
                 ChunkedDocument::Ref(chunked)
             }
             ChunkConfig::Snapping(config) => {
-                let chunker = map_err!(chunx::SnappingWindow::new(config.size, config.overlap));
+                let SnappingWindowConfig {
+                    size,
+                    overlap,
+                    delimiter,
+                    skip_f,
+                    skip_b,
+                } = config;
+
+                let chunker = map_err!(chunx::SnappingWindow::new(
+                    size, overlap, delimiter, skip_f, skip_b
+                ));
+
                 let chunked = map_err!(chunker.chunk(input));
 
                 ChunkedDocument::Owned(chunked)
