@@ -214,7 +214,7 @@ pub(super) async fn update_document_config(
     post,
     path = "/documents/{id}/chunk/preview",
     responses(
-        (status = 200, description = "Preview chunk parsing", body = Vec<String>),
+        (status = 200, description = "Preview document chunks", body = Vec<String>),
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -236,7 +236,7 @@ pub(super) async fn chunk_preview(
     post,
     path = "/documents/{id}/parse/preview",
     responses(
-        (status = 200, description = "Preview document parse result", body = String),
+        (status = 200, description = "Preview parsed document", body = String),
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),

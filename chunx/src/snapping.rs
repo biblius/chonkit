@@ -135,6 +135,19 @@ impl SnappingWindow {
         'outer: while let Some(char) = chars.next() {
             current_offset += char.len_utf8();
 
+            // Check for end of input
+
+            if current_offset == total_bytes {
+                chunk.push(char);
+                chunk_byte_size += char.len_utf8();
+                let prev = &input[..current_offset - chunk_byte_size];
+                let prev = previous_chunk(prev, *overlap, *delimiter, skip_forward, skip_back);
+                chunks.push(format!("{prev}{chunk}"));
+                break;
+            }
+
+            // Push any non-delimiting chars to the chunk
+
             if char != *delimiter {
                 chunk.push(char);
                 chunk_byte_size += char.len_utf8();
@@ -188,6 +201,7 @@ impl SnappingWindow {
             }
 
             // Add the delimiter to the chunk
+
             chunk.push(char);
             chunk_byte_size += char.len_utf8();
 
@@ -201,10 +215,13 @@ impl SnappingWindow {
             let offset = current_offset;
 
             // No point in going further if the lookahead has reached the end
+
             if current_offset + next_offset == total_bytes - 1 {
                 chunks.push(format!("{prev}{chunk}{next}"));
                 break;
             }
+
+            // Advance chars to the end of next chunk so we have less duplicate text
 
             while current_offset < offset + next_offset {
                 let Some(ch) = chars.next() else {
@@ -269,8 +286,8 @@ mod tests {
         assert_eq!(2, ch.encode_utf8(&mut bytes).len());
     }
 
-    #[tokio::test]
-    async fn snapping_works() {
+    #[test]
+    fn snapping_works() {
         let input =
             "I have a sentence. It is not very long. Here is another. Long schlong ding dong.";
         let chunker = SnappingWindow::default_with_size(1, 1).unwrap();
@@ -287,8 +304,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn snapping_skips_back() {
+    #[test]
+    fn snapping_skips_back() {
         let input =
             "I have a sentence. It contains letters, words, etc. and it contains more. The most important of which is foobar., because it must be skipped.";
 
@@ -308,8 +325,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn snapping_skips_forward() {
+    #[test]
+    fn snapping_skips_forward() {
         let input =
             "Go to sentences.org for more words. 50% off on words with >4 syllables. Leverage agile frameworks to provide robust high level overview at agile.com.";
 
@@ -329,8 +346,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn snapping_skips_common_abbreviations() {
+    #[test]
+    fn snapping_skips_common_abbreviations() {
         let input =
             "Words are hard. There are many words in existence, e.g. this, that, etc..., quite a few, as you can see. My opinion, available at nobodycares.com, is that words should convey meaning. Not everyone agrees however, which is why they leverage agile frameworks to provide robust synopses for high level overviews. The lucidity of meaning is, in fact, obscured and ambiguous, therefore the interpretation, i.e. the conveying of units of meaning is less than optimal. Jebem ti boga.";
 
@@ -350,8 +367,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn snapping_table_of_contents() {
+    #[test]
+    fn snapping_table_of_contents() {
         let input =
             "Table of contents:\n1 Super cool stuff\n1.1 Some chonkers in rust\n1.2 Some data for your LLM\n1.3 ??? \n1.4 Profit \n1.4.1 Lambo\nHope you liked the table of contents. See more at content.co.com.";
 
@@ -372,10 +389,18 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn snapping_window_empty() {
+    #[test]
+    fn snapping_window_empty() {
         let chunker = SnappingWindow::default_with_size(1, 1).unwrap();
         let chunks = chunker.chunk("").unwrap();
         assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn snapping_small_input() {
+        let chunker = SnappingWindow::default_with_size(1000, 5).unwrap();
+        let input = "This whole text must be chunked fully. 0 chunks produced means the chunking implementation does not work. Please ensure this test works as intended, thank you!";
+        let chunks = chunker.chunk(input).unwrap();
+        assert_eq!(vec![input.to_string()], chunks);
     }
 }

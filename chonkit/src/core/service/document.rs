@@ -222,10 +222,12 @@ where
 
         let content = self.parse_preview(document_id, parser).await?;
 
-        match self.chunk(config.chunker, &content).await? {
-            ChunkedDocument::Ref(chunked) => Ok(chunked.iter().map(|s| s.to_string()).collect()),
-            ChunkedDocument::Owned(chunked) => Ok(chunked),
-        }
+        let chunks = match self.chunk(config.chunker, &content).await? {
+            ChunkedDocument::Ref(chunked) => chunked.iter().map(|s| s.to_string()).collect(),
+            ChunkedDocument::Owned(chunked) => chunked,
+        };
+
+        Ok(chunks)
     }
 
     async fn chunk<'i>(
@@ -298,7 +300,7 @@ where
         };
 
         if chunks.is_empty() {
-            return err!(Chunks, "cannot be empty");
+            return err!(Chunks, "chunks cannot be empty");
         }
 
         Ok(chunks)
@@ -371,6 +373,7 @@ where
         let count = self.repo.get_document_count().await.unwrap_or(0);
 
         if count > 0 {
+            tracing::info!("Found existing documents, skipping default document creation");
             return;
         }
 

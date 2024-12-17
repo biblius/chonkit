@@ -12,6 +12,7 @@ pub enum ChunkConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct SlidingWindowConfig {
     pub size: usize,
     pub overlap: usize,
