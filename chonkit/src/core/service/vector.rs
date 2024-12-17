@@ -120,24 +120,26 @@ where
         transaction!(infallible self.repo, |tx| async move {
             let (model, size) = embedder.default_model();
 
+            let collection_name = format!("{DEFAULT_COLLECTION_NAME}_{}_{}", vector_db.id(), embedder.id());
+
             let db_insert = CollectionInsert::new(
-                DEFAULT_COLLECTION_NAME,
+                &collection_name,
                 &model,
                 embedder.id(),
                 vector_db.id(),
             );
 
             let collection = match self.repo.insert_collection(db_insert, Some(tx)).await {
-                Ok(c) => { info!("Created default collection '{DEFAULT_COLLECTION_NAME}'"); c },
+                Ok(c) => { info!("Created default collection '{collection_name}'"); c },
                 Err(ChonkitError {
                     error: ChonkitErr::AlreadyExists(_),
                     ..
                 }) => {
-                    info!("Default collection '{DEFAULT_COLLECTION_NAME}' already exists");
-                    let collection = self.repo.get_collection_by_name(DEFAULT_COLLECTION_NAME, vector_db.id()).await?;
+                    info!("Default collection '{collection_name}' already exists");
+                    let collection = self.repo.get_collection_by_name(&collection_name, vector_db.id()).await?;
                     match collection {
                         Some(c) => c,
-                        None => panic!("irrecoverable state: collection '{DEFAULT_COLLECTION_NAME}' not found in {}", vector_db.id()),
+                        None => panic!("irrecoverable state: collection '{collection_name}' not found in {}", vector_db.id()),
                     }
                 }
                 Err(e) =>  {
@@ -147,7 +149,7 @@ where
             };
 
             let vector_db_insert =
-                CreateVectorCollection::new(collection.id, DEFAULT_COLLECTION_NAME, size, embedder.id(), &model);
+                CreateVectorCollection::new(collection.id, &collection_name, size, embedder.id(), &model);
 
             vector_db.create_default_collection(vector_db_insert).await?;
 
