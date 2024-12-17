@@ -283,3 +283,13 @@ To summarize:
 
 4. Chonkit uses the [verify](https://developer.hashicorp.com/vault/api-docs/secret/transit#verify-signed-data) endpoint
    to verify the token signature on the same Vault mount the data was signed.
+
+## License
+
+This repository contains Chonkit, a part of Ragu, covered under the [Apache License 2.0](LICENSE), except where noted (any Ragu logos or trademarks are not covered under the Apache License, and should be explicitly noted by a LICENSE file.)
+
+Chonkit, a part of Ragu, is a product produced from this open source software, exclusively by Barrage d.o.o. It is distributed under our commercial terms.
+
+Others are allowed to make their own distribution of the software, but they cannot use any of the Ragu trademarks, cloud services, etc.
+
+We explicitly grant permission for you to make a build that includes our trademarks while developing Ragu itself. You may not publish or share the build, and you may not use that build to run Ragu for any other purpose.
