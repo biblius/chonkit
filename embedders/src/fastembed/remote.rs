@@ -13,7 +13,10 @@ impl RemoteFastEmbedder {
     /// Initialise the FastEmbedder remote client.
     pub fn new(url: String) -> RemoteFastEmbedder {
         tracing::info!("Initializing remote Fastembed at {url}");
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(5000))
+            .build()
+            .expect("error while building http client");
         RemoteFastEmbedder { client, url }
     }
     pub async fn list_models(&self) -> Result<Vec<(String, usize)>, EmbeddingError> {
