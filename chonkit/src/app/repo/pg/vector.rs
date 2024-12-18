@@ -289,15 +289,14 @@ impl VectorRepo for PgPool {
         Ok(map_err!(
             sqlx::query_as!(
                 Embedding,
-                "INSERT INTO embeddings
-                (id, document_id, collection_id)
-             VALUES
-                ($1, $2, $3)
-             ON CONFLICT(id) DO UPDATE
-             SET id = $1
-             RETURNING 
-                id, document_id, collection_id, created_at, updated_at
-             ",
+                r#"
+                    INSERT INTO embeddings(id, document_id, collection_id)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT(id) DO UPDATE
+                    SET id = $1
+                    RETURNING 
+                    id, document_id, collection_id, created_at, updated_at
+                "#,
                 id,
                 document_id,
                 collection_id,

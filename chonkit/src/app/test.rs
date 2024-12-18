@@ -7,11 +7,17 @@ use super::{
     document::store::FsDocumentStore,
     state::{
         AppProviderState, AppState, DocumentStoreProvider, EmbeddingProvider, ServiceState,
-        VectorStoreProvider,
+        VectorDbProvider,
     },
 };
 use crate::core::service::{document::DocumentService, vector::VectorService};
-use crate::{config::DEFAULT_COLLECTION_EMBEDDING_MODEL, core::embedder::Embedder as _};
+use crate::{
+    config::DEFAULT_COLLECTION_EMBEDDING_MODEL,
+    core::{
+        document::store::DocumentStore, embedder::Embedder, provider::ProviderFactory,
+        vector::VectorDb,
+    },
+};
 use std::sync::Arc;
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage};
 use testcontainers_modules::postgres::Postgres;
@@ -25,10 +31,18 @@ struct TestState {
 
     /// Holds the downstream service providers necessary for chonkit services.
     pub app: AppState,
+
+    /// Holds the list of active vector storage providers. Depends on feature flags.
+    pub active_vector_providers: Vec<&'static str>,
+
+    /// Holds the list of active embedding providers. Depends on feature flags.
+    pub active_embedding_providers: Vec<&'static str>,
 }
 
 impl TestState {
     pub async fn init(config: TestStateConfig) -> Self {
+        // Set up test containers
+
         let (postgres, postgres_img) = init_postgres().await;
 
         #[cfg(feature = "qdrant")]
@@ -37,19 +51,34 @@ impl TestState {
         #[cfg(feature = "weaviate")]
         let (weaviate, weaviate_img) = init_weaviate().await;
 
-        let vector = VectorStoreProvider {
-            #[cfg(feature = "qdrant")]
-            qdrant: qdrant.clone(),
+        // Set up document storage
 
-            #[cfg(feature = "weaviate")]
-            weaviate: weaviate.clone(),
-        };
+        let mut store = DocumentStoreProvider::default();
 
-        let store = DocumentStoreProvider {
-            fs_store: Arc::new(FsDocumentStore::new(&config.fs_store_path)),
-        };
+        let fs_store = Arc::new(FsDocumentStore::new(&config.fs_store_path));
+        store.register(fs_store.id(), fs_store);
+
+        // Set up vector storage
+
+        let mut vector = VectorDbProvider::default();
+        let mut active_vector_providers = vec![];
+
+        #[cfg(feature = "qdrant")]
+        {
+            active_vector_providers.push(qdrant.id());
+            vector.register(qdrant.id(), qdrant);
+        }
+
+        #[cfg(feature = "weaviate")]
+        {
+            active_vector_providers.push(weaviate.id());
+            vector.register(weaviate.id(), weaviate);
+        }
+
+        // Set up embedders
 
         let mut embedding = EmbeddingProvider::default();
+        let mut active_embedding_providers = vec![];
 
         #[cfg(feature = "fe-local")]
         {
@@ -58,9 +87,11 @@ impl TestState {
                     DEFAULT_COLLECTION_EMBEDDING_MODEL,
                 ),
             );
+            active_embedding_providers.push(fastembed.id());
             embedding.register(fastembed.id(), fastembed);
         }
 
+        // If active, overrides the fe-local implementation since we keep it on the same ID.
         #[cfg(feature = "fe-remote")]
         {
             let fastembed = Arc::new(
@@ -68,6 +99,9 @@ impl TestState {
                     String::new(), /* TODO */
                 ),
             );
+            if !active_embedding_providers.contains(&fastembed.id()) {
+                active_embedding_providers.push(fastembed.id());
+            }
             embedding.register(fastembed.id(), fastembed);
         }
 
@@ -98,31 +132,12 @@ impl TestState {
             todo!(),
         );
 
-        TestState { _containers, app }
-    }
-
-    fn load_vector_providers_for_test(&self) -> Vec<&'static str> {
-        use crate::core::vector::VectorDb;
-
-        let mut expected = 0;
-        let mut vector_providers = vec![];
-
-        #[cfg(feature = "qdrant")]
-        {
-            vector_providers.push(self.app.providers.vector.qdrant.id());
-            expected += 1;
+        TestState {
+            _containers,
+            app,
+            active_vector_providers,
+            active_embedding_providers,
         }
-
-        #[cfg(feature = "weaviate")]
-        {
-            vector_providers.push(self.app.providers.vector.weaviate.id());
-            expected += 1;
-        }
-
-        // Sanity check
-        assert_eq!(expected, vector_providers.len());
-
-        vector_providers
     }
 }
 

@@ -269,7 +269,6 @@ pub(super) async fn sync(
     state: axum::extract::State<AppState>,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, ChonkitError> {
-    let syncer = state.syncer(&provider)?;
-    state.services.document.sync(&*syncer).await?;
+    state.services.document.sync(&provider).await?;
     Ok(StatusCode::NO_CONTENT)
 }

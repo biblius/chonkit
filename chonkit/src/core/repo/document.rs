@@ -33,10 +33,10 @@ pub trait DocumentRepo {
         id: uuid::Uuid,
     ) -> Result<Option<DocumentConfig>, ChonkitError>;
 
-    /// Get document metadata by path.
+    /// Get document metadata by path and source.
     ///
     /// * `path`: Document path.
-    async fn get_by_path(&self, path: &str) -> Result<Option<Document>, ChonkitError>;
+    async fn get_by_path(&self, path: &str, src: &str) -> Result<Option<Document>, ChonkitError>;
 
     /// Get a documents's path. A document path can also be a URL,
     /// depending on the storage.
@@ -91,7 +91,13 @@ pub trait DocumentRepo {
     /// Remove document metadata by id.
     ///
     /// * `id`: Document ID.
-    async fn remove_by_id(&self, id: uuid::Uuid) -> Result<u64, ChonkitError>;
+    async fn remove_by_id(
+        &self,
+        id: uuid::Uuid,
+        tx: Option<&mut Self::Tx>,
+    ) -> Result<u64, ChonkitError>
+    where
+        Self: Atomic;
 
     /// Remove document metadata by path.
     ///
@@ -150,4 +156,13 @@ pub trait DocumentRepo {
     ) -> Result<DocumentConfig, ChonkitError>
     where
         Self: Atomic;
+
+    /// Get all the collection name and provider pairs which contain this document.
+    /// Returns a list of tuples of collection name and provider.
+    ///
+    /// * `document_id`: Document ID.
+    async fn get_assigned_collection_names(
+        &self,
+        document_id: Uuid,
+    ) -> Result<Vec<(String, String)>, ChonkitError>;
 }

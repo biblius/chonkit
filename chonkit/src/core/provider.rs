@@ -11,9 +11,14 @@ type DynDocumentStore = Arc<dyn DocumentStore + Send + Sync>;
 /// The concrete instances are always obtained from aggregate roots, i.e. [Documents][crate::core::model::document::Document]
 /// or [Collections][crate::core::model::collection::Collection].
 pub trait ProviderFactory<T> {
+    /// Get a provider from this factory.
     fn get_provider(&self, input: &str) -> Result<T, ChonkitError>;
 
+    /// List all registered provider IDs.
     fn list_provider_ids(&self) -> Vec<&'static str>;
+
+    /// Register a provider in this factory.
+    fn register(&mut self, id: &'static str, provider: T);
 }
 
 /// Holds the factories for all available providers.

@@ -45,19 +45,20 @@ impl DocumentRepo for PgPool {
             sqlx::query_as!(
                 SelectDocumentConfig,
                 r#"
-            SELECT 
-                d.id,
-                d.name,
-                d.path,
-                d.ext,
-                d.hash,
-                d.src,
-                c.config AS "chunk_config: Option<Json<ChunkConfig>>",
-                p.config AS "parse_config: _"
-            FROM documents d 
-            LEFT JOIN chunkers c ON c.document_id = d.id
-            LEFT JOIN parsers p ON p.document_id = d.id
-            WHERE d.id = $1"#,
+                    SELECT 
+                        d.id,
+                        d.name,
+                        d.path,
+                        d.ext,
+                        d.hash,
+                        d.src,
+                        c.config AS "chunk_config: Option<Json<ChunkConfig>>",
+                        p.config AS "parse_config: _"
+                    FROM documents d 
+                    LEFT JOIN chunkers c ON c.document_id = d.id
+                    LEFT JOIN parsers p ON p.document_id = d.id
+                    WHERE d.id = $1
+                "#,
                 id
             )
             .fetch_optional(self)
@@ -66,14 +67,17 @@ impl DocumentRepo for PgPool {
         .map(DocumentConfig::from))
     }
 
-    async fn get_by_path(&self, path: &str) -> Result<Option<Document>, ChonkitError> {
+    async fn get_by_path(&self, path: &str, src: &str) -> Result<Option<Document>, ChonkitError> {
         Ok(map_err!(
             sqlx::query_as!(
                 Document,
-                "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at 
-             FROM documents 
-             WHERE path = $1",
-                path
+                r#"
+                    SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at 
+                    FROM documents 
+                    WHERE path = $1 AND src = $2
+                "#,
+                path,
+                src
             )
             .fetch_optional(self)
             .await
@@ -381,13 +385,17 @@ impl DocumentRepo for PgPool {
         Ok(result.rows_affected())
     }
 
-    async fn remove_by_id(&self, id: uuid::Uuid) -> Result<u64, ChonkitError> {
-        let result = map_err!(
-            sqlx::query!("DELETE FROM documents WHERE id = $1", id)
-                .execute(self)
-                .await
-        );
-        Ok(result.rows_affected())
+    async fn remove_by_id(
+        &self,
+        id: uuid::Uuid,
+        tx: Option<&mut <Self as Atomic>::Tx>,
+    ) -> Result<u64, ChonkitError> {
+        let query = sqlx::query!("DELETE FROM documents WHERE id = $1", id);
+        if let Some(tx) = tx {
+            Ok(map_err!(query.execute(tx).await).rows_affected())
+        } else {
+            Ok(map_err!(query.execute(self).await).rows_affected())
+        }
     }
 
     async fn remove_by_path(&self, path: &str) -> Result<u64, ChonkitError> {
@@ -601,6 +609,29 @@ impl DocumentRepo for PgPool {
             parse_config.config.0,
         ))
     }
+
+    async fn get_assigned_collection_names(
+        &self,
+        document_id: Uuid,
+    ) -> Result<Vec<(String, String)>, ChonkitError> {
+        let query = sqlx::query!(
+            r#"
+            SELECT collections.name, collections.provider FROM collections
+                WHERE collections.id IN (
+                        SELECT collection_id FROM embeddings
+                        WHERE embeddings.document_id = $1 
+                )
+            "#,
+            document_id
+        );
+
+        let results = map_err!(query.fetch_all(self).await);
+
+        Ok(results
+            .into_iter()
+            .map(|record| (record.name, record.provider))
+            .collect())
+    }
 }
 
 // Private dtos.
@@ -756,7 +787,7 @@ mod tests {
         assert_eq!("path/to/file", doc.path);
         assert_eq!("txt", doc.ext);
 
-        repo.remove_by_id(doc.id).await.unwrap();
+        repo.remove_by_id(doc.id, None).await.unwrap();
 
         let doc = repo.get_by_id(doc.id).await.unwrap();
 
@@ -786,6 +817,6 @@ mod tests {
         };
         assert_eq!(chunker.size, sliding.size);
         assert_eq!(chunker.overlap, sliding.overlap);
-        repo.remove_by_id(doc.id).await.unwrap();
+        repo.remove_by_id(doc.id, None).await.unwrap();
     }
 }

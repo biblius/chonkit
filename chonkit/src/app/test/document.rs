@@ -7,19 +7,20 @@ mod document_service_integration_tests {
         core::{
             document::parser::{docx::DocxParser, pdf::PdfParser, text::TextParser, ParseConfig},
             model::document::{DocumentType, TextDocumentType},
-            service::document::dto::DocumentUpload,
+            provider::ProviderFactory,
+            service::{
+                document::dto::DocumentUpload,
+                vector::dto::{CreateCollectionPayload, CreateEmbeddings},
+            },
         },
     };
 
-    type DocumentService = crate::core::service::document::DocumentService<PgPool>;
-
     const TEST_UPLOAD_PATH: &str = "__document_service_test_upload__";
     const TEST_DOCS_PATH: &str = "test/docs";
-    use sqlx::PgPool;
     use suitest::{after_all, before_all, cleanup};
 
     #[before_all]
-    async fn setup() -> (TestState, DocumentService) {
+    async fn setup() -> TestState {
         let _ = tokio::fs::remove_dir_all(TEST_UPLOAD_PATH).await;
         tokio::fs::create_dir(TEST_UPLOAD_PATH).await.unwrap();
 
@@ -28,9 +29,7 @@ mod document_service_integration_tests {
         })
         .await;
 
-        let service = test_state.app.services.document.clone();
-
-        (test_state, service)
+        test_state
     }
 
     #[cleanup]
@@ -44,7 +43,9 @@ mod document_service_integration_tests {
     }
 
     #[test]
-    async fn upload_text_happy(service: DocumentService) {
+    async fn upload_text_happy(state: TestState) {
+        let service = state.app.services.document.clone();
+
         let content = b"Hello world";
         let upload = DocumentUpload {
             name: "UPLOAD_TEST_TXT".to_string(),
@@ -65,7 +66,9 @@ mod document_service_integration_tests {
     }
 
     #[test]
-    async fn upload_pdf_happy(service: DocumentService) {
+    async fn upload_pdf_happy(state: TestState) {
+        let service = state.app.services.document.clone();
+
         let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.pdf"))
             .await
             .unwrap();
@@ -88,7 +91,9 @@ mod document_service_integration_tests {
     }
 
     #[test]
-    async fn upload_docx_happy(service: DocumentService) {
+    async fn upload_docx_happy(state: TestState) {
+        let service = state.app.services.document.clone();
+
         let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.docx"))
             .await
             .unwrap();
@@ -111,7 +116,9 @@ mod document_service_integration_tests {
     }
 
     #[test]
-    async fn update_parser(service: DocumentService) {
+    async fn update_parser(state: TestState) {
+        let service = state.app.services.document.clone();
+
         let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.pdf"))
             .await
             .unwrap();
@@ -144,5 +151,168 @@ mod document_service_integration_tests {
             parse_config.filters[0].to_string()
         );
         assert_eq!(config.range, parse_config.range);
+
+        service.delete(document.id).await.unwrap();
+
+        assert!(tokio::fs::metadata(document.path).await.is_err());
+    }
+
+    #[test]
+    async fn deleting_document_removes_all_embeddings(state: TestState) {
+        let content = &tokio::fs::read(format!("{TEST_DOCS_PATH}/test.pdf"))
+            .await
+            .unwrap();
+
+        for vector in state.active_vector_providers.iter() {
+            for embedder in state.active_embedding_providers.iter() {
+                let upload = DocumentUpload {
+                    name: "UPLOAD_TEST_PARSER".to_string(),
+                    ty: DocumentType::Pdf,
+                    file: content,
+                };
+
+                let document = state
+                    .app
+                    .services
+                    .document
+                    .upload("fs", upload)
+                    .await
+                    .unwrap();
+
+                let vector_db = state.app.providers.vector.get_provider(vector).unwrap();
+                let embedder = state
+                    .app
+                    .providers
+                    .embedding
+                    .get_provider(embedder)
+                    .unwrap();
+
+                let collection_1 = CreateCollectionPayload {
+                    name: "DeleteDocumentTestCollection1".to_string(),
+                    model: embedder.default_model().0,
+                    vector_provider: vector_db.id().to_string(),
+                    embedding_provider: embedder.id().to_string(),
+                };
+
+                let collection_2 = CreateCollectionPayload {
+                    name: "DeleteDocumentTestCollection2".to_string(),
+                    model: embedder.default_model().0,
+                    vector_provider: vector_db.id().to_string(),
+                    embedding_provider: embedder.id().to_string(),
+                };
+
+                let collection_1 = state
+                    .app
+                    .services
+                    .vector
+                    .create_collection(collection_1)
+                    .await
+                    .unwrap();
+
+                let collection_2 = state
+                    .app
+                    .services
+                    .vector
+                    .create_collection(collection_2)
+                    .await
+                    .unwrap();
+
+                let content = String::from_utf8_lossy(content);
+
+                let embeddings_1 = CreateEmbeddings {
+                    document_id: document.id,
+                    collection_id: collection_1.id,
+                    chunks: &[&content],
+                };
+
+                let embeddings_2 = CreateEmbeddings {
+                    document_id: document.id,
+                    collection_id: collection_2.id,
+                    chunks: &[&content],
+                };
+
+                state
+                    .app
+                    .services
+                    .vector
+                    .create_embeddings(embeddings_1)
+                    .await
+                    .unwrap();
+
+                state
+                    .app
+                    .services
+                    .vector
+                    .create_embeddings(embeddings_2)
+                    .await
+                    .unwrap();
+
+                let count = state
+                    .app
+                    .services
+                    .vector
+                    .count_embeddings(collection_1.id, document.id)
+                    .await
+                    .unwrap();
+
+                assert_eq!(1, count);
+
+                let count = state
+                    .app
+                    .services
+                    .vector
+                    .count_embeddings(collection_2.id, document.id)
+                    .await
+                    .unwrap();
+
+                assert_eq!(1, count);
+
+                state
+                    .app
+                    .services
+                    .document
+                    .delete(document.id)
+                    .await
+                    .unwrap();
+
+                let count = state
+                    .app
+                    .services
+                    .vector
+                    .count_embeddings(collection_1.id, document.id)
+                    .await
+                    .unwrap();
+
+                assert_eq!(0, count);
+
+                let count = state
+                    .app
+                    .services
+                    .vector
+                    .count_embeddings(collection_2.id, document.id)
+                    .await
+                    .unwrap();
+
+                assert_eq!(0, count);
+
+                let emb_1 = state
+                    .app
+                    .services
+                    .vector
+                    .get_embeddings(document.id, collection_1.id)
+                    .await
+                    .unwrap();
+                assert!(emb_1.is_none());
+
+                let emb_2 = state
+                    .app
+                    .services
+                    .vector
+                    .get_embeddings(document.id, collection_2.id)
+                    .await
+                    .unwrap();
+                assert!(emb_2.is_none());
+            }
+        }
     }
 }

@@ -37,75 +37,6 @@ pub fn init(url: &str) -> QdrantDb {
             .expect("error initialising qdrant"),
     )
 }
-async fn create_id_vector(
-    qdrant: &Qdrant,
-    collection: CreateVectorCollection<'_>,
-) -> Result<(), QdrantError> {
-    let mut payload = Payload::new();
-    payload.insert("collection_info", json! { collection });
-
-    let point = PointStruct::new(
-        uuid::Uuid::nil().to_string(),
-        vec![0.0; collection.size],
-        payload,
-    );
-
-    qdrant
-        .upsert_points(UpsertPointsBuilder::new(collection.name, vec![point]).wait(true))
-        .await?;
-
-    Ok(())
-}
-
-async fn get_id_vector(
-    qdrant: &Qdrant,
-    name: &str,
-    size: usize,
-) -> Result<VectorCollection, ChonkitError> {
-    let search_points = SearchPoints {
-        collection_name: name.to_string(),
-        vector: vec![0.0; size],
-        filter: Some(qdrant_client::qdrant::Filter::must(vec![
-            Condition::has_id(vec![Uuid::nil().to_string()]),
-        ])),
-        limit: 1,
-        with_payload: Some(WithPayloadSelector {
-            selector_options: Some(SelectorOptions::Enable(true)),
-        }),
-        params: Some(SearchParams::default()),
-        ..Default::default()
-    };
-
-    let mut search_result = map_err!(qdrant.search_points(search_points).await);
-
-    let results = &mut search_result.result[0];
-
-    let Some(info_string) = results.payload.remove("collection_info") else {
-        return err!(DoesNotExist, "Collection info vector for '{name}'");
-    };
-
-    let Some(kind) = info_string.kind else {
-        return err!(DoesNotExist, "Collection info vector for '{name}'");
-    };
-
-    let value = match kind {
-        value::Kind::StructValue(s) => s,
-        v => {
-            warn!("Found unsupported value kind: {v:?}");
-            return err!(DoesNotExist, "Collection info vector for '{name}'");
-        }
-    };
-
-    let config = match VectorCollection::try_from_map(value.fields) {
-        Some(c) => c,
-        None => {
-            tracing::error!("Invalid collection info vector for '{name}'");
-            return err!(DoesNotExist, "Collection info vector for '{name}'");
-        }
-    };
-
-    Ok(config)
-}
 
 #[async_trait::async_trait]
 impl VectorDb for Qdrant {
@@ -323,6 +254,76 @@ impl VectorDb for Qdrant {
 
         Ok(scroll.result.len())
     }
+}
+
+async fn create_id_vector(
+    qdrant: &Qdrant,
+    collection: CreateVectorCollection<'_>,
+) -> Result<(), QdrantError> {
+    let mut payload = Payload::new();
+    payload.insert("collection_info", json! { collection });
+
+    let point = PointStruct::new(
+        uuid::Uuid::nil().to_string(),
+        vec![0.0; collection.size],
+        payload,
+    );
+
+    qdrant
+        .upsert_points(UpsertPointsBuilder::new(collection.name, vec![point]).wait(true))
+        .await?;
+
+    Ok(())
+}
+
+async fn get_id_vector(
+    qdrant: &Qdrant,
+    name: &str,
+    size: usize,
+) -> Result<VectorCollection, ChonkitError> {
+    let search_points = SearchPoints {
+        collection_name: name.to_string(),
+        vector: vec![0.0; size],
+        filter: Some(qdrant_client::qdrant::Filter::must(vec![
+            Condition::has_id(vec![Uuid::nil().to_string()]),
+        ])),
+        limit: 1,
+        with_payload: Some(WithPayloadSelector {
+            selector_options: Some(SelectorOptions::Enable(true)),
+        }),
+        params: Some(SearchParams::default()),
+        ..Default::default()
+    };
+
+    let mut search_result = map_err!(qdrant.search_points(search_points).await);
+
+    let results = &mut search_result.result[0];
+
+    let Some(info_string) = results.payload.remove("collection_info") else {
+        return err!(DoesNotExist, "Collection info vector for '{name}'");
+    };
+
+    let Some(kind) = info_string.kind else {
+        return err!(DoesNotExist, "Collection info vector for '{name}'");
+    };
+
+    let value = match kind {
+        value::Kind::StructValue(s) => s,
+        v => {
+            warn!("Found unsupported value kind: {v:?}");
+            return err!(DoesNotExist, "Collection info vector for '{name}'");
+        }
+    };
+
+    let config = match VectorCollection::try_from_map(value.fields) {
+        Some(c) => c,
+        None => {
+            tracing::error!("Invalid collection info vector for '{name}'");
+            return err!(DoesNotExist, "Collection info vector for '{name}'");
+        }
+    };
+
+    Ok(config)
 }
 
 fn get_collection_size(info: &GetCollectionInfoResponse) -> Option<usize> {

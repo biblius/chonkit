@@ -2,23 +2,19 @@ use crate::{
     core::{
         document::{
             parser::Parser,
-            sha256,
-            store::{DocumentStore, DocumentSync},
+            store::{DocumentStore, DocumentStoreFile},
         },
-        model::{
-            document::{Document, DocumentInsert, DocumentType},
-            Pagination, PaginationSort,
-        },
-        repo::document::DocumentRepo,
+        model::document::{Document, DocumentType},
     },
     err,
     error::ChonkitError,
     map_err,
 };
-use std::{path::PathBuf, str::FromStr, time::Instant};
-use tracing::{debug, error, info};
+use std::{path::PathBuf, str::FromStr};
+use tracing::{debug, info};
+use uuid::Uuid;
 
-/// Simple FS based implementation of a [DocumentStore](crate::core::document::DocumentStore).
+/// Simple FS based implementation of a [DocumentStore](crate::core::document::store::DocumentStore).
 #[derive(Debug, Clone)]
 pub struct FsDocumentStore {
     /// The base directory to store the documents in.
@@ -89,80 +85,47 @@ impl DocumentStore for FsDocumentStore {
         debug!("Removing {path}");
         Ok(map_err!(tokio::fs::remove_file(path).await))
     }
-}
 
-#[async_trait::async_trait]
-impl<T> DocumentSync<T> for FsDocumentStore
-where
-    T: DocumentRepo + Send + Sync,
-{
-    async fn sync(&self, repo: &T) -> Result<(), ChonkitError> {
-        let __start = Instant::now();
-        info!("Syncing documents with {}", self.id());
+    async fn list_files(&self) -> Result<Vec<DocumentStoreFile>, ChonkitError> {
+        let mut files = vec![];
 
-        // Prune
-        let documents = repo
-            .list(
-                PaginationSort::new_default_sort(Pagination::new(10_000, 1)),
-                Some(self.id()),
-                None,
-            )
-            .await?;
+        let mut entries = map_err!(tokio::fs::read_dir(&self.base).await);
 
-        for document in documents {
-            if let Err(e) = tokio::fs::metadata(&document.path).await {
-                match e.kind() {
-                    std::io::ErrorKind::NotFound => {
-                        info!(
-                            "Document '{}' not found in storage, trimming",
-                            document.name
-                        );
-                        repo.remove_by_id(document.id).await?;
-                    }
-                    _ => return map_err!(Err(e)),
-                }
-            }
-        }
-
-        // Store
-        let mut files = map_err!(tokio::fs::read_dir(&self.base).await);
-
-        while let Some(file) = map_err!(files.next_entry().await) {
+        while let Some(file) = map_err!(entries.next_entry().await) {
             let ext = match self.get_extension(file.path()) {
                 Ok(ext) => ext,
                 Err(e) => {
-                    error!("{e}");
+                    tracing::error!("{e}");
                     continue;
                 }
             };
             let name = file.file_name().to_string_lossy().to_string();
             let path = file.path().display().to_string();
 
-            let content = map_err!(tokio::fs::read(&path).await);
-            let hash = sha256(&content);
-
-            let doc = repo.get_by_path(&path).await?;
-
-            if let Some(Document { id, name, .. }) = doc {
-                info!("Document '{name}' already exists ({id})");
-                continue;
-            }
-
-            let insert = DocumentInsert::new(&name, &path, ext, &hash, self.id());
-
-            match repo.insert(insert).await {
-                Ok(Document { id, name, .. }) => info!("Successfully inserted '{name}' ({id})"),
-                Err(e) => error!("{e}"),
-            }
+            files.push(DocumentStoreFile { name, path, ext });
         }
 
-        info!(
-            "Syncing finished for storage '{}', took {}ms",
-            self.id(),
-            Instant::now().duration_since(__start).as_millis()
-        );
+        Ok(files)
+    }
 
-        Ok(())
+    async fn get_bytes(&self, path: &str) -> Result<Vec<u8>, ChonkitError> {
+        Ok(map_err!(tokio::fs::read(path).await))
+    }
+
+    async fn filter_non_existing(&self, documents: &[Document]) -> Result<Vec<Uuid>, ChonkitError> {
+        let mut missing = vec![];
+        for document in documents {
+            if let Err(e) = tokio::fs::metadata(&document.path).await {
+                match e.kind() {
+                    std::io::ErrorKind::NotFound => {
+                        info!("Document '{}' not found in storage", document.name);
+                        missing.push(document.id)
+                    }
+                    _ => return map_err!(Err(e)),
+                }
+            }
+        }
+        Ok(missing)
     }
 }
 

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::{
     config::{DEFAULT_DOCUMENT_CONTENT, DEFAULT_DOCUMENT_NAME},
     core::{
@@ -8,14 +10,13 @@ use crate::{
         document::{
             parser::{ParseConfig, Parser},
             sha256,
-            store::DocumentSync,
         },
         model::{
             document::{
                 Document, DocumentConfig, DocumentDisplay, DocumentInsert, DocumentType,
                 TextDocumentType,
             },
-            List, PaginationSort,
+            List, Pagination, PaginationSort,
         },
         provider::ProviderState,
         repo::{document::DocumentRepo, Atomic},
@@ -186,17 +187,72 @@ where
         let Some(document) = self.repo.get_by_id(id).await? else {
             return err!(DoesNotExist, "Document with ID {id}");
         };
-        let store = self.providers.document.get_provider(&document.src)?;
-        self.repo.remove_by_id(document.id).await?;
-        store.delete(&document.path).await
+        let collections = self.repo.get_assigned_collection_names(document.id).await?;
+        transaction! {self.repo, |tx| async move {
+                self.repo.remove_by_id(document.id, Some(tx)).await?;
+                for (collection, provider) in collections {
+                    let vector_db = self.providers.vector.get_provider(&provider)?;
+                    vector_db
+                        .delete_embeddings(&collection, document.id)
+                        .await?;
+                }
+                let store = self.providers.document.get_provider(&document.src)?;
+                store.delete(&document.path).await
+            }
+        }
     }
 
     /// Sync storage contents with the repo.
-    pub async fn sync<T>(&self, store: &T) -> Result<(), ChonkitError>
-    where
-        T: DocumentSync<R> + Send + Sync + ?Sized,
-    {
-        store.sync(&self.repo).await
+    pub async fn sync(&self, storage_provider: &str) -> Result<(), ChonkitError> {
+        let __start = Instant::now();
+        let store = self.providers.document.get_provider(storage_provider)?;
+        info!("Syncing documents with {}", store.id());
+
+        // Prune
+        let documents = self
+            .repo
+            .list(
+                PaginationSort::new_default_sort(Pagination::new(10_000, 1)),
+                Some(store.id()),
+                None,
+            )
+            .await?;
+
+        let non_existing = store.filter_non_existing(&documents.items).await?;
+
+        for document_id in non_existing {
+            self.repo.remove_by_id(document_id, None).await?;
+        }
+
+        // Store
+        let files = store.list_files().await?;
+
+        for file in files {
+            let content = store.get_bytes(&file.path).await?;
+            let hash = sha256(&content);
+
+            let doc = self.repo.get_by_path(&file.path, store.id()).await?;
+
+            if let Some(Document { id, name, .. }) = doc {
+                info!("Document '{name}' already exists ({id})");
+                continue;
+            }
+
+            let insert = DocumentInsert::new(&file.name, &file.path, file.ext, &hash, store.id());
+
+            match self.repo.insert(insert).await {
+                Ok(Document { id, name, .. }) => info!("Successfully inserted '{name}' ({id})"),
+                Err(e) => tracing::error!("{e}"),
+            }
+        }
+
+        info!(
+            "Syncing finished for storage '{}', took {}ms",
+            store.id(),
+            Instant::now().duration_since(__start).as_millis()
+        );
+
+        Ok(())
     }
 
     /// Chunk the document without saving any embeddings. Useful for previewing.
