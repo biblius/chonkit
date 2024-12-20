@@ -168,7 +168,17 @@ pub(super) async fn upload_documents(
         let upload = DocumentUpload::new(name.to_string(), typ, &file);
 
         // Only store provider that supports upload currently
-        let document = services.document.upload("fs", upload).await?;
+        let document = match services.document.upload("fs", upload).await {
+            Ok(doc) => doc,
+            Err(e) => {
+                tracing::error!("{e}");
+                errors
+                    .entry(name)
+                    .and_modify(|entry| entry.push(e.to_string()))
+                    .or_insert_with(|| vec![e.to_string()]);
+                continue;
+            }
+        };
 
         documents.push(document);
     }
