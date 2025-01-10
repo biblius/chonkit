@@ -90,6 +90,94 @@
     },
     "query": "SELECT \n                id,\n                document_id,\n                config AS \"config: _\",\n                created_at,\n                updated_at \n             FROM parsers \n             WHERE document_id = $1"
   },
+  "07b0df9c8d20e18e17e7d30a76ab1e097ce10779d09c5125f5db172c348a93c9": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "path",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "ext",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "hash",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "src",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "chunk_config: Option<Json<ChunkConfig>>",
+          "ordinal": 6,
+          "type_info": "Jsonb"
+        },
+        {
+          "name": "parse_config: _",
+          "ordinal": 7,
+          "type_info": "Jsonb"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n                    SELECT \n                        d.id,\n                        d.name,\n                        d.path,\n                        d.ext,\n                        d.hash,\n                        d.src,\n                        c.config AS \"chunk_config: Option<Json<ChunkConfig>>\",\n                        p.config AS \"parse_config: _\"\n                    FROM documents d \n                    LEFT JOIN chunkers c ON c.document_id = d.id\n                    LEFT JOIN parsers p ON p.document_id = d.id\n                    WHERE d.id = $1\n                "
+  },
+  "0e38c88fd38652ebbae5714708cc6edb46cfdbda44ca8822798670219f34937d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "name",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "provider",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            SELECT collections.name, collections.provider FROM collections\n                WHERE collections.id IN (\n                        SELECT collection_id FROM embeddings\n                        WHERE embeddings.document_id = $1 \n                )\n            "
+  },
   "3a4d13874245944429bafa08d719b9dcaf920ca8a356049ccc276fa628da796f": {
     "describe": {
       "columns": [],
@@ -161,80 +249,6 @@
       }
     },
     "query": "INSERT INTO collections\n                (id, name, model, embedder, provider)\n             VALUES\n                ($1, $2, $3, $4, $5)\n             RETURNING \n                id, name, model, embedder, provider, created_at, updated_at\n             "
-  },
-  "4694978939b3d31d1ebef713cddcfc026280de851efb0d779fb5f1da09fadd96": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "path",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "ext",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "hash",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "src",
-          "ordinal": 5,
-          "type_info": "Text"
-        },
-        {
-          "name": "label",
-          "ordinal": 6,
-          "type_info": "Text"
-        },
-        {
-          "name": "tags",
-          "ordinal": 7,
-          "type_info": "TextArray"
-        },
-        {
-          "name": "created_at",
-          "ordinal": 8,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "updated_at",
-          "ordinal": 9,
-          "type_info": "Timestamptz"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at \n             FROM documents \n             WHERE path = $1"
   },
   "4df7b4bf529a159c95ccb072479f5d8bd82d6f5dff6a8d2c658856cca8ceabb6": {
     "describe": {
@@ -444,6 +458,127 @@
     },
     "query": "DELETE FROM embeddings WHERE collection_id = $1"
   },
+  "94858950d2d313a59d51d97f1423c6d8f80939d3fba72d344ed9e8b09e9e6f9e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "path",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "ext",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "hash",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "src",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "label",
+          "ordinal": 6,
+          "type_info": "Text"
+        },
+        {
+          "name": "tags",
+          "ordinal": 7,
+          "type_info": "TextArray"
+        },
+        {
+          "name": "created_at",
+          "ordinal": 8,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "updated_at",
+          "ordinal": 9,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n                    SELECT id, name, path, ext, hash, src, label, tags, created_at, updated_at \n                    FROM documents \n                    WHERE path = $1 AND src = $2\n                "
+  },
+  "9d458af953e39cdd9fa5da457fe8a11e7aa520d9fa79b0afbc2a39db96c3b36f": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "document_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "collection_id",
+          "ordinal": 2,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "created_at",
+          "ordinal": 3,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "updated_at",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n                    INSERT INTO embeddings(id, document_id, collection_id)\n                    VALUES ($1, $2, $3)\n                    ON CONFLICT(id) DO UPDATE\n                    SET id = $1\n                    RETURNING \n                    id, document_id, collection_id, created_at, updated_at\n                "
+  },
   "a44a4ffb89e3692f58b59cdade6ef3dc6cdc779f39ec285ec39be4abd3545bbd": {
     "describe": {
       "columns": [
@@ -488,68 +623,6 @@
       }
     },
     "query": "DELETE FROM documents WHERE path = $1"
-  },
-  "b3dc8bd1161a8fc8c1b9dad65aea6c0fef171c2ff88d9c59538f59883eb85973": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "name",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "path",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "ext",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "hash",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "src",
-          "ordinal": 5,
-          "type_info": "Text"
-        },
-        {
-          "name": "chunk_config: Option<Json<ChunkConfig>>",
-          "ordinal": 6,
-          "type_info": "Jsonb"
-        },
-        {
-          "name": "parse_config: _",
-          "ordinal": 7,
-          "type_info": "Jsonb"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Uuid"
-        ]
-      }
-    },
-    "query": "\n            SELECT \n                d.id,\n                d.name,\n                d.path,\n                d.ext,\n                d.hash,\n                d.src,\n                c.config AS \"chunk_config: Option<Json<ChunkConfig>>\",\n                p.config AS \"parse_config: _\"\n            FROM documents d \n            LEFT JOIN chunkers c ON c.document_id = d.id\n            LEFT JOIN parsers p ON p.document_id = d.id\n            WHERE d.id = $1"
   },
   "b7c0b9ecc569f750809c0bd97efd82ac26abf4c1643e661eed6690f7eefa076e": {
     "describe": {
@@ -956,52 +1029,6 @@
       }
     },
     "query": "INSERT INTO documents(id, name, path, ext, hash, src, label, tags)\n             VALUES($1, $2, $3, $4, $5, $6, $7, $8)\n             RETURNING id, name, path, ext, hash, src, label, tags, created_at, updated_at"
-  },
-  "fa463c0ffe2f7b4cb17333ac6aabfada54cd2354d36dfbd0ae2ea328e5081033": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "document_id",
-          "ordinal": 1,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "collection_id",
-          "ordinal": 2,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "created_at",
-          "ordinal": 3,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "updated_at",
-          "ordinal": 4,
-          "type_info": "Timestamptz"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Uuid",
-          "Uuid",
-          "Uuid"
-        ]
-      }
-    },
-    "query": "INSERT INTO embeddings\n                (id, document_id, collection_id)\n             VALUES\n                ($1, $2, $3)\n             ON CONFLICT(id) DO UPDATE\n             SET id = $1\n             RETURNING \n                id, document_id, collection_id, created_at, updated_at\n             "
   },
   "fccf399f170814a46d41ea2fc3cfa40d872891bea691c201d36d45c002917160": {
     "describe": {
